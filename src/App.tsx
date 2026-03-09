@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, ChevronDown, ChevronRight, Trash2, LayoutDashboard, Users, FolderPlus, FilePlus, Sun, Moon, GripVertical } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, LayoutDashboard, Users, FolderPlus, FilePlus, Sun, Moon, GripVertical, Check, Circle } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -24,16 +24,16 @@ const INITIAL_DATA: Team[] = [
         id: 'top1',
         title: 'Network & Connectivity',
         subTopics: [
-          { id: 'sub1', title: 'Network Topology & Firewall', status: 'GREEN' },
-          { id: 'sub2', title: 'VPN & Load Balancer', status: 'GREEN' }
+          { id: 'sub1', title: 'Network Topology & Firewall', status: 'GREEN', details: [] },
+          { id: 'sub2', title: 'VPN & Load Balancer', status: 'GREEN', details: [] }
         ]
       },
       {
         id: 'top2',
         title: 'Server / Cloud Resource & Cost',
         subTopics: [
-          { id: 'sub3', title: 'Cloud Spending vs Budget', status: 'YELLOW' },
-          { id: 'sub4', title: 'Resource Utilization', status: 'GREEN' }
+          { id: 'sub3', title: 'Cloud Spending vs Budget', status: 'YELLOW', details: [] },
+          { id: 'sub4', title: 'Resource Utilization', status: 'GREEN', details: [] }
         ]
       }
     ]
@@ -46,7 +46,7 @@ const INITIAL_DATA: Team[] = [
         id: 'top3',
         title: 'Traffic & Performance',
         subTopics: [
-          { id: 'sub5', title: 'Request Volume & Latency', status: 'RED' }
+          { id: 'sub5', title: 'Request Volume & Latency', status: 'RED', details: [] }
         ]
       }
     ]
@@ -165,7 +165,8 @@ export default function App() {
                 subTopics: [...topic.subTopics, {
                   id: `sub-${Date.now()}`,
                   title: newSubTopicTitle,
-                  status: 'GREEN'
+                  status: 'GREEN',
+                  details: []
                 }]
               };
             }
@@ -271,6 +272,90 @@ export default function App() {
         topics: t.topics.map(topic =>
           topic.id === topicId
             ? { ...topic, subTopics: topic.subTopics.map(s => s.id === subTopicId ? { ...s, title: trimmed } : s) }
+            : topic
+        )
+      };
+    }));
+  };
+
+  const addSubTopicDetail = (teamId: string, topicId: string, subTopicId: string) => {
+    setTeams(teams.map(t => {
+      if (t.id !== teamId) return t;
+      return {
+        ...t,
+        topics: t.topics.map(topic =>
+          topic.id === topicId
+            ? {
+                ...topic,
+                subTopics: topic.subTopics.map(s =>
+                  s.id === subTopicId ? { ...s, details: [...(s.details ?? []), { text: '', done: false }] } : s
+                )
+              }
+            : topic
+        )
+      };
+    }));
+  };
+
+  const updateSubTopicDetail = (teamId: string, topicId: string, subTopicId: string, index: number, text: string) => {
+    setTeams(teams.map(t => {
+      if (t.id !== teamId) return t;
+      return {
+        ...t,
+        topics: t.topics.map(topic =>
+          topic.id === topicId
+            ? {
+                ...topic,
+                subTopics: topic.subTopics.map(s => {
+                  if (s.id !== subTopicId) return s;
+                  const next = [...(s.details ?? [])];
+                  if (next[index]) next[index] = { ...next[index], text };
+                  return { ...s, details: next };
+                })
+              }
+            : topic
+        )
+      };
+    }));
+  };
+
+  const removeSubTopicDetail = (teamId: string, topicId: string, subTopicId: string, index: number) => {
+    setTeams(teams.map(t => {
+      if (t.id !== teamId) return t;
+      return {
+        ...t,
+        topics: t.topics.map(topic =>
+          topic.id === topicId
+            ? {
+                ...topic,
+                subTopics: topic.subTopics.map(s => {
+                  if (s.id !== subTopicId) return s;
+                  const next = (s.details ?? []).filter((_, i) => i !== index);
+                  return { ...s, details: next };
+                })
+              }
+            : topic
+        )
+      };
+    }));
+  };
+
+  const toggleSubTopicDetailDone = (teamId: string, topicId: string, subTopicId: string, index: number) => {
+    setTeams(teams.map(t => {
+      if (t.id !== teamId) return t;
+      return {
+        ...t,
+        topics: t.topics.map(topic =>
+          topic.id === topicId
+            ? {
+                ...topic,
+                subTopics: topic.subTopics.map(s => {
+                  if (s.id !== subTopicId) return s;
+                  const next = [...(s.details ?? [])];
+                  if (next[index]) next[index] = { ...next[index], done: !next[index].done };
+                  return { ...s, details: next };
+                })
+              }
             : topic
         )
       };
@@ -510,6 +595,10 @@ export default function App() {
     onStartEditTitle,
     onSaveEditTitle,
     onCancelEditTitle,
+    onAddDetail,
+    onUpdateDetail,
+    onRemoveDetail,
+    onToggleDetailDone,
   }: {
     teamId: string;
     topicId: string;
@@ -522,6 +611,10 @@ export default function App() {
     onStartEditTitle: () => void;
     onSaveEditTitle: () => void;
     onCancelEditTitle: () => void;
+    onAddDetail: () => void;
+    onUpdateDetail: (index: number, value: string) => void;
+    onRemoveDetail: (index: number) => void;
+    onToggleDetailDone: (index: number) => void;
   }) {
     const id = `sub__${topicId}__${subTopic.id}`;
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -529,12 +622,29 @@ export default function App() {
       data: { type: 'subtopic' as const, topicId, subTopic },
     });
     const style = { transform: CSS.Transform.toString(transform), transition };
+    const details = subTopic.details ?? [];
+    const [draftDetailText, setDraftDetailText] = useState<Record<number, string>>({});
+    const [todoSectionOpen, setTodoSectionOpen] = useState(false);
+
+    const getDetailDisplayValue = (index: number, item: { text: string }) =>
+      draftDetailText[index] !== undefined ? draftDetailText[index] : item.text;
+
+    const flushDetailDraft = (index: number) => {
+      const value = draftDetailText[index] !== undefined ? draftDetailText[index] : details[index]?.text ?? '';
+      onUpdateDetail(index, value);
+      setDraftDetailText(prev => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+    };
     return (
       <div
         ref={setNodeRef}
         style={style}
-        className={`flex items-center justify-between bg-[var(--color-surface)] px-4 py-3 rounded-lg border border-[var(--color-border)] shadow-[var(--shadow-card)] ${isDragging ? 'opacity-80 shadow-lg z-10' : ''}`}
+        className={`flex flex-col bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] shadow-[var(--shadow-card)] overflow-hidden ${isDragging ? 'opacity-80 shadow-lg z-10' : ''}`}
       >
+        <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             className="p-1 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing flex-shrink-0"
@@ -593,6 +703,82 @@ export default function App() {
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
+        </div>
+        {/* Task ย่อยตาม Detail (Todo) — หุบ/เปิดได้ */}
+        <div className="border-t border-[var(--color-border)] bg-[var(--color-page)]/50">
+          <button
+            type="button"
+            onClick={() => setTodoSectionOpen(prev => !prev)}
+            className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left hover:bg-[var(--color-overlay)] transition-colors"
+          >
+            <span className="text-xs font-medium text-[var(--color-text-muted)]">
+              Task ย่อย / รายการ (Todo)
+              {details.length > 0 && (
+                <span className="ml-1.5 text-[var(--color-text-subtle)]">
+                  — {details.length} รายการ
+                </span>
+              )}
+            </span>
+            {todoSectionOpen ? (
+              <ChevronDown className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
+            )}
+          </button>
+          {todoSectionOpen && (
+          <div className="px-4 pb-3 pt-0">
+          <div className="space-y-1.5">
+            {details.map((item, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onToggleDetailDone(index)}
+                  className="flex-shrink-0 p-0.5 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-primary)]"
+                  title={item.done ? 'ยกเลิกทำแล้ว' : 'ทำแล้ว'}
+                >
+                  {item.done ? (
+                    <Check className="w-4 h-4 text-emerald-500" />
+                  ) : (
+                    <Circle className="w-4 h-4" />
+                  )}
+                </button>
+                <span className="text-xs font-medium text-[var(--color-text-subtle)] w-5 flex-shrink-0">{index + 1}.</span>
+                <input
+                  type="text"
+                  value={getDetailDisplayValue(index, item)}
+                  onChange={(e) => setDraftDetailText(prev => ({ ...prev, [index]: e.target.value }))}
+                  onBlur={() => flushDetailDraft(index)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      flushDetailDraft(index);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  placeholder={`Task ${index + 1}`}
+                  className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${item.done ? 'line-through text-[var(--color-text-subtle)]' : 'text-[var(--color-text)]'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemoveDetail(index)}
+                  className="p-1 text-[var(--color-text-subtle)] hover:text-rose-600 hover:bg-rose-500/10 rounded"
+                  title="ลบรายการ"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={onAddDetail}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] mt-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              เพิ่ม Task / รายการ
+            </button>
+          </div>
+          </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -609,6 +795,10 @@ export default function App() {
     onStartEditSubTopicTitle,
     onSaveEditSubTopicTitle,
     onCancelEditSubTopicTitle,
+    onAddDetail,
+    onUpdateDetail,
+    onRemoveDetail,
+    onToggleDetailDone,
   }: {
     teamId: string;
     topic: Topic;
@@ -621,6 +811,10 @@ export default function App() {
     onStartEditSubTopicTitle: (topicId: string, subTopicId: string) => void;
     onSaveEditSubTopicTitle: () => void;
     onCancelEditSubTopicTitle: () => void;
+    onAddDetail: (topicId: string, subTopicId: string) => void;
+    onUpdateDetail: (topicId: string, subTopicId: string, index: number, value: string) => void;
+    onRemoveDetail: (topicId: string, subTopicId: string, index: number) => void;
+    onToggleDetailDone: (topicId: string, subTopicId: string, index: number) => void;
   }) {
     const { setNodeRef, isOver } = useDroppable({
       id: `subtopic-list-${teamId}-${topic.id}`,
@@ -655,6 +849,10 @@ export default function App() {
                   onStartEditTitle={() => onStartEditSubTopicTitle(topic.id, subTopic.id)}
                   onSaveEditTitle={onSaveEditSubTopicTitle}
                   onCancelEditTitle={onCancelEditSubTopicTitle}
+                  onAddDetail={() => onAddDetail(topic.id, subTopic.id)}
+                  onUpdateDetail={(index, value) => onUpdateDetail(topic.id, subTopic.id, index, value)}
+                  onRemoveDetail={(index) => onRemoveDetail(topic.id, subTopic.id, index)}
+                  onToggleDetailDone={(index) => onToggleDetailDone(topic.id, subTopic.id, index)}
                 />
               ))}
             </div>
@@ -896,6 +1094,10 @@ export default function App() {
                                   }
                                 }}
                                 onCancelEditSubTopicTitle={() => setEditingSubTopic(null)}
+                                onAddDetail={(topicId, subTopicId) => addSubTopicDetail(team.id, topicId, subTopicId)}
+                                onUpdateDetail={(topicId, subTopicId, index, value) => updateSubTopicDetail(team.id, topicId, subTopicId, index, value)}
+                                onRemoveDetail={(topicId, subTopicId, index) => removeSubTopicDetail(team.id, topicId, subTopicId, index)}
+                                onToggleDetailDone={(topicId, subTopicId, index) => toggleSubTopicDetailDone(team.id, topicId, subTopicId, index)}
                               />
                             </div>
                           );
