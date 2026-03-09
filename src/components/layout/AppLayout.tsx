@@ -3,9 +3,9 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers } from 'lucide-react';
 
 const navItems = [
+  { path: '/cability', label: 'Capability', icon: Layers },
   { path: '/project', label: 'Project', icon: FolderKanban },
   { path: '/teams', label: 'Teams', icon: Users },
-  { path: '/cability', label: 'Capability', icon: Layers },
 ];
 
 export default function AppLayout() {
