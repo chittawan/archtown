@@ -335,15 +335,15 @@ export default function CapabilityManagePage() {
     const value = cols && [12, 6, 4, 3].includes(cols) ? cols : 4;
     switch (value) {
       case 12:
-        return 'w-full';
+        return 'col-span-12';
       case 6:
-        return 'w-full sm:basis-1/2 sm:max-w-[50%]';
+        return 'col-span-12 sm:col-span-6';
       case 4:
-        return 'w-full sm:basis-1/3 sm:max-w-[33.333%]';
+        return 'col-span-12 sm:col-span-4';
       case 3:
-        return 'w-full sm:basis-1/4 sm:max-w-[25%]';
+        return 'col-span-12 sm:col-span-3';
       default:
-        return 'w-full';
+        return 'col-span-12';
     }
   }
 
@@ -582,7 +582,7 @@ export default function CapabilityManagePage() {
             items={layout.cabOrder.map((id) => `sortable-cab-${id}`)}
             strategy={rectSortingStrategy}
           >
-            <div className="flex flex-wrap gap-6">
+            <div className="grid grid-cols-12 gap-6">
               {layout.cabOrder.map((cabId) => (
                 <SortableCabCard key={cabId} cabId={cabId} />
               ))}

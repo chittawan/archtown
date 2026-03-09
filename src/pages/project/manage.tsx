@@ -36,41 +36,6 @@ function toCamelCase(s: string): string {
 }
 
 const INITIAL_DATA: Team[] = [
-  {
-    id: 't1',
-    name: 'Infra (Network)',
-    topics: [
-      {
-        id: 'top1',
-        title: 'Network & Connectivity',
-        subTopics: [
-          { id: 'sub1', title: 'Network Topology & Firewall', status: 'GREEN', details: [] },
-          { id: 'sub2', title: 'VPN & Load Balancer', status: 'GREEN', details: [] },
-        ],
-      },
-      {
-        id: 'top2',
-        title: 'Server / Cloud Resource & Cost',
-        subTopics: [
-          { id: 'sub3', title: 'Cloud Spending vs Budget', status: 'YELLOW', details: [] },
-          { id: 'sub4', title: 'Resource Utilization', status: 'GREEN', details: [] },
-        ],
-      },
-    ],
-  },
-  {
-    id: 't2',
-    name: 'Platform Core',
-    topics: [
-      {
-        id: 'top3',
-        title: 'Traffic & Performance',
-        subTopics: [
-          { id: 'sub5', title: 'Request Volume & Latency', status: 'RED', details: [] },
-        ],
-      },
-    ],
-  },
 ];
 
 export default function ProjectManagePage() {
