@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -930,8 +930,13 @@ export default function ProjectManagePage() {
           <button
             type="button"
             onClick={onTodoSectionToggle}
-            className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left hover:bg-[var(--color-overlay)] transition-colors"
+            className="w-full px-4 py-3 flex items-center justify-start gap-2 text-left hover:bg-[var(--color-overlay)] transition-colors"
           >
+            {isTodoSectionOpen ? (
+              <ChevronDown className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
+            )}
             <span className="text-xs font-medium text-[var(--color-text-muted)]">
               Task ย่อย / รายการ (Todo)
               {details.length > 0 && (
@@ -940,11 +945,6 @@ export default function ProjectManagePage() {
                 </span>
               )}
             </span>
-            {isTodoSectionOpen ? (
-              <ChevronDown className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
-            )}
           </button>
           {isTodoSectionOpen && (
             <div className="px-4 pb-3 pt-0">
@@ -1190,9 +1190,15 @@ export default function ProjectManagePage() {
         <StatusBadge status="YELLOW" />
         <StatusBadge status="RED" />
         {statusFilter === 'RED' && (
-          <span className="text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/40 px-2 py-1 rounded">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('ALL')}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/40 hover:bg-rose-200 dark:hover:bg-rose-800/50 px-2 py-1 rounded transition-colors"
+            title="แสดงทั้งหมด"
+          >
             แสดงเฉพาะ RED
-          </span>
+            <X className="w-3.5 h-3.5" />
+          </button>
         )}
         <div className="flex items-center gap-2 ml-auto">
           <button
