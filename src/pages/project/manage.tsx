@@ -18,6 +18,16 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SummaryView } from '../../components/project/SummaryView';
 import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
 
+function toCamelCase(s: string): string {
+  return s
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, i) =>
+      i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    )
+    .join('');
+}
+
 const INITIAL_DATA: Team[] = [
   {
     id: 't1',
@@ -253,7 +263,7 @@ export default function ProjectManagePage() {
     URL.revokeObjectURL(url);
   };
 
-  /** บันทึกลง Data/Projects/{project-name}.md ผ่าน API (dev) หรือ fallback เป็นดาวน์โหลด */
+  /** บันทึกลง data/projects/{projectName}.md ผ่าน API (dev) หรือ fallback เป็นดาวน์โหลด */
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const downloadAsMarkdown = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -267,7 +277,7 @@ export default function ProjectManagePage() {
   const saveProjectToData = async () => {
     const md = exportToMarkdown(projectName, teams);
     const name = (projectName || 'project').trim();
-    const safeName = name.replace(/[^\p{L}\p{N}\s_-]/gu, '_').replace(/\s+/g, '_') || 'project';
+    const fileBaseName = toCamelCase(name.replace(/[^\p{L}\p{N}\s_-]/gu, ' ').trim()) || 'project';
     setSaveStatus('saving');
     try {
       const res = await fetch('/api/save-project', {
@@ -280,12 +290,12 @@ export default function ProjectManagePage() {
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
       } else {
-        downloadAsMarkdown(md, safeName);
+        downloadAsMarkdown(md, fileBaseName);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
       }
     } catch {
-      downloadAsMarkdown(md, safeName);
+      downloadAsMarkdown(md, fileBaseName);
       setSaveStatus('ok');
       setTimeout(() => setSaveStatus('idle'), 2000);
     }
@@ -1256,7 +1266,7 @@ export default function ProjectManagePage() {
 
         {/* ขวา: กลุ่มปุ่มเรียงตามการใช้งาน */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {/* กลุ่ม Data: Import → Export → Save (ลำดับการทำงาน) */}
+          {/* กลุ่ม data: Import → Export → Save (ลำดับการทำงาน) */}
           <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
             <button
               type="button"
@@ -1280,7 +1290,7 @@ export default function ProjectManagePage() {
               onClick={saveProjectToData}
               disabled={saveStatus === 'saving'}
               className={`${btnSecondary} disabled:opacity-60 disabled:cursor-not-allowed`}
-              title="Save ลง Data/Projects/{project-name}.md"
+              title="Save ลง data/projects/{projectName}.md"
             >
               {saveStatus === 'saving' ? (
                 <>

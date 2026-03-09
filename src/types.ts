@@ -24,3 +24,15 @@ export interface Team {
   name: string;
   topics: Topic[];
 }
+
+/** หน่วยงาน/ทีมองค์กร — 1 ทีม = 1 ไฟล์, มี Parent/Child */
+export interface OrgTeam {
+  /** slug ใช้เป็นชื่อไฟล์ (id) */
+  id: string;
+  name: string;
+  owner: string;
+  /** id (slug) ของทีมแม่, ว่างถ้าเป็นทีมระดับบน */
+  parentId: string | null;
+  /** id (slug) ของทีมลูก */
+  childIds: string[];
+}
