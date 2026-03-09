@@ -10,7 +10,25 @@ import {
   Save,
   Download,
   FileText,
+  GripVertical,
 } from 'lucide-react';
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  useDroppable,
+} from '@dnd-kit/core';
+import { arrayMove } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { OrgTeam } from '../../types';
 import {
   orgTeamToMarkdown,
@@ -31,6 +49,27 @@ function buildRootIds(teams: TeamMap): string[] {
 
 function getChildIds(team: OrgTeam, teams: TeamMap): string[] {
   return team.childIds.filter((id) => teams.has(id));
+}
+
+/** รายการ id ของทีมลูกทั้งหมด (recursive) — ใช้ตรวจว่าไม่ย้าย Parent ไปไว้ใต้ Child */
+function getDescendantIds(teamId: string, teams: TeamMap): Set<string> {
+  const team = teams.get(teamId);
+  if (!team) return new Set();
+  const out = new Set<string>();
+  for (const cid of team.childIds) {
+    out.add(cid);
+    for (const id of getDescendantIds(cid, teams)) out.add(id);
+  }
+  return out;
+}
+
+const DROP_ID_ROOT_LIST = 'root-list';
+function dropIdParent(parentId: string) {
+  return `parent-${parentId}`;
+}
+const DROP_PREFIX_MAKE_CHILD_OF = 'make-child-of-';
+function dropIdMakeChildOf(parentId: string) {
+  return `${DROP_PREFIX_MAKE_CHILD_OF}${parentId}`;
 }
 
 async function fetchTeamIds(): Promise<string[]> {
@@ -60,6 +99,7 @@ async function saveTeamApi(id: string, markdown: string): Promise<boolean> {
 
 export default function TeamsManagePage() {
   const [teams, setTeams] = useState<TeamMap>(new Map());
+  const [rootOrderIds, setRootOrderIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -70,6 +110,11 @@ export default function TeamsManagePage() {
   const [formOwner, setFormOwner] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  );
 
   const loadTeams = useCallback(async () => {
     setLoading(true);
@@ -85,6 +130,7 @@ export default function TeamsManagePage() {
         }
       }
       setTeams(next);
+      setRootOrderIds(buildRootIds(next));
     } catch (e) {
       setError('โหลดรายการทีมไม่สำเร็จ');
     } finally {
@@ -109,6 +155,128 @@ export default function TeamsManagePage() {
       return ok;
     },
     []
+  );
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const teamId = String(active.id);
+      const team = teams.get(teamId);
+      if (!team) return;
+
+      const overId = String(over.id);
+
+      if (overId === DROP_ID_ROOT_LIST) {
+        if (team.parentId == null) return;
+        const oldParent = teams.get(team.parentId);
+        if (oldParent) {
+          const updatedParent: OrgTeam = {
+            ...oldParent,
+            childIds: oldParent.childIds.filter((c) => c !== teamId),
+          };
+          await saveTeam(updatedParent);
+        }
+        const updatedTeam: OrgTeam = { ...team, parentId: null };
+        await saveTeam(updatedTeam);
+        setRootOrderIds((prev) => (prev.includes(teamId) ? prev : [...prev, teamId]));
+        return;
+      }
+
+      if (
+        overId.startsWith('parent-') ||
+        overId.startsWith(DROP_PREFIX_MAKE_CHILD_OF)
+      ) {
+        const newParentId = overId.startsWith('parent-')
+          ? overId.slice(7)
+          : overId.slice(DROP_PREFIX_MAKE_CHILD_OF.length);
+        if (newParentId === teamId) return;
+        const descendants = getDescendantIds(teamId, teams);
+        if (descendants.has(newParentId)) return;
+        const newParent = teams.get(newParentId);
+        if (!newParent) return;
+        if (team.parentId === newParentId) return;
+
+        if (team.parentId) {
+          const oldParent = teams.get(team.parentId);
+          if (oldParent) {
+            const updatedOld: OrgTeam = {
+              ...oldParent,
+              childIds: oldParent.childIds.filter((c) => c !== teamId),
+            };
+            await saveTeam(updatedOld);
+          }
+        } else {
+          setRootOrderIds((prev) => prev.filter((id) => id !== teamId));
+        }
+        const updatedTeam: OrgTeam = { ...team, parentId: newParentId };
+        await saveTeam(updatedTeam);
+        const updatedNewParent: OrgTeam = {
+          ...newParent,
+          childIds: [...newParent.childIds, teamId],
+        };
+        await saveTeam(updatedNewParent);
+        setExpandedIds((prev) => new Set(prev).add(newParentId));
+        return;
+      }
+
+      const overTeam = teams.get(overId);
+      if (!overTeam) return;
+
+      const sameList =
+        team.parentId === overTeam.parentId &&
+        (team.parentId != null
+          ? getChildIds(teams.get(team.parentId)!, teams)
+          : rootOrderIds
+        ).includes(overId);
+
+      if (sameList) {
+        if (team.parentId == null) {
+          const list = rootOrderIds;
+          const from = list.indexOf(teamId);
+          const to = list.indexOf(overId);
+          if (from === -1 || to === -1 || from === to) return;
+          setRootOrderIds(arrayMove(list, from, to));
+        } else {
+          const parent = teams.get(team.parentId);
+          if (!parent) return;
+          const list = [...parent.childIds];
+          const from = list.indexOf(teamId);
+          const to = list.indexOf(overId);
+          if (from === -1 || to === -1 || from === to) return;
+          const newChildIds = arrayMove(list, from, to);
+          await saveTeam({ ...parent, childIds: newChildIds });
+        }
+        return;
+      }
+
+      // วางทีมบนทีมอื่น (ต่างรายการ) = ให้ทีมนั้นเป็นทีมแม่ (ทำให้เป็นทีมลูก)
+      const newParentId = overId;
+      const descendants = getDescendantIds(teamId, teams);
+      if (descendants.has(newParentId)) return;
+
+      if (team.parentId) {
+        const oldParent = teams.get(team.parentId);
+        if (oldParent) {
+          const updatedOld: OrgTeam = {
+            ...oldParent,
+            childIds: oldParent.childIds.filter((c) => c !== teamId),
+          };
+          await saveTeam(updatedOld);
+        }
+      } else {
+        setRootOrderIds((prev) => prev.filter((id) => id !== teamId));
+      }
+
+      const updatedTeam: OrgTeam = { ...team, parentId: newParentId };
+      await saveTeam(updatedTeam);
+
+      const newParent = teams.get(newParentId)!;
+      const newChildIds = [...newParent.childIds, teamId];
+      await saveTeam({ ...newParent, childIds: newChildIds });
+      setExpandedIds((prev) => new Set(prev).add(newParentId));
+    },
+    [teams, rootOrderIds, saveTeam]
   );
 
   const toggleExpand = (id: string) => {
@@ -161,16 +329,16 @@ export default function TeamsManagePage() {
         };
         await saveTeam(updatedParent);
       }
-    }
-    setIsCreateOpen(false);
-    setCreateParentId(null);
-    if (createParentId) {
       setExpandedIds((prev) => {
         const next = new Set(prev);
         next.add(createParentId);
         return next;
       });
+    } else {
+      setRootOrderIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     }
+    setIsCreateOpen(false);
+    setCreateParentId(null);
   };
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -208,6 +376,9 @@ export default function TeamsManagePage() {
     if (team.parentId) {
       await removeChildFromParent(team.parentId, team.id);
     }
+    if (team.parentId == null) {
+      setRootOrderIds((prev) => prev.filter((id) => id !== team.id));
+    }
     setTeams((prev) => {
       const next = new Map(prev);
       next.delete(team.id);
@@ -228,19 +399,53 @@ export default function TeamsManagePage() {
     URL.revokeObjectURL(url);
   };
 
-  const rootIds = buildRootIds(teams);
+  const displayRootIds = rootOrderIds.filter((id) => teams.has(id));
 
-  function TeamNode({ team, depth = 0 }: { team: OrgTeam; depth?: number }) {
-    const childIds = getChildIds(team, teams);
+  function SortableTeamRow({
+    team,
+    depth = 0,
+    childIds,
+  }: {
+    team: OrgTeam;
+    depth?: number;
+    childIds: string[];
+    key?: React.Key;
+  }) {
     const hasChildren = childIds.length > 0;
     const isExpanded = expandedIds.has(team.id);
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({
+      id: team.id,
+      data: { type: 'team' as const, team },
+    });
+    const { setNodeRef: setDropRef, isOver } = useDroppable({
+      id: dropIdMakeChildOf(team.id),
+    });
+    const style = { transform: CSS.Transform.toString(transform), transition };
 
     return (
-      <div className="flex flex-col">
+      <div className="flex flex-col" ref={setNodeRef} style={style}>
         <div
-          className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-[var(--color-overlay)] transition-colors group"
+          ref={setDropRef}
+          title="ลากทีมมาวางบนแถวนี้เพื่อให้เป็นทีมลูก"
+          className={`flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-[var(--color-overlay)] transition-colors group bg-[var(--color-surface)] ${isDragging ? 'opacity-80 shadow-lg z-10 rounded-lg border border-[var(--color-border)]' : ''} ${isOver ? 'ring-2 ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/40' : ''}`}
           style={{ paddingLeft: `${depth * 20 + 8}px` }}
         >
+          <button
+            type="button"
+            className="p-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] touch-none cursor-grab active:cursor-grabbing"
+            aria-label="ลากเพื่อเรียงหรือย้าย"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="w-4 h-4" />
+          </button>
           <button
             type="button"
             onClick={() => hasChildren && toggleExpand(team.id)}
@@ -298,13 +503,89 @@ export default function TeamsManagePage() {
           </div>
         </div>
         {hasChildren && isExpanded && (
-          <div className="border-l-2 border-[var(--color-border)] ml-4">
-            {childIds.map((cid) => {
-              const child = teams.get(cid);
-              return child ? (
-                <TeamNode key={child.id} team={child} depth={depth + 1} />
-              ) : null;
-            })}
+          <ChildrenDropZone
+            parentId={team.id}
+            childIds={childIds}
+            depth={depth}
+          />
+        )}
+      </div>
+    );
+  }
+
+  function ChildrenDropZone({
+    parentId,
+    childIds,
+    depth,
+  }: {
+    parentId: string;
+    childIds: string[];
+    depth: number;
+  }) {
+    const { setNodeRef, isOver } = useDroppable({
+      id: dropIdParent(parentId),
+    });
+    return (
+      <div
+        ref={setNodeRef}
+        className={`border-l-2 border-[var(--color-border)] ml-4 transition-colors min-h-[28px] ${isOver ? 'bg-[var(--color-primary-muted)]/50' : ''}`}
+      >
+        <div className="py-1">
+          {childIds.length === 0 ? (
+            <div
+              className="text-sm text-[var(--color-text-muted)] italic py-2 px-4"
+              style={{ paddingLeft: `${(depth + 1) * 20 + 8}px` }}
+            >
+              ยังไม่มีทีมลูก — ลากทีมมาวางที่นี่หรือกดเพิ่มทีมลูก
+            </div>
+          ) : (
+            <SortableContext
+              items={childIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {childIds.map((cid) => {
+                const child = teams.get(cid);
+                return child ? (
+                  <SortableTeamRow
+                    key={child.id}
+                    team={child}
+                    depth={depth + 1}
+                    childIds={getChildIds(child, teams)}
+                  />
+                ) : null;
+              })}
+            </SortableContext>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function RootListDroppable() {
+    const { setNodeRef, isOver } = useDroppable({ id: DROP_ID_ROOT_LIST });
+    return (
+      <div
+        ref={setNodeRef}
+        className={`rounded-b-2xl transition-colors ${isOver ? 'bg-[var(--color-primary-muted)]/50' : ''}`}
+      >
+        <SortableContext
+          items={displayRootIds}
+          strategy={verticalListSortingStrategy}
+        >
+          {displayRootIds.map((id) => {
+            const team = teams.get(id);
+            return team ? (
+              <SortableTeamRow
+                key={team.id}
+                team={team}
+                childIds={getChildIds(team, teams)}
+              />
+            ) : null;
+          })}
+        </SortableContext>
+        {displayRootIds.length === 0 && (
+          <div className="py-6 text-center text-sm text-[var(--color-text-muted)] italic">
+            ลากทีมมาวางที่นี่เพื่อเป็นทีมระดับบน
           </div>
         )}
       </div>
@@ -320,7 +601,8 @@ export default function TeamsManagePage() {
             จัดการทีม
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            สร้างทีม กำหนด Owner และจัดลำดับทีมลูก (Parent-Child) — 1 ทีม = 1 ไฟล์ Markdown
+            สร้างทีม กำหนด Owner และจัดลำดับทีมลูก (Parent-Child) — 1 ทีม = 1 ไฟล์ Markdown.
+            ลากวางเพื่อเรียงหรือย้าย: 1 Child มีได้แค่ 1 Parent, 1 Parent มีได้หลาย Child
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -360,7 +642,7 @@ export default function TeamsManagePage() {
         <div className="py-12 text-center text-[var(--color-text-muted)]">
           กำลังโหลด...
         </div>
-      ) : rootIds.length === 0 ? (
+      ) : teams.size === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-12 text-center">
           <FileText className="w-12 h-12 mx-auto text-[var(--color-text-subtle)] mb-4" />
           <p className="text-[var(--color-text-muted)] mb-2">ยังไม่มีทีม</p>
@@ -377,12 +659,15 @@ export default function TeamsManagePage() {
           </button>
         </div>
       ) : (
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] overflow-hidden">
-          {rootIds.map((id) => {
-            const team = teams.get(id);
-            return team ? <TeamNode key={team.id} team={team} /> : null;
-          })}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] overflow-hidden">
+            <RootListDroppable />
+          </div>
+        </DndContext>
       )}
 
       {/* Modal สร้างทีม */}
