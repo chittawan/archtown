@@ -17,6 +17,12 @@ import { Team, Topic, SubTopic, Status } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SummaryView } from '../../components/project/SummaryView';
 import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
+import {
+  markdownToOrgTeam,
+  orgTeamToMarkdown,
+  slugFromName,
+  ensureUniqueSlug,
+} from '../../lib/teamMarkdown';
 
 function toCamelCase(s: string): string {
   return s
@@ -72,6 +78,9 @@ export default function ProjectManagePage() {
     new Set(['top1', 'top2', 'top3'])
   );
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [orgTeamsForSelect, setOrgTeamsForSelect] = useState<{ id: string; name: string }[]>([]);
+  const [loadingOrgTeams, setLoadingOrgTeams] = useState(false);
+  const [selectedOrgTeamId, setSelectedOrgTeamId] = useState<string | null>(null);
   const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
   const [isSubTopicModalOpen, setIsSubTopicModalOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
@@ -111,6 +120,32 @@ export default function ProjectManagePage() {
   useEffect(() => {
     if (projectName) localStorage.setItem('projectName', projectName);
   }, [projectName]);
+
+  useEffect(() => {
+    if (!isTeamModalOpen) return;
+    setLoadingOrgTeams(true);
+    setSelectedOrgTeamId(null);
+    setNewTeamName('');
+    fetch('/api/teams')
+      .then((res) => (res.ok ? res.json() : { ids: [] }))
+      .then((data: { ids?: string[] }) => {
+        const ids = Array.isArray(data.ids) ? data.ids : [];
+        return Promise.all(
+          ids.map((id: string) =>
+            fetch(`/api/teams/${encodeURIComponent(id)}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((raw: { id?: string; markdown?: string } | null) =>
+                raw?.markdown != null
+                  ? { id: raw.id ?? id, name: markdownToOrgTeam(raw.id ?? id, raw.markdown).name }
+                  : null
+              )
+          )
+        );
+      })
+      .then((list) => setOrgTeamsForSelect(list.filter(Boolean) as { id: string; name: string }[]))
+      .catch(() => setOrgTeamsForSelect([]))
+      .finally(() => setLoadingOrgTeams(false));
+  }, [isTeamModalOpen]);
 
   const getTopicStatus = (topic: Topic): Status => {
     if (topic.subTopics.length === 0) return 'GREEN';
@@ -325,14 +360,41 @@ export default function ProjectManagePage() {
     e.target.value = '';
   };
 
-  const handleAddTeam = (e: React.FormEvent) => {
+  const handleAddTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTeamName.trim()) return;
-    setTeams([
-      ...teams,
-      { id: `t-${Date.now()}`, name: newTeamName, topics: [] },
-    ]);
-    setNewTeamName('');
+    const projectTeamIds = new Set(teams.map((t) => t.id));
+    if (selectedOrgTeamId) {
+      const org = orgTeamsForSelect.find((o) => o.id === selectedOrgTeamId);
+      if (org) {
+        let id = org.id;
+        if (projectTeamIds.has(id)) id = `${id}-${Date.now()}`;
+        setTeams([...teams, { id, name: org.name, topics: [] }]);
+      }
+      setSelectedOrgTeamId(null);
+    } else if (newTeamName.trim()) {
+      const name = newTeamName.trim();
+      const existingOrgIds = orgTeamsForSelect.map((o) => o.id);
+      const id = ensureUniqueSlug(slugFromName(name), existingOrgIds);
+      const orgTeam = {
+        id,
+        name,
+        owner: '',
+        parentId: null as string | null,
+        childIds: [] as string[],
+      };
+      const markdown = orgTeamToMarkdown(orgTeam);
+      const res = await fetch('/api/teams/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, markdown }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setOrgTeamsForSelect((prev) => [...prev, { id, name }]);
+      }
+      setTeams([...teams, { id, name, topics: [] }]);
+      setNewTeamName('');
+    } else return;
     setIsTeamModalOpen(false);
   };
 
@@ -1640,28 +1702,75 @@ export default function ProjectManagePage() {
           <div className="bg-[var(--color-surface)] rounded-2xl shadow-[var(--shadow-modal)] w-full max-w-md overflow-hidden border border-[var(--color-border)]">
             <div className="px-6 py-4 border-b border-[var(--color-border)]">
               <h3 className="text-lg font-semibold text-[var(--color-text)]">
-                เพิ่มทีมใหม่ (Add New Team)
+                เพิ่มทีม (Add Team)
               </h3>
+              <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+                เลือกจาก data/teams หรือสร้างทีมใหม่
+              </p>
             </div>
-            <form onSubmit={handleAddTeam} className="p-6">
-              <div className="mb-4">
+            <form onSubmit={handleAddTeam} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
+                  เลือกจากทีมที่มี (data/teams)
+                </label>
+                {loadingOrgTeams ? (
+                  <div className="py-3 text-sm text-[var(--color-text-muted)]">
+                    กำลังโหลดรายการทีม...
+                  </div>
+                ) : (
+                  <select
+                    value={selectedOrgTeamId ?? ''}
+                    onChange={(e) => {
+                      setSelectedOrgTeamId(e.target.value || null);
+                      if (e.target.value) setNewTeamName('');
+                    }}
+                    className="w-full px-3 py-2 border border-[var(--color-border-strong)] rounded-lg bg-[var(--color-page)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                  >
+                    <option value="">-- เลือกทีม --</option>
+                    {orgTeamsForSelect
+                      .filter((o) => !teams.some((t) => t.id === o.id))
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name} ({o.id})
+                        </option>
+                      ))}
+                    {orgTeamsForSelect.length > 0 &&
+                      orgTeamsForSelect.every((o) => teams.some((t) => t.id === o.id)) && (
+                      <option value="" disabled>
+                        ทุกทีมถูกเพิ่มแล้ว
+                      </option>
+                    )}
+                  </select>
+                )}
+              </div>
+              <div className="relative">
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-full border-t border-[var(--color-border)]" />
+                <span className="relative block text-center">
+                  <span className="bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-muted)]">
+                    หรือสร้างทีมใหม่
+                  </span>
+                </span>
+              </div>
+              <div>
                 <label
                   htmlFor="teamName"
                   className="block text-sm font-medium text-[var(--color-text-muted)] mb-1"
                 >
-                  ชื่อทีม (Team Name)
+                  ชื่อทีมใหม่
                 </label>
                 <input
                   type="text"
                   id="teamName"
                   value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
+                  onChange={(e) => {
+                    setNewTeamName(e.target.value);
+                    if (e.target.value.trim()) setSelectedOrgTeamId(null);
+                  }}
                   className="w-full px-3 py-2 border border-[var(--color-border-strong)] rounded-lg bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)]"
                   placeholder="e.g., Infra, Platform Core"
-                  autoFocus
                 />
               </div>
-              <div className="flex justify-end space-x-3 mt-6">
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsTeamModalOpen(false)}
@@ -1671,10 +1780,10 @@ export default function ProjectManagePage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!newTeamName.trim()}
+                  disabled={!selectedOrgTeamId && !newTeamName.trim()}
                   className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-lg hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  บันทึก
+                  เพิ่มทีม
                 </button>
               </div>
             </form>

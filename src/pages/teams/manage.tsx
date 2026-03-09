@@ -223,6 +223,61 @@ export default function TeamsManagePage() {
       const overTeam = teams.get(overId);
       if (!overTeam) return;
 
+      const overTeamChildIds = getChildIds(overTeam, teams);
+      const overHasNoChildren = overTeamChildIds.length === 0;
+
+      // วางบนทีมที่ไม่มีลูก = ให้ทีมนั้นเป็นแม่ (ย้ายเข้าไปเป็นทีมลูก) เสมอ แม้จะอยู่รายการเดียวกัน
+      if (
+        overHasNoChildren &&
+        teamId !== overId &&
+        !getDescendantIds(teamId, teams).has(overId)
+      ) {
+        const newParentId = overId;
+        if (team.parentId) {
+          const oldParent = teams.get(team.parentId);
+          if (oldParent) {
+            const updatedOld: OrgTeam = {
+              ...oldParent,
+              childIds: oldParent.childIds.filter((c) => c !== teamId),
+            };
+            await saveTeam(updatedOld);
+          }
+        } else {
+          setRootOrderIds((prev) => prev.filter((id) => id !== teamId));
+        }
+        const updatedTeam: OrgTeam = { ...team, parentId: newParentId };
+        await saveTeam(updatedTeam);
+        const newParent = teams.get(newParentId)!;
+        await saveTeam({
+          ...newParent,
+          childIds: [...newParent.childIds, teamId],
+        });
+        setExpandedIds((prev) => new Set(prev).add(newParentId));
+        return;
+      }
+
+      // ทีมย่อยวางบนทีมระดับบน = ย้ายออกมาเป็นทีมใหญ่ (ระดับบน) แทรกตำแหน่งตามทีมที่วาง
+      if (team.parentId != null && overTeam.parentId == null) {
+        const oldParent = teams.get(team.parentId);
+        if (oldParent) {
+          const updatedOld: OrgTeam = {
+            ...oldParent,
+            childIds: oldParent.childIds.filter((c) => c !== teamId),
+          };
+          await saveTeam(updatedOld);
+        }
+        const updatedTeam: OrgTeam = { ...team, parentId: null };
+        await saveTeam(updatedTeam);
+        const insertIndex = rootOrderIds.indexOf(overId);
+        setRootOrderIds((prev) => {
+          const next = prev.filter((id) => id !== teamId);
+          const at = insertIndex < 0 ? next.length : insertIndex;
+          next.splice(at, 0, teamId);
+          return next;
+        });
+        return;
+      }
+
       const sameList =
         team.parentId === overTeam.parentId &&
         (team.parentId != null
@@ -601,8 +656,7 @@ export default function TeamsManagePage() {
             จัดการทีม
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            สร้างทีม กำหนด Owner และจัดลำดับทีมลูก (Parent-Child) — 1 ทีม = 1 ไฟล์ Markdown.
-            ลากวางเพื่อเรียงหรือย้าย: 1 Child มีได้แค่ 1 Parent, 1 Parent มีได้หลาย Child
+            สร้างทีม กำหนด Owner และ Parent-Child — ลากวางเพื่อเรียงหรือย้าย
           </p>
         </div>
         <div className="flex items-center gap-2">
