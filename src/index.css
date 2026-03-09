@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/* Business Tone: Primary = deep forest/moss green from brand */
+@theme {
+  /* Light (soft) */
+  --color-primary: #2d4a3e;
+  --color-primary-hover: #3d5f50;
+  --color-primary-muted: #e8eeeb;
+  --color-primary-muted-hover: #dce5e0;
+  --color-page: #f5f4f2;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-border: #e5e3df;
+  --color-border-strong: #d4d1cb;
+  --color-text: #2c332f;
+  --color-text-muted: #5c6560;
+  --color-text-subtle: #8a928d;
+  --color-overlay: rgba(44, 74, 62, 0.08);
+  --color-modal-backdrop: rgba(26, 29, 28, 0.4);
+  --shadow-card: 0 1px 3px rgba(44, 74, 62, 0.06);
+  --shadow-modal: 0 20px 40px rgba(44, 74, 62, 0.12);
+}
+
+.dark {
+  --color-primary: #4a7c6a;
+  --color-primary-hover: #5a8f7a;
+  --color-primary-muted: rgba(74, 124, 106, 0.2);
+  --color-primary-muted-hover: rgba(74, 124, 106, 0.28);
+  --color-page: #151816;
+  --color-surface: #1c211f;
+  --color-surface-elevated: #252a28;
+  --color-border: #2d3431;
+  --color-border-strong: #3d4541;
+  --color-text: #e8ebe9;
+  --color-text-muted: #a8b0ac;
+  --color-text-subtle: #6b736f;
+  --color-overlay: rgba(0, 0, 0, 0.2);
+  --color-modal-backdrop: rgba(0, 0, 0, 0.6);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.4);
+}
+
+@layer base {
+  html {
+    font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  }
+  body {
+    background-color: var(--color-page);
+    color: var(--color-text);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
