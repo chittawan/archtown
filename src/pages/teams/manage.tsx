@@ -138,7 +138,7 @@ export default function TeamsManagePage() {
     e.preventDefault();
     const name = formName.trim();
     if (!name) return;
-    const existingIds = Array.from(teams.keys());
+    const existingIds = Array.from(teams.keys()) as string[];
     const baseSlug = slugFromName(name);
     const id = ensureUniqueSlug(baseSlug, existingIds);
     const newTeam: OrgTeam = {
@@ -164,7 +164,13 @@ export default function TeamsManagePage() {
     }
     setIsCreateOpen(false);
     setCreateParentId(null);
-    if (createParentId) setExpandedIds((prev) => new Set(prev).add(createParentId)));
+    if (createParentId) {
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.add(createParentId);
+        return next;
+      });
+    }
   };
 
   const handleEdit = async (e: React.FormEvent) => {
