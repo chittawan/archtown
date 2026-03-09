@@ -377,7 +377,7 @@ export default function CapabilityManagePage() {
             isDragging ? 'opacity-90 shadow-xl ring-2 ring-[var(--color-primary)]' : ''
           } ${isOver ? 'ring-2 ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/30' : ''}`}
         >
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-overlay)]">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-overlay)]">
             <button
               type="button"
               className="p-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text)] touch-none cursor-grab active:cursor-grabbing"
@@ -403,7 +403,7 @@ export default function CapabilityManagePage() {
               )}
             </h3>
             <div
-              className={`flex items-center gap-2 transition-opacity ${
+              className={`flex items-center gap-1.5 transition-opacity ${
                 editingCabId === cabId ? 'opacity-100' : 'opacity-0 group-hover/cab:opacity-100'
               }`}
             >
@@ -421,7 +421,7 @@ export default function CapabilityManagePage() {
                     persistLayout(next);
                   }}
                   title="ปรับความกว้างกล่องกลุ่ม"
-                  className="text-[10px] px-2 py-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                  className="text-[10px] px-1.5 py-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
                 >
                   <option value={12}>เต็มแถว</option>
                   <option value={6}>ครึ่งแถว</option>
@@ -434,16 +434,16 @@ export default function CapabilityManagePage() {
                   <button
                     type="button"
                     onClick={(e) => handleEditCab(e as any)}
-                    className="p-1.5 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-overlay)]"
+                    className="p-1 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-overlay)]"
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteCab(cabId)}
-                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10"
+                    className="p-1 rounded-lg text-red-500 hover:bg-red-500/10"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </>
               ) : (
@@ -454,10 +454,10 @@ export default function CapabilityManagePage() {
                       setEditingCabId(cabId);
                       setCabNameInput(cab.name);
                     }}
-                    className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-overlay)]"
+                    className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-overlay)]"
                     title="แก้ไขชื่อกลุ่ม"
                   >
-                    <Pencil className="w-4 h-4" />
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"

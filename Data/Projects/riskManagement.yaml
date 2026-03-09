@@ -1,0 +1,9 @@
+name: Risk Management
+teams:
+  - name: Infra
+    topics:
+      - title: test resource
+        subTopics:
+          - title: ทดลอง DR
+            status: GREEN
+            details: []

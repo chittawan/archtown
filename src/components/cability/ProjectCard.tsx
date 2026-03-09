@@ -111,7 +111,7 @@ export function SortableProjectCard({
             </div>
           </div>
           {/* Row 2 — ความกว้างการ์ด + ลบขวา (โชว์ตอนโฮเวอร์) | สถานะขวา */}
-          <div className="flex items-center justify-start gap-2 px-4 pb-3 pt-1 w-full">
+          <div className="flex items-center justify-start gap-1.5 px-4 pb-2 pt-0.5 w-full">
             <div className="flex items-center gap-1 shrink-0 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
               <label className="sr-only" htmlFor={`project-cols-${cabId}-${project.id}`}>
                 ความกว้างการ์ด
@@ -125,12 +125,12 @@ export function SortableProjectCard({
                 }}
                 onClick={(e) => e.stopPropagation()}
                 title="ปรับความกว้างการ์ด"
-                className="h-7 pl-2 pr-6 rounded-md border border-[var(--color-border)] bg-[var(--color-page)] text-[11px] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:border-transparent appearance-none cursor-pointer"
+                className="h-6 pl-1.5 pr-5 rounded border border-[var(--color-border)] bg-[var(--color-page)] text-[10px] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:border-transparent appearance-none cursor-pointer"
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                   backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.5rem center',
-                  backgroundSize: '10px',
+                  backgroundPosition: 'right 0.25rem center',
+                  backgroundSize: '8px',
                 }}
               >
                 <option value={12}>เต็มแถว</option>
@@ -144,16 +144,16 @@ export function SortableProjectCard({
                   e.stopPropagation();
                   onRemove();
                 }}
-                className="shrink-0 p-1.5 rounded-md text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                className="shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-colors"
                 title="เอาออกจากกลุ่มนี้"
                 aria-label="เอาโปรเจกต์ออกจากกลุ่ม"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-3 h-3" />
               </button>
             </div>
             {displayStatus && (
               <span
-                className={`shrink-0 inline-flex px-2 py-0.5 rounded-md text-[10px] font-medium ${STATUS_PILL[displayStatus]}`}
+                className={`shrink-0 inline-flex px-1.5 py-0 rounded text-[9px] font-medium ${STATUS_PILL[displayStatus]}`}
               >
                 {STATUS_LABEL[displayStatus]}
               </span>

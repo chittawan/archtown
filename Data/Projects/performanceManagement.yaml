@@ -1,6 +1,6 @@
 name: Performance Management
 teams:
-  - name: Infra (Network)
+  - name: Infra
     topics:
       - title: Network & Connectivity
         subTopics:
@@ -20,7 +20,7 @@ teams:
             details: []
       - title: Traffic & Performance
         subTopics: []
-  - name: Platform Core
+  - name: Platform-Core
     topics:
       - title: Traffic & Performance
         subTopics:
@@ -31,7 +31,7 @@ teams:
         subTopics: []
       - title: Monitoring & Alerting Tools
         subTopics: []
-  - name: Platform Data
+  - name: Platform-Data
     topics:
       - title: Database Health & Slow Query
         subTopics: []
@@ -41,7 +41,7 @@ teams:
     topics:
       - title: Incident & Near-miss Report
         subTopics: []
-  - name: Solution-Dev
+  - name: SolutionDev
     topics:
       - title: Upcoming Load & Traffic Forecast
         subTopics: []

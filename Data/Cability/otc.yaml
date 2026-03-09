@@ -1,2 +1,9 @@
 name: OTC
 cols: 4
+projects:
+  - id: salesteamsPlatform
+    name: salesteams platform
+    cols: 12
+  - id: keyAccountManagment
+    name: Key Account Managment
+    cols: 12
