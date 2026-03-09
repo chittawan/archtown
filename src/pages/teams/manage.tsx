@@ -11,6 +11,7 @@ import {
   Download,
   FileText,
   GripVertical,
+  Search,
 } from 'lucide-react';
 import {
   DndContext,
@@ -110,6 +111,7 @@ export default function TeamsManagePage() {
   const [formOwner, setFormOwner] = useState('');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -456,6 +458,65 @@ export default function TeamsManagePage() {
 
   const displayRootIds = rootOrderIds.filter((id) => teams.has(id));
 
+  const teamMatchesSearch = useCallback((team: OrgTeam, search: string) => {
+    if (!search.trim()) return true;
+    const s = search.trim().toLowerCase();
+    return (
+      team.name.toLowerCase().includes(s) ||
+      team.id.toLowerCase().includes(s) ||
+      (team.owner !== '' && team.owner.toLowerCase().includes(s))
+    );
+  }, []);
+
+  const teamOrDescendantMatches = useCallback(
+    (teamId: string, search: string): boolean => {
+      const team = teams.get(teamId);
+      if (!team) return false;
+      if (teamMatchesSearch(team, search)) return true;
+      for (const cid of getChildIds(team, teams)) {
+        if (teamOrDescendantMatches(cid, search)) return true;
+      }
+      return false;
+    },
+    [teams, teamMatchesSearch]
+  );
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredRootIds = !q
+    ? displayRootIds
+    : displayRootIds.filter((id) => teamOrDescendantMatches(id, q));
+
+  const getFilteredChildIds = useCallback(
+    (team: OrgTeam, search: string): string[] => {
+      const childIds = getChildIds(team, teams);
+      if (!search.trim()) return childIds;
+      return childIds.filter((cid) => teamOrDescendantMatches(cid, search.trim()));
+    },
+    [teams, teamOrDescendantMatches]
+  );
+
+  /** ไฮไลต์ข้อความที่ตรงกับคำค้น (case-insensitive) */
+  function highlightMatch(text: string, search: string): React.ReactNode {
+    if (!search.trim()) return text;
+    const parts = text.split(new RegExp(`(${escapeRegExp(search.trim())})`, 'gi'));
+    return parts.map((part, i) =>
+      part.toLowerCase() === search.trim().toLowerCase() ? (
+        <mark
+          key={i}
+          className="bg-amber-200 dark:bg-amber-600/50 text-[var(--color-text)] rounded px-0.5"
+        >
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  }
+
+  function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   function SortableTeamRow({
     team,
     depth = 0,
@@ -467,7 +528,8 @@ export default function TeamsManagePage() {
     key?: React.Key;
   }) {
     const hasChildren = childIds.length > 0;
-    const isExpanded = expandedIds.has(team.id);
+    const isExpanded =
+      expandedIds.has(team.id) || (q.length > 0 && hasChildren);
     const {
       attributes,
       listeners,
@@ -521,11 +583,11 @@ export default function TeamsManagePage() {
             <Users className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
             <div className="min-w-0">
               <span className="font-medium text-[var(--color-text)] truncate block">
-                {team.name}
+                {q ? highlightMatch(team.name, searchQuery) : team.name}
               </span>
               {team.owner && (
                 <span className="text-sm text-[var(--color-text-muted)] truncate block">
-                  Owner: {team.owner}
+                  Owner: {q ? highlightMatch(team.owner, searchQuery) : team.owner}
                 </span>
               )}
             </div>
@@ -605,7 +667,7 @@ export default function TeamsManagePage() {
                     key={child.id}
                     team={child}
                     depth={depth + 1}
-                    childIds={getChildIds(child, teams)}
+                    childIds={getFilteredChildIds(child, searchQuery)}
                   />
                 ) : null;
               })}
@@ -624,21 +686,21 @@ export default function TeamsManagePage() {
         className={`rounded-b-2xl transition-colors ${isOver ? 'bg-[var(--color-primary-muted)]/50' : ''}`}
       >
         <SortableContext
-          items={displayRootIds}
+          items={filteredRootIds}
           strategy={verticalListSortingStrategy}
         >
-          {displayRootIds.map((id) => {
+          {filteredRootIds.map((id) => {
             const team = teams.get(id);
             return team ? (
               <SortableTeamRow
                 key={team.id}
                 team={team}
-                childIds={getChildIds(team, teams)}
+                childIds={getFilteredChildIds(team, searchQuery)}
               />
             ) : null;
           })}
         </SortableContext>
-        {displayRootIds.length === 0 && (
+        {filteredRootIds.length === 0 && (
           <div className="py-6 text-center text-sm text-[var(--color-text-muted)] italic">
             ลากทีมมาวางที่นี่เพื่อเป็นทีมระดับบน
           </div>
@@ -678,6 +740,25 @@ export default function TeamsManagePage() {
           </button>
         </div>
       </div>
+
+      {teams.size > 0 && (
+        <div className="mb-4">
+          <label htmlFor="team-search" className="sr-only">
+            ค้นหาทีมหรือ Owner
+          </label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-subtle)]" />
+            <input
+              id="team-search"
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ค้นหาทีม หรือ Owner..."
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-[var(--color-text)]">
