@@ -1207,10 +1207,14 @@ export default function ProjectManagePage() {
     );
   }
 
+  const btnSecondary =
+    'inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0';
+
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="min-w-0 flex-1">
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* ซ้าย: ชื่อโปรเจกต์ */}
+        <div className="min-w-0 flex-shrink-0">
           {isEditingProjectName ? (
             <input
               type="text"
@@ -1249,70 +1253,85 @@ export default function ProjectManagePage() {
             </button>
           )}
         </div>
-        <button
-          onClick={exportProject}
-          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
-          title="Export เป็นไฟล์ Markdown"
-        >
-          <Download className="w-4 h-4 mr-1.5" />
-          Export
-        </button>
-        <button
-          type="button"
-          onClick={saveProjectToData}
-          disabled={saveStatus === 'saving'}
-          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
-          title="Save ลง Data/Projects/{project-name}.md"
-        >
-          {saveStatus === 'saving' ? (
-            <>
-              <span className="w-4 h-4 mr-1.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              Saving...
-            </>
-          ) : saveStatus === 'ok' ? (
-            <>
-              <Check className="w-4 h-4 mr-1.5 text-green-600" />
-              Saved
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4 mr-1.5" />
-              Save
-            </>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => importFileInputRef.current?.click()}
-          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
-          title="Import จากไฟล์ Markdown"
-        >
-          <Upload className="w-4 h-4 mr-1.5" />
-          Import
-        </button>
-        <input
-          ref={importFileInputRef}
-          type="file"
-          accept=".md,.markdown,text/markdown,text/x-markdown,text/plain"
-          className="hidden"
-          onChange={importProject}
-        />
-        <button
-          type="button"
-          onClick={() => setIsSummaryViewOpen(true)}
-          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
-          title="Summary View สำหรับผู้บริหาร — พิมพ์เป็น PDF ได้"
-        >
-          <FileText className="w-4 h-4 mr-1.5" />
-          Summary View
-        </button>
-        <button
-          onClick={() => setIsTeamModalOpen(true)}
-          className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex-shrink-0"
-        >
-          <Users className="w-4 h-4 mr-2" />
-          เพิ่มทีม (Add Team)
-        </button>
+
+        {/* ขวา: กลุ่มปุ่มเรียงตามการใช้งาน */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* กลุ่ม Data: Import → Export → Save (ลำดับการทำงาน) */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
+            <button
+              type="button"
+              onClick={() => importFileInputRef.current?.click()}
+              className={btnSecondary}
+              title="Import จากไฟล์ Markdown"
+            >
+              <Upload className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Import</span>
+            </button>
+            <button
+              onClick={exportProject}
+              className={btnSecondary}
+              title="Export เป็นไฟล์ Markdown"
+            >
+              <Download className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+            <button
+              type="button"
+              onClick={saveProjectToData}
+              disabled={saveStatus === 'saving'}
+              className={`${btnSecondary} disabled:opacity-60 disabled:cursor-not-allowed`}
+              title="Save ลง Data/Projects/{project-name}.md"
+            >
+              {saveStatus === 'saving' ? (
+                <>
+                  <span className="w-4 h-4 sm:mr-1.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  <span className="hidden sm:inline">Saving...</span>
+                </>
+              ) : saveStatus === 'ok' ? (
+                <>
+                  <Check className="w-4 h-4 sm:mr-1.5 text-green-600 flex-shrink-0" />
+                  <span className="hidden sm:inline">Saved</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 sm:mr-1.5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Save</span>
+                </>
+              )}
+            </button>
+          </div>
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept=".md,.markdown,text/markdown,text/x-markdown,text/plain"
+            className="hidden"
+            onChange={importProject}
+          />
+
+          <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
+
+          {/* กลุ่ม View: Summary View */}
+          <button
+            type="button"
+            onClick={() => setIsSummaryViewOpen(true)}
+            className={btnSecondary}
+            title="Summary View สำหรับผู้บริหาร — พิมพ์เป็น PDF ได้"
+          >
+            <FileText className="w-4 h-4 mr-1.5" />
+            Summary View
+          </button>
+
+          <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
+
+          {/* CTA หลัก: เพิ่มทีม */}
+          <button
+            onClick={() => setIsTeamModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex-shrink-0"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            เพิ่มทีม (Add Team)
+          </button>
+        </div>
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-4 items-center text-sm shadow-[var(--shadow-card)]">
