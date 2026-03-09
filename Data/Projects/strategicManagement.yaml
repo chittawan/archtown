@@ -1,0 +1,27 @@
+name: Strategic Management
+teams:
+  - name: Infra (Network)
+    topics:
+      - title: Network & Connectivity
+        subTopics:
+          - title: Network Topology & Firewall
+            status: GREEN
+            details: []
+          - title: VPN & Load Balancer
+            status: GREEN
+            details: []
+      - title: Server / Cloud Resource & Cost
+        subTopics:
+          - title: Cloud Spending vs Budget
+            status: YELLOW
+            details: []
+          - title: Resource Utilization
+            status: GREEN
+            details: []
+  - name: Platform Core
+    topics:
+      - title: Traffic & Performance
+        subTopics:
+          - title: Request Volume & Latency
+            status: YELLOW
+            details: []

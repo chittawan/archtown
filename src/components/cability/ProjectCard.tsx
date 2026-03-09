@@ -84,7 +84,7 @@ export function SortableProjectCard({
           relative rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]
           shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none
           overflow-hidden border-l-4 ${accentClass}
-          ${isDragging ? 'shadow-lg ring-2 ring-[var(--color-primary)]/30 opacity-95 z-10 scale-[1.02]' : 'hover:border-[var(--color-text-subtle)]/30'}
+          ${isDragging ? 'shadow-lg ring-2 ring-[var(--color-primary)]/30 opacity-95 z-10 scale-[1.02]' : ''}
         `}
         title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
       >

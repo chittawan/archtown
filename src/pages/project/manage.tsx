@@ -19,8 +19,6 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SummaryView } from '../../components/project/SummaryView';
 import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
 import {
-  markdownToOrgTeam,
-  orgTeamToMarkdown,
   slugFromName,
   ensureUniqueSlug,
 } from '../../lib/teamMarkdown';
@@ -99,13 +97,13 @@ export default function ProjectManagePage() {
         if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : 'Failed to load');
         return res.json();
       })
-      .then((data: { markdown?: string }) => {
-        const md = data?.markdown;
-        if (!md || typeof md !== 'string') {
+      .then((data: { id?: string; data?: { projectName: string; teams: Team[] } }) => {
+        const payload = data?.data;
+        if (!payload) {
           setProjectLoadState('idle');
           return;
         }
-        const { projectName: name, teams: nextTeams } = importFromMarkdown(md);
+        const { projectName: name, teams: nextTeams } = payload;
         setProjectName(name || '');
         setProjectNameInput(name || '');
         setTeams(nextTeams);
@@ -130,9 +128,9 @@ export default function ProjectManagePage() {
           ids.map((id: string) =>
             fetch(`/api/teams/${encodeURIComponent(id)}`)
               .then((r) => (r.ok ? r.json() : null))
-              .then((raw: { id?: string; markdown?: string } | null) =>
-                raw?.markdown != null
-                  ? { id: raw.id ?? id, name: markdownToOrgTeam(raw.id ?? id, raw.markdown).name }
+              .then((raw: { id?: string; data?: { name: string }; markdown?: string } | null) =>
+                raw != null && raw.data != null
+                  ? { id: raw.id ?? id, name: raw.data.name }
                   : null
               )
           )
@@ -306,26 +304,28 @@ export default function ProjectManagePage() {
     URL.revokeObjectURL(url);
   };
   const saveProjectToData = async () => {
-    const md = exportToMarkdown(projectName, teams);
     const name = (projectName || 'project').trim();
     const fileBaseName = toCamelCase(name.replace(/[^\p{L}\p{N}\s_-]/gu, ' ').trim()) || 'project';
+    const data = { projectName: name, teams };
     setSaveStatus('saving');
     try {
       const res = await fetch('/api/save-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectName: name, markdown: md }),
+        body: JSON.stringify({ projectName: name, data }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok && resData.ok) {
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
       } else {
+        const md = exportToMarkdown(projectName, teams);
         downloadAsMarkdown(md, fileBaseName);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
       }
     } catch {
+      const md = exportToMarkdown(projectName, teams);
       downloadAsMarkdown(md, fileBaseName);
       setSaveStatus('ok');
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -378,11 +378,10 @@ export default function ProjectManagePage() {
         parentId: null as string | null,
         childIds: [] as string[],
       };
-      const markdown = orgTeamToMarkdown(orgTeam);
       const res = await fetch('/api/teams/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, markdown }),
+        body: JSON.stringify({ id, data: orgTeam }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {

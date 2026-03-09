@@ -1,0 +1,64 @@
+name: Performance Management
+teams:
+  - name: Infra (Network)
+    topics:
+      - title: Network & Connectivity
+        subTopics:
+          - title: Network Topology & Firewall
+            status: GREEN
+            details: []
+          - title: VPN & Load Balancer
+            status: GREEN
+            details: []
+      - title: Server / Resource Cost
+        subTopics:
+          - title: Cloud Spending vs Budget
+            status: YELLOW
+            details: []
+          - title: Resource Utilization
+            status: GREEN
+            details: []
+      - title: Traffic & Performance
+        subTopics: []
+  - name: Platform Core
+    topics:
+      - title: Traffic & Performance
+        subTopics:
+          - title: Request Volume & Latency
+            status: RED
+            details: []
+      - title: CI/CD Pipeline
+        subTopics: []
+      - title: Monitoring & Alerting Tools
+        subTopics: []
+  - name: Platform Data
+    topics:
+      - title: Database Health & Slow Query
+        subTopics: []
+      - title: Data Pipeline & Data Quality
+        subTopics: []
+  - name: ALL
+    topics:
+      - title: Incident & Near-miss Report
+        subTopics: []
+  - name: Solution-Dev
+    topics:
+      - title: Upcoming Load & Traffic Forecast
+        subTopics: []
+      - title: Cross-team Dependencies
+        subTopics: []
+      - title: Architecture Decision (ADR)
+        subTopics: []
+      - title: Breaking Changes ที่กระทบทีมอื่น
+        subTopics: []
+      - title: Capacity Forecast
+        subTopics: []
+      - title: Security & Vulnerability
+        subTopics: []
+  - name: ตัวอย่างทีม
+    topics:
+      - title: Test Delete
+        subTopics:
+          - title: test
+            status: YELLOW
+            details: []

@@ -373,7 +373,7 @@ export default function CapabilityManagePage() {
       >
         <div
           ref={setDropRef}
-          className={`rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden transition-all ${
+          className={`group/cab rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden transition-all ${
             isDragging ? 'opacity-90 shadow-xl ring-2 ring-[var(--color-primary)]' : ''
           } ${isOver ? 'ring-2 ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/30' : ''}`}
         >
@@ -402,7 +402,11 @@ export default function CapabilityManagePage() {
                 cab.name
               )}
             </h3>
-            <div className="flex items-center gap-2">
+            <div
+              className={`flex items-center gap-2 transition-opacity ${
+                editingCabId === cabId ? 'opacity-100' : 'opacity-0 group-hover/cab:opacity-100'
+              }`}
+            >
               <div className="hidden sm:block">
                 <label className="sr-only" htmlFor={`cab-cols-${cabId}`}>
                   ความกว้างกล่องกลุ่ม

@@ -4,10 +4,18 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {defineConfig, loadEnv} from 'vite';
 
+import {importFromMarkdown} from './src/lib/projectMarkdown';
+import {yamlToProject, projectToYaml} from './src/lib/projectYaml';
+import {markdownToOrgTeam} from './src/lib/teamMarkdown';
+import {yamlToOrgTeam, orgTeamToYaml} from './src/lib/teamYaml';
+import {markdownToCab, orderMarkdownToCabIds} from './src/lib/cabilityMarkdown';
+import {yamlToCab, cabToYaml, yamlToCabOrder, cabOrderToYaml} from './src/lib/cabilityYaml';
+
 const DATA_PROJECTS_DIR = path.resolve(__dirname, 'data', 'projects');
 const DATA_TEAMS_DIR = path.resolve(__dirname, 'data', 'teams');
 const DATA_CABILITY_DIR = path.resolve(__dirname, 'data', 'cability');
-const CABILITY_ORDER_FILE = '_order.md';
+const CABILITY_ORDER_FILE_MD = '_order.md';
+const CABILITY_ORDER_FILE_YAML = '_order.yaml';
 
 function safeTeamId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-_]/g, '') || 'team';
@@ -15,76 +23,6 @@ function safeTeamId(id: string): string {
 
 function safeCabId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-_]/g, '') || 'cab';
-}
-
-// Cability layout: parse/serialize to match src/lib/cabilityMarkdown.ts
-const PROJECTS_HEADER = '## Projects';
-function cabToMarkdown(cab: { id: string; name: string; cols?: 12 | 6 | 4 | 3; projects: Array<{ id: string; name: string; status?: string; cols?: 12 | 6 | 4 | 3 }> }): string {
-  const lines = [`# ${(cab.name || '').trim() || 'Cab'}`];
-  if (cab.cols && [12, 6, 4, 3].includes(cab.cols)) {
-    lines.push(`Cols: ${cab.cols}`);
-  }
-  lines.push('');
-  if (cab.projects.length > 0) {
-    lines.push(PROJECTS_HEADER);
-    for (const p of cab.projects) {
-      const parts: string[] = [p.id, p.name];
-      if (p.status) parts.push(p.status);
-      if (p.cols && [12, 6, 4, 3].includes(p.cols)) {
-        while (parts.length < 3) parts.push('');
-        parts.push(String(p.cols));
-      }
-      const part = parts.join('|');
-      lines.push(`- ${part}`);
-    }
-  }
-  return lines.join('\n').trimEnd();
-}
-function markdownToCab(id: string, md: string): { id: string; name: string; cols?: 12 | 6 | 4 | 3; projects: Array<{ id: string; name: string; status?: string; cols?: 12 | 6 | 4 | 3 }> } {
-  const lines = md.split(/\r?\n/).map((l) => l.trimEnd());
-  let name = 'Cab';
-  let cols: 12 | 6 | 4 | 3 | undefined;
-  const projects = [];
-  let inProjects = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const h1 = line.match(/^#\s+(.+)$/);
-    const colsMatch = line.match(/^Cols:\s*(\d+)\s*$/);
-    if (h1) { name = h1[1].trim(); inProjects = false; continue; }
-    if (colsMatch) {
-      const n = Number(colsMatch[1]);
-      if (n === 12 || n === 6 || n === 4 || n === 3) cols = n;
-      continue;
-    }
-    if (line === PROJECTS_HEADER) { inProjects = true; continue; }
-    const bullet = line.match(/^-\s+(.+)$/);
-    if (inProjects && bullet) {
-      const raw = bullet[1].trim();
-      const parts = raw.split('|').map((s) => s.trim());
-      const projectId = parts[0] || '';
-      const projectName = parts[1] ?? projectId;
-      const status = parts[2];
-      const colsRaw = parts[3];
-      let projCols: 12 | 6 | 4 | 3 | undefined;
-      const n = Number(colsRaw);
-      if (n === 12 || n === 6 || n === 4 || n === 3) projCols = n;
-      if (projectId) {
-        projects.push({
-          id: projectId,
-          name: projectName,
-          status: status === 'RED' || status === 'YELLOW' || status === 'GREEN' ? status : undefined,
-          cols: projCols,
-        });
-      }
-    }
-  }
-  return { id: safeCabId(id), name, cols, projects };
-}
-function orderMarkdownToCabIds(md: string): string[] {
-  return md.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-}
-function cabIdsToOrderMarkdown(cabOrder: string[]): string {
-  return cabOrder.filter(Boolean).join('\n');
 }
 
 function toCamelCase(s: string): string {
@@ -112,17 +50,24 @@ export default defineConfig(({mode}) => {
             if (getOneMatch && req.method === 'GET') {
               const rawId = decodeURIComponent(getOneMatch[1]);
               const safeId = rawId.replace(/[^a-zA-Z0-9-_]/g, '') || 'project';
-              const filePath = path.join(DATA_PROJECTS_DIR, `${safeId}.md`);
+              const yamlPath = path.join(DATA_PROJECTS_DIR, `${safeId}.yaml`);
+              const mdPath = path.join(DATA_PROJECTS_DIR, `${safeId}.md`);
               try {
-                if (!fs.existsSync(filePath)) {
+                let data: { projectName: string; teams: Array<{ name: string; topics: Array<{ subTopics: Array<{ status: string }> }> }> };
+                if (fs.existsSync(yamlPath)) {
+                  const yamlStr = fs.readFileSync(yamlPath, 'utf-8');
+                  data = yamlToProject(yamlStr);
+                } else if (fs.existsSync(mdPath)) {
+                  const md = fs.readFileSync(mdPath, 'utf-8');
+                  data = importFromMarkdown(md);
+                } else {
                   res.statusCode = 404;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ error: 'Not found' }));
                   return;
                 }
-                const markdown = fs.readFileSync(filePath, 'utf-8');
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ id: safeId, markdown }));
+                res.end(JSON.stringify({ id: safeId, data }));
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
@@ -137,25 +82,50 @@ export default defineConfig(({mode}) => {
               fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
               const files = fs.readdirSync(DATA_PROJECTS_DIR);
               const list: Array<{ id: string; name: string; summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null }> = [];
-              for (const f of files) {
-                if (!f.endsWith('.md')) continue;
-                const id = f.slice(0, -3);
-                const filePath = path.join(DATA_PROJECTS_DIR, f);
+              const seenIds = new Set<string>();
+              const addFromFile = (f: string, id: string, content: string, isYaml: boolean) => {
+                if (seenIds.has(id)) return;
+                seenIds.add(id);
                 let name = id;
                 let summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null = null;
                 try {
-                  const md = fs.readFileSync(filePath, 'utf-8');
-                  const lines = md.split(/\r?\n/);
-                  const h1 = lines.find((l) => /^#\s+.+/.test(l));
-                  if (h1) name = h1.replace(/^#\s+/, '').trim();
-                  const statusMatch = md.match(/\((RED|YELLOW|GREEN)\)/g);
-                  if (statusMatch && statusMatch.length > 0) {
-                    if (statusMatch.some((s) => s === '(RED)')) summaryStatus = 'RED';
-                    else if (statusMatch.some((s) => s === '(YELLOW)')) summaryStatus = 'YELLOW';
-                    else summaryStatus = 'GREEN';
+                  if (isYaml) {
+                    const data = yamlToProject(content);
+                    name = data.projectName || id;
+                    for (const t of data.teams) {
+                      for (const top of t.topics) {
+                        for (const sub of top.subTopics) {
+                          if (sub.status === 'RED') summaryStatus = 'RED';
+                          else if (sub.status === 'YELLOW') summaryStatus = summaryStatus === 'RED' ? 'RED' : 'YELLOW';
+                          else if (!summaryStatus) summaryStatus = 'GREEN';
+                        }
+                      }
+                    }
+                  } else {
+                    const lines = content.split(/\r?\n/);
+                    const h1 = lines.find((l) => /^#\s+.+/.test(l));
+                    if (h1) name = h1.replace(/^#\s+/, '').trim();
+                    const statusMatch = content.match(/\((RED|YELLOW|GREEN)\)/g);
+                    if (statusMatch && statusMatch.length > 0) {
+                      if (statusMatch.some((s) => s === '(RED)')) summaryStatus = 'RED';
+                      else if (statusMatch.some((s) => s === '(YELLOW)')) summaryStatus = 'YELLOW';
+                      else summaryStatus = 'GREEN';
+                    }
                   }
                 } catch (_) {}
                 list.push({ id, name, summaryStatus });
+              };
+              const yamlFiles = files.filter((f) => f.endsWith('.yaml'));
+              const mdFiles = files.filter((f) => f.endsWith('.md'));
+              for (const f of yamlFiles) {
+                const id = f.slice(0, -5);
+                const filePath = path.join(DATA_PROJECTS_DIR, f);
+                addFromFile(f, id, fs.readFileSync(filePath, 'utf-8'), true);
+              }
+              for (const f of mdFiles) {
+                const id = f.slice(0, -3);
+                const filePath = path.join(DATA_PROJECTS_DIR, f);
+                addFromFile(f, id, fs.readFileSync(filePath, 'utf-8'), false);
               }
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ projects: list }));
@@ -178,12 +148,23 @@ export default defineConfig(({mode}) => {
             req.on('data', (chunk) => { body += chunk; });
             req.on('end', () => {
               try {
-                const { projectName, markdown } = JSON.parse(body);
+                const { projectName, data, markdown } = JSON.parse(body);
                 const name = (projectName || 'project').trim();
                 const safeName = toCamelCase(name.replace(/[^\p{L}\p{N}\s_-]/gu, ' ').trim()) || 'project';
                 fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
-                const filePath = path.join(DATA_PROJECTS_DIR, `${safeName}.md`);
-                fs.writeFileSync(filePath, markdown ?? '', 'utf-8');
+                const filePath = path.join(DATA_PROJECTS_DIR, `${safeName}.yaml`);
+                let toWrite: string;
+                if (data != null && typeof data === 'object' && Array.isArray(data.teams)) {
+                  toWrite = projectToYaml({ projectName: data.projectName ?? name, teams: data.teams });
+                } else if (typeof markdown === 'string') {
+                  toWrite = projectToYaml(importFromMarkdown(markdown));
+                } else {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: false, error: 'Missing data or markdown' }));
+                  return;
+                }
+                fs.writeFileSync(filePath, toWrite, 'utf-8');
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ ok: true, path: filePath }));
               } catch (e) {
@@ -204,11 +185,13 @@ export default defineConfig(({mode}) => {
               try {
                 fs.mkdirSync(DATA_TEAMS_DIR, { recursive: true });
                 const files = fs.readdirSync(DATA_TEAMS_DIR);
-                const ids = files
-                  .filter((f) => f.endsWith('.md'))
-                  .map((f) => f.slice(0, -3));
+                const yamlFiles = files.filter((f) => f.endsWith('.yaml'));
+                const mdFiles = files.filter((f) => f.endsWith('.md'));
+                const ids = new Set<string>();
+                for (const f of yamlFiles) ids.add(f.slice(0, -5));
+                for (const f of mdFiles) ids.add(f.slice(0, -3));
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ ids }));
+                res.end(JSON.stringify({ ids: Array.from(ids) }));
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
@@ -219,17 +202,24 @@ export default defineConfig(({mode}) => {
             const getMatch = url.match(/^\/api\/teams\/([^/]+)$/);
             if (getMatch && req.method === 'GET') {
               const id = safeTeamId(getMatch[1]);
-              const filePath = path.join(DATA_TEAMS_DIR, `${id}.md`);
+              const yamlPath = path.join(DATA_TEAMS_DIR, `${id}.yaml`);
+              const mdPath = path.join(DATA_TEAMS_DIR, `${id}.md`);
               try {
-                if (!fs.existsSync(filePath)) {
+                let data: { id: string; name: string; owner: string; parentId: string | null; childIds: string[] };
+                if (fs.existsSync(yamlPath)) {
+                  const yamlStr = fs.readFileSync(yamlPath, 'utf-8');
+                  data = yamlToOrgTeam(id, yamlStr);
+                } else if (fs.existsSync(mdPath)) {
+                  const md = fs.readFileSync(mdPath, 'utf-8');
+                  data = markdownToOrgTeam(id, md);
+                } else {
                   res.statusCode = 404;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ error: 'Not found' }));
                   return;
                 }
-                const markdown = fs.readFileSync(filePath, 'utf-8');
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ id, markdown }));
+                res.end(JSON.stringify({ id, data }));
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
@@ -242,11 +232,22 @@ export default defineConfig(({mode}) => {
               req.on('data', (chunk) => { body += chunk; });
               req.on('end', () => {
                 try {
-                  const { id, markdown } = JSON.parse(body);
+                  const { id, data, markdown } = JSON.parse(body);
                   const safeId = safeTeamId(String(id || 'team'));
                   fs.mkdirSync(DATA_TEAMS_DIR, { recursive: true });
-                  const filePath = path.join(DATA_TEAMS_DIR, `${safeId}.md`);
-                  fs.writeFileSync(filePath, markdown ?? '', 'utf-8');
+                  const filePath = path.join(DATA_TEAMS_DIR, `${safeId}.yaml`);
+                  let toWrite: string;
+                  if (data != null && typeof data === 'object' && 'name' in data) {
+                    toWrite = orgTeamToYaml({ ...data, id: safeId });
+                  } else if (typeof markdown === 'string') {
+                    toWrite = orgTeamToYaml(markdownToOrgTeam(safeId, markdown));
+                  } else {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'Missing data or markdown' }));
+                    return;
+                  }
+                  fs.writeFileSync(filePath, toWrite, 'utf-8');
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ ok: true, id: safeId }));
                 } catch (e) {
@@ -269,24 +270,40 @@ export default defineConfig(({mode}) => {
             if (url === '/api/cability' && req.method === 'GET') {
               try {
                 fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
-                const orderPath = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE);
-                let cabOrder = [];
-                if (fs.existsSync(orderPath)) {
-                  cabOrder = orderMarkdownToCabIds(fs.readFileSync(orderPath, 'utf-8'));
+                const orderPathYaml = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
+                const orderPathMd = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_MD);
+                let cabOrder: string[] = [];
+                if (fs.existsSync(orderPathYaml)) {
+                  cabOrder = yamlToCabOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
+                } else if (fs.existsSync(orderPathMd)) {
+                  cabOrder = orderMarkdownToCabIds(fs.readFileSync(orderPathMd, 'utf-8'));
                 }
-                const cabs = {};
+                const cabs: Record<string, { id: string; name: string; cols?: 12 | 6 | 4 | 3; projects: Array<{ id: string; name: string; status?: string; cols?: 12 | 6 | 4 | 3 }> }> = {};
                 const files = fs.readdirSync(DATA_CABILITY_DIR);
-                const cabFiles = files.filter((f) => f.endsWith('.md') && f !== CABILITY_ORDER_FILE);
+                const cabFilesYaml = files.filter((f) => f.endsWith('.yaml') && f !== CABILITY_ORDER_FILE_YAML);
+                const cabFilesMd = files.filter((f) => f.endsWith('.md') && f !== CABILITY_ORDER_FILE_MD);
                 const seen = new Set(cabOrder);
-                for (const f of cabFiles) {
+                for (const f of cabFilesYaml) {
+                  const id = f.slice(0, -5);
+                  if (!seen.has(id)) {
+                    seen.add(id);
+                    cabOrder.push(id);
+                  }
+                }
+                for (const f of cabFilesMd) {
                   const id = f.slice(0, -3);
-                  if (!seen.has(id)) cabOrder.push(id);
+                  if (!seen.has(id)) {
+                    seen.add(id);
+                    cabOrder.push(id);
+                  }
                 }
                 for (const id of cabOrder) {
-                  const filePath = path.join(DATA_CABILITY_DIR, `${id}.md`);
-                  if (fs.existsSync(filePath)) {
-                    const md = fs.readFileSync(filePath, 'utf-8');
-                    cabs[id] = markdownToCab(id, md);
+                  const yamlPath = path.join(DATA_CABILITY_DIR, `${id}.yaml`);
+                  const mdPath = path.join(DATA_CABILITY_DIR, `${id}.md`);
+                  if (fs.existsSync(yamlPath)) {
+                    cabs[id] = yamlToCab(id, fs.readFileSync(yamlPath, 'utf-8'));
+                  } else if (fs.existsSync(mdPath)) {
+                    cabs[id] = markdownToCab(id, fs.readFileSync(mdPath, 'utf-8'));
                   } else {
                     cabs[id] = { id: safeCabId(id), name: id, cols: 4, projects: [] };
                   }
@@ -313,13 +330,13 @@ export default defineConfig(({mode}) => {
                     return;
                   }
                   fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
-                  fs.writeFileSync(path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE), cabIdsToOrderMarkdown(layout.cabOrder), 'utf-8');
+                  fs.writeFileSync(path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML), cabOrderToYaml(layout.cabOrder), 'utf-8');
                   for (const id of layout.cabOrder) {
                     const cab = layout.cabs[id];
                     if (cab) {
                       const safeId = safeCabId(id);
-                      const filePath = path.join(DATA_CABILITY_DIR, `${safeId}.md`);
-                      fs.writeFileSync(filePath, cabToMarkdown(cab), 'utf-8');
+                      const filePath = path.join(DATA_CABILITY_DIR, `${safeId}.yaml`);
+                      fs.writeFileSync(filePath, cabToYaml(cab), 'utf-8');
                     }
                   }
                   res.setHeader('Content-Type', 'application/json');

@@ -1,0 +1,7 @@
+name: Platform
+owner: พี่ป้อม
+parent: null
+childIds:
+  - platform-core-1
+  - platform-data
+  - platform-core

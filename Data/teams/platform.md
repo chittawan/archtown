@@ -5,4 +5,3 @@ Owner: พี่ป้อม
 - platform-core-1
 - platform-data
 - platform-core
-- infra

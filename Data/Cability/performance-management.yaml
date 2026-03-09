@@ -1,0 +1,12 @@
+name: Business Management
+cols: 12
+projects:
+  - id: strategicManagement
+    name: Strategic Management
+    cols: 4
+  - id: performanceManagement
+    name: Performance Management
+    cols: 4
+  - id: riskManagement
+    name: Risk Management
+    cols: 4

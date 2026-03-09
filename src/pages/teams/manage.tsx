@@ -33,7 +33,6 @@ import { CSS } from '@dnd-kit/utilities';
 import type { OrgTeam } from '../../types';
 import {
   orgTeamToMarkdown,
-  markdownToOrgTeam,
   slugFromName,
   ensureUniqueSlug,
 } from '../../lib/teamMarkdown';
@@ -80,18 +79,18 @@ async function fetchTeamIds(): Promise<string[]> {
   return Array.isArray(data.ids) ? data.ids : [];
 }
 
-async function fetchTeam(id: string): Promise<{ id: string; markdown: string } | null> {
+async function fetchTeam(id: string): Promise<{ id: string; data: OrgTeam } | null> {
   const res = await fetch(`/api/teams/${encodeURIComponent(id)}`);
   if (!res.ok) return null;
   const data = await res.json().catch(() => ({}));
-  return data.markdown != null ? { id: data.id || id, markdown: data.markdown } : null;
+  return data.data != null ? { id: data.id || id, data: data.data } : null;
 }
 
-async function saveTeamApi(id: string, markdown: string): Promise<boolean> {
+async function saveTeamApi(id: string, team: OrgTeam): Promise<boolean> {
   const res = await fetch('/api/teams/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, markdown }),
+    body: JSON.stringify({ id, data: team }),
   });
   if (!res.ok) return false;
   const data = await res.json().catch(() => ({}));
@@ -127,8 +126,7 @@ export default function TeamsManagePage() {
       for (const id of ids) {
         const raw = await fetchTeam(id);
         if (raw) {
-          const team = markdownToOrgTeam(raw.id, raw.markdown);
-          next.set(team.id, team);
+          next.set(raw.data.id, raw.data);
         }
       }
       setTeams(next);
@@ -147,8 +145,7 @@ export default function TeamsManagePage() {
   const saveTeam = useCallback(
     async (team: OrgTeam) => {
       setSaveStatus('saving');
-      const md = orgTeamToMarkdown(team);
-      const ok = await saveTeamApi(team.id, md);
+      const ok = await saveTeamApi(team.id, team);
       setSaveStatus(ok ? 'ok' : 'error');
       if (ok) {
         setTeams((prev) => new Map(prev).set(team.id, team));
