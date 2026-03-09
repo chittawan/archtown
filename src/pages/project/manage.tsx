@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText, Save } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -251,6 +251,44 @@ export default function ProjectManagePage() {
     a.download = `${(projectName || 'project').replace(/[^\p{L}\p{N}\s_-]/gu, '_')}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  /** บันทึกลง Data/Projects/{project-name}.md ผ่าน API (dev) หรือ fallback เป็นดาวน์โหลด */
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
+  const downloadAsMarkdown = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const saveProjectToData = async () => {
+    const md = exportToMarkdown(projectName, teams);
+    const name = (projectName || 'project').trim();
+    const safeName = name.replace(/[^\p{L}\p{N}\s_-]/gu, '_').replace(/\s+/g, '_') || 'project';
+    setSaveStatus('saving');
+    try {
+      const res = await fetch('/api/save-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectName: name, markdown: md }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setSaveStatus('ok');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        downloadAsMarkdown(md, safeName);
+        setSaveStatus('ok');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch {
+      downloadAsMarkdown(md, safeName);
+      setSaveStatus('ok');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
   };
 
   const importFileInputRef = useRef<HTMLInputElement>(null);
@@ -925,7 +963,7 @@ export default function ProjectManagePage() {
               <button
                 type="button"
                 onClick={() => onStartEditTitle()}
-                className="text-sm font-medium text-[var(--color-text)] truncate text-left flex-1 min-w-0 hover:bg-[var(--color-overlay)] rounded px-1 -mx-1 py-0.5"
+                className="flex-1 min-w-0 text-sm font-medium text-[var(--color-text)] truncate text-left hover:bg-[var(--color-overlay)] rounded px-1 -mx-1 py-0.5"
               >
                 {subTopic.title}
               </button>
@@ -1221,6 +1259,30 @@ export default function ProjectManagePage() {
         </button>
         <button
           type="button"
+          onClick={saveProjectToData}
+          disabled={saveStatus === 'saving'}
+          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+          title="Save ลง Data/Projects/{project-name}.md"
+        >
+          {saveStatus === 'saving' ? (
+            <>
+              <span className="w-4 h-4 mr-1.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Saving...
+            </>
+          ) : saveStatus === 'ok' ? (
+            <>
+              <Check className="w-4 h-4 mr-1.5 text-green-600" />
+              Saved
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 mr-1.5" />
+              Save
+            </>
+          )}
+        </button>
+        <button
+          type="button"
           onClick={() => importFileInputRef.current?.click()}
           className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
           title="Import จากไฟล์ Markdown"
@@ -1231,7 +1293,7 @@ export default function ProjectManagePage() {
         <input
           ref={importFileInputRef}
           type="file"
-          accept=".md,text/markdown,text/plain"
+          accept=".md,.markdown,text/markdown,text/x-markdown,text/plain"
           className="hidden"
           onChange={importProject}
         />
