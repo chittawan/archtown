@@ -27,9 +27,9 @@ function cabWidthClass(cols?: 12 | 6 | 4 | 3): string {
 }
 
 const STATUS_PILL: Record<ProjectStatus, string> = {
-  RED: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800',
-  YELLOW: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800',
-  GREEN: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
+  RED: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  YELLOW: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  GREEN: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
 };
 const STATUS_ACCENT: Record<ProjectStatus, string> = {
   RED: 'border-l-red-500',
@@ -37,9 +37,9 @@ const STATUS_ACCENT: Record<ProjectStatus, string> = {
   GREEN: 'border-l-emerald-500',
 };
 const STATUS_LABEL: Record<ProjectStatus, string> = {
-  RED: 'Critical',
-  YELLOW: 'Manageable',
-  GREEN: 'On track',
+  RED: '🔴',
+  YELLOW: '🟡',
+  GREEN: '🟢',
 };
 
 export interface SortableProjectCardProps {
@@ -153,7 +153,7 @@ export function SortableProjectCard({
             </div>
             {displayStatus && (
               <span
-                className={`shrink-0 inline-flex px-2 py-0.5 rounded-md text-[10px] font-medium border ${STATUS_PILL[displayStatus]}`}
+                className={`shrink-0 inline-flex px-2 py-0.5 rounded-md text-[10px] font-medium ${STATUS_PILL[displayStatus]}`}
               >
                 {STATUS_LABEL[displayStatus]}
               </span>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText, Save } from 'lucide-react';
 import {
   DndContext,
@@ -73,7 +74,10 @@ const INITIAL_DATA: Team[] = [
 ];
 
 export default function ProjectManagePage() {
+  const [searchParams] = useSearchParams();
+  const projectIdFromUrl = searchParams.get('id');
   const [teams, setTeams] = useState<Team[]>(INITIAL_DATA);
+  const [projectLoadState, setProjectLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(
     new Set(['top1', 'top2', 'top3'])
   );
@@ -120,6 +124,33 @@ export default function ProjectManagePage() {
   useEffect(() => {
     if (projectName) localStorage.setItem('projectName', projectName);
   }, [projectName]);
+
+  /** โหลดข้อมูลโปรเจกต์จาก data/projects/ เมื่อเปิดจาก Capability (มี ?id= ใน URL) */
+  useEffect(() => {
+    if (!projectIdFromUrl || projectLoadState !== 'idle') return;
+    setProjectLoadState('loading');
+    fetch(`/api/projects/${encodeURIComponent(projectIdFromUrl)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : 'Failed to load');
+        return res.json();
+      })
+      .then((data: { markdown?: string }) => {
+        const md = data?.markdown;
+        if (!md || typeof md !== 'string') {
+          setProjectLoadState('idle');
+          return;
+        }
+        const { projectName: name, teams: nextTeams } = importFromMarkdown(md);
+        setProjectName(name || '');
+        setProjectNameInput(name || '');
+        setTeams(nextTeams);
+        if (nextTeams.length > 0) {
+          setExpandedTopics(new Set(nextTeams.flatMap((t) => t.topics.map((top) => top.id))));
+        }
+        setProjectLoadState('loaded');
+      })
+      .catch(() => setProjectLoadState('error'));
+  }, [projectIdFromUrl, projectLoadState]);
 
   useEffect(() => {
     if (!isTeamModalOpen) return;
@@ -1284,6 +1315,12 @@ export default function ProjectManagePage() {
 
   return (
     <>
+      {projectLoadState === 'loading' && (
+        <div className="mb-4 text-sm text-[var(--color-text-muted)]">กำลังโหลดโปรเจกต์...</div>
+      )}
+      {projectLoadState === 'error' && projectIdFromUrl && (
+        <div className="mb-4 text-sm text-amber-600 dark:text-amber-400">โหลดข้อมูลจาก data/projects ไม่ได้ — แก้ไขหรือสร้างโปรเจกต์ได้ตามปกติ</div>
+      )}
       <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         {/* ซ้าย: ชื่อโปรเจกต์ */}
         <div className="min-w-0 flex-shrink-0">

@@ -10,4 +10,4 @@
 
 ## Platform Core
 ### Traffic & Performance
-#### Request Volume & Latency (RED)
+#### Request Volume & Latency (YELLOW)

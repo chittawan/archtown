@@ -326,8 +326,9 @@ export default function CapabilityManagePage() {
   const handleDoubleClickProject = (project: ProjectInCab) => {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('projectName', project.name);
+      localStorage.setItem('projectId', project.id);
     }
-    navigate('/project');
+    navigate(`/project?id=${encodeURIComponent(project.id)}`);
   };
 
   function cabWidthClass(cols?: 12 | 6 | 4 | 3): string {

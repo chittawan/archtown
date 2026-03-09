@@ -107,7 +107,30 @@ export default defineConfig(({mode}) => {
         name: 'projects-list-api',
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
-            if (req.url !== '/api/projects' || req.method !== 'GET') {
+            const url = req.url?.split('?')[0] ?? '';
+            const getOneMatch = url.match(/^\/api\/projects\/([^/]+)$/);
+            if (getOneMatch && req.method === 'GET') {
+              const rawId = decodeURIComponent(getOneMatch[1]);
+              const safeId = rawId.replace(/[^a-zA-Z0-9-_]/g, '') || 'project';
+              const filePath = path.join(DATA_PROJECTS_DIR, `${safeId}.md`);
+              try {
+                if (!fs.existsSync(filePath)) {
+                  res.statusCode = 404;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'Not found' }));
+                  return;
+                }
+                const markdown = fs.readFileSync(filePath, 'utf-8');
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ id: safeId, markdown }));
+              } catch (e) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: String(e) }));
+              }
+              return;
+            }
+            if (url !== '/api/projects' || req.method !== 'GET') {
               return next();
             }
             try {
