@@ -50,3 +50,31 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .summary-view-modal,
+  .summary-view-modal * {
+    visibility: visible;
+  }
+  .summary-view-modal {
+    position: fixed;
+    inset: 0;
+    background: #fff;
+    z-index: 9999;
+    overflow: auto;
+  }
+  .summary-view-modal .no-print {
+    display: none !important;
+  }
+  .summary-view-print {
+    box-shadow: none !important;
+    max-width: none !important;
+  }
+}
+
+.summary-hide-buttons .no-print {
+  display: none !important;
+}

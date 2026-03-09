@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -15,6 +15,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { Team, Topic, SubTopic, Status } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { SummaryView } from '../../components/project/SummaryView';
 import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
 
 const INITIAL_DATA: Team[] = [
@@ -95,6 +96,7 @@ export default function ProjectManagePage() {
   const expandHoldStartRef = useRef<number>(0);
   const expandHoldRafRef = useRef<number>(0);
   const expandDidLongPressRef = useRef(false);
+  const [isSummaryViewOpen, setIsSummaryViewOpen] = useState(false);
 
   useEffect(() => {
     if (projectName) localStorage.setItem('projectName', projectName);
@@ -1234,6 +1236,15 @@ export default function ProjectManagePage() {
           onChange={importProject}
         />
         <button
+          type="button"
+          onClick={() => setIsSummaryViewOpen(true)}
+          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
+          title="Summary View สำหรับผู้บริหาร — พิมพ์เป็น PDF ได้"
+        >
+          <FileText className="w-4 h-4 mr-1.5" />
+          Summary View
+        </button>
+        <button
           onClick={() => setIsTeamModalOpen(true)}
           className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex-shrink-0"
         >
@@ -1688,6 +1699,19 @@ export default function ProjectManagePage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {isSummaryViewOpen && (
+        <div
+          className="summary-view-modal fixed inset-0 bg-[var(--color-modal-backdrop)] backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-auto"
+          onClick={(e) => e.target === e.currentTarget && setIsSummaryViewOpen(false)}
+        >
+          <SummaryView
+            projectName={projectName}
+            teams={teams}
+            onClose={() => setIsSummaryViewOpen(false)}
+          />
         </div>
       )}
     </>
