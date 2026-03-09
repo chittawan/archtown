@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -15,6 +15,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { Team, Topic, SubTopic, Status } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
 
 const INITIAL_DATA: Team[] = [
   {
@@ -237,6 +238,41 @@ export default function ProjectManagePage() {
       return;
     }
     expandAllTopicsWithTodos();
+  };
+
+  const exportProject = () => {
+    const md = exportToMarkdown(projectName, teams);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(projectName || 'project').replace(/[^\p{L}\p{N}\s_-]/gu, '_')}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
+  const importProject = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      try {
+        const { projectName: name, teams: nextTeams } = importFromMarkdown(text);
+        setProjectName(name || projectName);
+        setTeams(nextTeams);
+        const allTopicIds = nextTeams.flatMap((t) => t.topics.map((top) => top.id));
+        setExpandedTopics(new Set(allTopicIds));
+        setOpenTodoSectionIds(new Set());
+        setStatusFilter('ALL');
+      } catch (_) {
+        console.error('Import failed');
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
   };
 
   const handleAddTeam = (e: React.FormEvent) => {
@@ -1173,6 +1209,30 @@ export default function ProjectManagePage() {
             </button>
           )}
         </div>
+        <button
+          onClick={exportProject}
+          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
+          title="Export เป็นไฟล์ Markdown"
+        >
+          <Download className="w-4 h-4 mr-1.5" />
+          Export
+        </button>
+        <button
+          type="button"
+          onClick={() => importFileInputRef.current?.click()}
+          className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0"
+          title="Import จากไฟล์ Markdown"
+        >
+          <Upload className="w-4 h-4 mr-1.5" />
+          Import
+        </button>
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept=".md,text/markdown,text/plain"
+          className="hidden"
+          onChange={importProject}
+        />
         <button
           onClick={() => setIsTeamModalOpen(true)}
           className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex-shrink-0"
