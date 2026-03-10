@@ -9,21 +9,21 @@ const config: Record<
     text: 'text-emerald-800 dark:text-emerald-200',
     border: 'border-emerald-200 dark:border-emerald-700/60',
     icon: '🟢',
-    defaultText: 'ปกติ (Normal)',
+    defaultText: 'ปกติ',
   },
   YELLOW: {
     bg: 'bg-amber-100 dark:bg-amber-900/40',
     text: 'text-amber-800 dark:text-amber-200',
     border: 'border-amber-200 dark:border-amber-700/60',
     icon: '🟡',
-    defaultText: 'จัดการได้ (Manageable)',
+    defaultText: 'จัดการได้',
   },
   RED: {
     bg: 'bg-rose-100 dark:bg-rose-900/40',
     text: 'text-rose-800 dark:text-rose-200',
     border: 'border-rose-200 dark:border-rose-700/60',
     icon: '🔴',
-    defaultText: 'ต้องการ Support (Needs Support)',
+    defaultText: 'ต้องการ Support',
   },
 };
 

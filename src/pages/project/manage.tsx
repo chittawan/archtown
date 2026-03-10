@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, Download, Upload, FileText } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -64,7 +64,7 @@ export default function ProjectManagePage() {
   const [openTodoSectionIds, setOpenTodoSectionIds] = useState<Set<string>>(
     () => new Set()
   );
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'RED'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<Set<Status>>(() => new Set());
   const [expandHoldProgress, setExpandHoldProgress] = useState(0);
   const expandHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expandHoldStartRef = useRef<number>(0);
@@ -163,13 +163,13 @@ export default function ProjectManagePage() {
 
   const collapseAllTopics = () => {
     setExpandedTopics(new Set());
-    setStatusFilter('ALL');
+    setStatusFilter(new Set());
   };
 
   const collapseAllTopicsWithTodos = () => {
     setExpandedTopics(new Set());
     setOpenTodoSectionIds(new Set());
-    setStatusFilter('ALL');
+    setStatusFilter(new Set());
   };
 
   const expandAllTopics = () => {
@@ -194,21 +194,43 @@ export default function ProjectManagePage() {
     setOpenTodoSectionIds(new Set(allSubTopicIds));
   };
 
-  function getFilteredTeams(teamsData: Team[], filter: 'ALL' | 'RED'): Team[] {
-    if (filter === 'ALL') return teamsData;
+  function getFilteredTeams(teamsData: Team[], selected: Set<Status>): Team[] {
+    if (selected.size === 0) return teamsData;
     return teamsData
       .map((team) => ({
         ...team,
         topics: team.topics
-          .filter((topic) => topic.subTopics.some((s) => s.status === 'RED'))
+          .filter((topic) => topic.subTopics.some((s) => selected.has(s.status)))
           .map((topic) => ({
             ...topic,
-            subTopics: topic.subTopics.filter((s) => s.status === 'RED'),
+            subTopics: topic.subTopics.filter((s) => selected.has(s.status)),
           }))
           .filter((topic) => topic.subTopics.length > 0),
       }))
       .filter((team) => team.topics.length > 0);
   }
+
+  const toggleStatusFilter = (status: Status) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
+    });
+  };
+
+  /** จำนวนหัวข้อย่อยแยกตามสถานะ (ใช้แสดง Summary ใน Status Legend) */
+  const statusCounts = useMemo(() => {
+    const counts: Record<Status, number> = { GREEN: 0, YELLOW: 0, RED: 0 };
+    teams.forEach((team) => {
+      team.topics.forEach((topic) => {
+        topic.subTopics.forEach((st) => {
+          counts[st.status]++;
+        });
+      });
+    });
+    return counts;
+  }, [teams]);
 
   const expandAllRedWithTodos = () => {
     const topicIdsWithRed = teams.flatMap((t) =>
@@ -221,7 +243,7 @@ export default function ProjectManagePage() {
         topic.subTopics.filter((s) => s.status === 'RED').map((s) => s.id)
       )
     );
-    setStatusFilter('RED');
+    setStatusFilter(new Set(['RED']));
     setExpandedTopics(new Set(topicIdsWithRed));
     setOpenTodoSectionIds(new Set(redSubTopicIds));
   };
@@ -365,7 +387,7 @@ export default function ProjectManagePage() {
         const allTopicIds = nextTeams.flatMap((t) => t.topics.map((top) => top.id));
         setExpandedTopics(new Set(allTopicIds));
         setOpenTodoSectionIds(new Set());
-        setStatusFilter('ALL');
+        setStatusFilter(new Set());
       } catch (_) {
         console.error('Import failed');
       }
@@ -1309,7 +1331,7 @@ export default function ProjectManagePage() {
     'inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0';
 
   return (
-    <>
+    <div className="max-w-6xl mx-auto">
       {projectLoadState === 'loading' && (
         <div className="mb-4 text-sm text-[var(--color-text-muted)]">กำลังโหลดโปรเจกต์...</div>
       )}
@@ -1426,24 +1448,78 @@ export default function ProjectManagePage() {
         </div>
       </div>
 
-      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-4 items-center text-sm shadow-[var(--shadow-card)]">
-        <span className="font-medium text-[var(--color-text-muted)] mr-2">
-          Status Legend:
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-3 items-center text-sm shadow-[var(--shadow-card)]">
+        <span className="font-medium text-[var(--color-text-muted)] mr-1 shrink-0">
+          Status:
         </span>
-        <StatusBadge status="GREEN" />
-        <StatusBadge status="YELLOW" />
-        <StatusBadge status="RED" />
-        {statusFilter === 'RED' && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setStatusFilter('ALL')}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/40 hover:bg-rose-200 dark:hover:bg-rose-800/50 px-2 py-1 rounded transition-colors"
+            onClick={() => setStatusFilter(new Set())}
+            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md text-xs font-medium border transition-colors shrink-0 ${
+              statusFilter.size === 0
+                ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-[var(--color-primary-muted)] text-[var(--color-primary)] border-[var(--color-primary)]'
+                : 'bg-[var(--color-overlay)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-overlay)]/80 hover:text-[var(--color-text)]'
+            }`}
             title="แสดงทั้งหมด"
           >
-            แสดงเฉพาะ RED
-            <X className="w-3.5 h-3.5" />
+            <span>ทั้งหมด</span>
+            <span className="text-[11px] text-[var(--color-text-muted)] tabular-nums">
+              {statusCounts.GREEN + statusCounts.YELLOW + statusCounts.RED}
+            </span>
           </button>
-        )}
+          <button
+            type="button"
+            onClick={() => toggleStatusFilter('GREEN')}
+            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md border transition-colors shrink-0 ${
+              statusFilter.has('GREEN')
+                ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700/60'
+                : 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700/60 hover:opacity-90'
+            }`}
+            title="กรองเฉพาะสถานะ ปกติ"
+          >
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+              <span>🟢</span> ปกติ
+            </span>
+            <span className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 tabular-nums">
+              {statusCounts.GREEN}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleStatusFilter('YELLOW')}
+            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md border transition-colors shrink-0 ${
+              statusFilter.has('YELLOW')
+                ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700/60'
+                : 'bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700/60 hover:opacity-90'
+            }`}
+            title="กรองเฉพาะสถานะ จัดการได้"
+          >
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+              <span>🟡</span> จัดการได้
+            </span>
+            <span className="text-[11px] text-amber-700/80 dark:text-amber-300/80 tabular-nums">
+              {statusCounts.YELLOW}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleStatusFilter('RED')}
+            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md border transition-colors shrink-0 ${
+              statusFilter.has('RED')
+                ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-rose-100 dark:bg-rose-900/40 border-rose-200 dark:border-rose-700/60'
+                : 'bg-rose-100 dark:bg-rose-900/40 border-rose-200 dark:border-rose-700/60 hover:opacity-90'
+            }`}
+            title="กรองเฉพาะสถานะ ต้องการ Support"
+          >
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-800 dark:text-rose-200">
+              <span>🔴</span> ต้องการ Support
+            </span>
+            <span className="text-[11px] text-rose-700/80 dark:text-rose-300/80 tabular-nums">
+              {statusCounts.RED}
+            </span>
+          </button>
+        </div>
         <div className="flex items-center gap-2 ml-auto">
           <button
             type="button"
@@ -1499,13 +1575,18 @@ export default function ProjectManagePage() {
       ) : (() => {
         const filteredTeams = getFilteredTeams(teams, statusFilter);
         if (filteredTeams.length === 0) {
+          const labels = statusFilter.has('GREEN') ? ['เขียว'] : [];
+          if (statusFilter.has('YELLOW')) labels.push('เหลือง');
+          if (statusFilter.has('RED')) labels.push('แดง');
           return (
             <div className="text-center py-12 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)]">
               <p className="text-sm font-medium text-[var(--color-text)]">
-                ไม่มีหัวข้อสถานะแดง
+                {statusFilter.size === 0
+                  ? 'ไม่มีทีมหรือหัวข้อ'
+                  : `ไม่มีหัวข้อที่ตรงกับสถานะที่เลือก${labels.length ? ` (${labels.join(', ')})` : ''}`}
               </p>
               <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                กด หุบ All เพื่อแสดงทั้งหมด
+                กดปุ่มสถานะเพื่อเลือก/ยกเลิกหลายสถานะ หรือกด &quot;ทั้งหมด&quot; เพื่อแสดงทั้งหมด
               </p>
             </div>
           );
@@ -1925,6 +2006,6 @@ export default function ProjectManagePage() {
           />
         </div>
       )}
-    </>
+    </div>
   );
 }
