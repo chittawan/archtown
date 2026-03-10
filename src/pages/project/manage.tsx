@@ -322,14 +322,14 @@ export default function ProjectManagePage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const skipSaveAfterLoadRef = useRef(true);
 
-  /** Auto-save หลังโหลดแล้ว เมื่อ teams หรือ projectName เปลี่ยน (debounce 1.5s) */
+  /** Auto-save หลังโหลดแล้ว เมื่อ teams หรือ projectName เปลี่ยน (debounce ~700ms ให้รู้สึกไวขึ้น) */
   useEffect(() => {
     if (projectLoadState !== 'loaded') return;
     if (skipSaveAfterLoadRef.current) {
       skipSaveAfterLoadRef.current = false;
       return;
     }
-    const t = setTimeout(() => saveProjectToData(), 1500);
+    const t = setTimeout(() => saveProjectToData(), 700);
     return () => clearTimeout(t);
   }, [teams, projectName, projectLoadState]);
 
@@ -358,17 +358,27 @@ export default function ProjectManagePage() {
         if (resData.id) setProjectId(resData.id);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
+        const savedId = resData.id || fileId;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: savedId } }));
+        }
       } else {
         const md = exportToMarkdown(projectName, teams);
         downloadAsMarkdown(md, fileId);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: fileId } }));
+        }
       }
     } catch {
       const md = exportToMarkdown(projectName, teams);
       downloadAsMarkdown(md, fileId);
       setSaveStatus('ok');
       setTimeout(() => setSaveStatus('idle'), 2000);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: fileId } }));
+      }
     }
   };
 

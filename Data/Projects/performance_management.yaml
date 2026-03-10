@@ -6,7 +6,7 @@ teams:
       - title: Network & Connectivity
         subTopics:
           - title: Network Topology & Firewall
-            status: GREEN
+            status: YELLOW
             details: []
           - title: VPN & Load Balancer
             status: GREEN

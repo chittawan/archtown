@@ -48,6 +48,19 @@ export default function SummaryStatusPanel({ projectId }: { projectId?: string }
     };
   }, [projectId]);
 
+  /** Refetch when project page saves (status change etc.) so Summary stays in sync */
+  useEffect(() => {
+    if (!projectId || typeof window === 'undefined') return;
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent<{ projectId: string }>;
+      if (ev.detail?.projectId === projectId) {
+        fetchSummary(projectId).then(setData);
+      }
+    };
+    window.addEventListener('project-summary-invalidate', handler);
+    return () => window.removeEventListener('project-summary-invalidate', handler);
+  }, [projectId]);
+
   if (loading) {
     return (
       <div className="p-4 text-sm text-[var(--color-text-muted)]">
