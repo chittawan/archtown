@@ -375,9 +375,10 @@ app.get('/api/cability', (_req, res) => {
   }
 });
 
-/** Summary of Critical/Warning tasks per Cap (Cab) and Project for right panel */
-app.get('/api/cability/summary', (_req, res) => {
+/** Summary of Critical/Warning tasks per Cap (Cab) and Project for right panel. Optional projectId = filter to one project. */
+app.get('/api/cability/summary', (req, res) => {
   try {
+    const projectId = typeof req.query?.projectId === 'string' ? req.query.projectId.trim() : undefined;
     fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
     fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
     const orderPathYaml = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
@@ -450,6 +451,7 @@ app.get('/api/cability/summary', (_req, res) => {
       if (!cab) continue;
       const cabName = cab.name || cabId;
       for (const proj of cab.projects) {
+        if (projectId && proj.id !== projectId) continue;
         const projectName = proj.name || proj.id;
         let resolved = resolveProjectPath(proj.id);
         if (!resolved) {

@@ -338,6 +338,7 @@ export default defineConfig(({mode}) => {
             }
             if (url === '/api/cability/summary' && req.method === 'GET') {
               try {
+                const projectId = (req.url?.includes('?') ? new URLSearchParams(req.url.slice(req.url.indexOf('?') + 1)).get('projectId') : null)?.trim() || undefined;
                 fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
                 fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
                 const orderPathYaml = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
@@ -395,6 +396,7 @@ export default defineConfig(({mode}) => {
                   if (!cab) continue;
                   const cabName = cab.name || cabId;
                   for (const proj of cab.projects) {
+                    if (projectId && proj.id !== projectId) continue;
                     const projectName = proj.name || proj.id;
                     const yamlPath = path.join(DATA_PROJECTS_DIR, `${proj.id}.yaml`);
                     const mdPath = path.join(DATA_PROJECTS_DIR, `${proj.id}.md`);

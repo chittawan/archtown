@@ -1529,7 +1529,7 @@ export default function ProjectManagePage() {
             title="คลิก: หุบหัวข้อใหญ่ทั้งหมด | Double-click: หุบหัวข้อใหญ่ + หุบ Todo ทั้งหมด"
           >
             <ChevronRight className="w-4 h-4" />
-            หุบ All
+            หุบทั้งหมด
           </button>
           <button
             type="button"
@@ -1547,7 +1547,7 @@ export default function ProjectManagePage() {
             />
             <span className="relative z-10 flex items-center gap-1.5">
               <ChevronDown className="w-4 h-4" />
-              คลาย All
+              คลายทั้งหมด
             </span>
           </button>
         </div>

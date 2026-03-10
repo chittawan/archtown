@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel';
 
@@ -13,6 +13,9 @@ const RIGHT_PANEL_STORAGE_KEY = 'archtown-right-panel-open';
 
 export default function AppLayout() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isProjectPage = location.pathname === '/project';
+  const projectIdFromUrl = isProjectPage ? searchParams.get('id') : null;
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     const stored = localStorage.getItem(RIGHT_PANEL_STORAGE_KEY);
@@ -109,15 +112,21 @@ export default function AppLayout() {
                   Summary Status
                 </h2>
                 <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  Critical / Warning ตาม Cap → Project → Task
+                  {projectIdFromUrl
+                    ? 'Critical / Warning ของโปรเจกต์นี้'
+                    : 'Critical / Warning ตาม Cap → Project → Task'}
                 </p>
               </div>
               <div className="p-4">
                 {location.pathname === '/cability' ? (
                   <SummaryStatusPanel />
+                ) : projectIdFromUrl ? (
+                  <SummaryStatusPanel projectId={projectIdFromUrl} />
                 ) : (
                   <p className="text-sm text-[var(--color-text-muted)]">
-                    เปิดหน้าหลัก Capability เพื่อดูสรุป Critical / Warning
+                    {isProjectPage
+                      ? 'เปิดโปรเจกต์ (จาก Capability หรือใส่ ?id= ใน URL) เพื่อดูสรุป Critical / Warning ของโปรเจกต์นี้'
+                      : 'เปิดหน้าหลัก Capability เพื่อดูสรุป Critical / Warning'}
                   </p>
                 )}
               </div>

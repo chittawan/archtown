@@ -18,8 +18,9 @@ interface GroupedSummaryItem {
   tasks: string[];
 }
 
-async function fetchSummary(): Promise<SummaryData> {
-  const res = await fetch('/api/cability/summary');
+async function fetchSummary(projectId?: string): Promise<SummaryData> {
+  const url = projectId ? `/api/cability/summary?projectId=${encodeURIComponent(projectId)}` : '/api/cability/summary';
+  const res = await fetch(url);
   if (!res.ok) return { critical: [], warning: [] };
   const data = await res.json();
   return {
@@ -28,14 +29,14 @@ async function fetchSummary(): Promise<SummaryData> {
   };
 }
 
-export default function SummaryStatusPanel() {
+export default function SummaryStatusPanel({ projectId }: { projectId?: string }) {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchSummary()
+    fetchSummary(projectId)
       .then((d) => {
         if (!cancelled) setData(d);
       })
@@ -45,7 +46,7 @@ export default function SummaryStatusPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [projectId]);
 
   if (loading) {
     return (
