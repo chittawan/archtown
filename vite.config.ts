@@ -6,6 +6,7 @@ import {defineConfig, loadEnv} from 'vite';
 
 import {importFromMarkdown} from './src/lib/projectMarkdown';
 import {yamlToProject, projectToYaml} from './src/lib/projectYaml';
+import {nameToId, sanitizeId} from './src/lib/idUtils';
 import {markdownToOrgTeam} from './src/lib/teamMarkdown';
 import {yamlToOrgTeam, orgTeamToYaml} from './src/lib/teamYaml';
 import {markdownToCab, orderMarkdownToCabIds} from './src/lib/cabilityMarkdown';
@@ -25,14 +26,22 @@ function safeCabId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-_]/g, '') || 'cab';
 }
 
-function toCamelCase(s: string): string {
-  return s
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word, i) =>
-      i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    )
-    .join('');
+/** Resolve project id to file path: exact match then case-insensitive stem (ชื่อไฟล์ = ตัวเล็ก + _) */
+function resolveProjectPath(projId: string): { path: string; ext: 'yaml' | 'md' } | null {
+  const exactYaml = path.join(DATA_PROJECTS_DIR, `${projId}.yaml`);
+  const exactMd = path.join(DATA_PROJECTS_DIR, `${projId}.md`);
+  if (fs.existsSync(exactYaml)) return { path: exactYaml, ext: 'yaml' };
+  if (fs.existsSync(exactMd)) return { path: exactMd, ext: 'md' };
+  const lowerId = projId.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const files = fs.readdirSync(DATA_PROJECTS_DIR);
+  for (const f of files) {
+    const stem = f.endsWith('.yaml') ? f.slice(0, -5) : f.endsWith('.md') ? f.slice(0, -3) : null;
+    if (stem && stem.toLowerCase() === lowerId) {
+      if (f.endsWith('.yaml')) return { path: path.join(DATA_PROJECTS_DIR, f), ext: 'yaml' };
+      if (f.endsWith('.md')) return { path: path.join(DATA_PROJECTS_DIR, f), ext: 'md' };
+    }
+  }
+  return null;
 }
 
 export default defineConfig(({mode}) => {
@@ -49,25 +58,20 @@ export default defineConfig(({mode}) => {
             const getOneMatch = url.match(/^\/api\/projects\/([^/]+)$/);
             if (getOneMatch && req.method === 'GET') {
               const rawId = decodeURIComponent(getOneMatch[1]);
-              const safeId = rawId.replace(/[^a-zA-Z0-9-_]/g, '') || 'project';
-              const yamlPath = path.join(DATA_PROJECTS_DIR, `${safeId}.yaml`);
-              const mdPath = path.join(DATA_PROJECTS_DIR, `${safeId}.md`);
+              const safeId = rawId.replace(/[^a-zA-Z0-9_\-]/g, '') || 'project';
               try {
-                let data: { projectName: string; teams: Array<{ name: string; topics: Array<{ subTopics: Array<{ status: string }> }> }> };
-                if (fs.existsSync(yamlPath)) {
-                  const yamlStr = fs.readFileSync(yamlPath, 'utf-8');
-                  data = yamlToProject(yamlStr);
-                } else if (fs.existsSync(mdPath)) {
-                  const md = fs.readFileSync(mdPath, 'utf-8');
-                  data = importFromMarkdown(md);
-                } else {
+                const resolved = resolveProjectPath(safeId);
+                if (!resolved) {
                   res.statusCode = 404;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ error: 'Not found' }));
                   return;
                 }
+                const content = fs.readFileSync(resolved.path, 'utf-8');
+                const data = resolved.ext === 'yaml' ? yamlToProject(content) : importFromMarkdown(content);
+                const outId = (data && (data as { id?: string }).id) || path.basename(resolved.path, resolved.ext === 'yaml' ? '.yaml' : '.md');
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ id: safeId, data }));
+                res.end(JSON.stringify({ id: outId, data }));
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
@@ -150,23 +154,33 @@ export default defineConfig(({mode}) => {
               try {
                 const { projectName, data, markdown } = JSON.parse(body);
                 const name = (projectName || 'project').trim();
-                const safeName = toCamelCase(name.replace(/[^\p{L}\p{N}\s_-]/gu, ' ').trim()) || 'project';
                 fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
-                const filePath = path.join(DATA_PROJECTS_DIR, `${safeName}.yaml`);
-                let toWrite: string;
+                let payload: { id?: string; projectName: string; teams: unknown[] };
                 if (data != null && typeof data === 'object' && Array.isArray(data.teams)) {
-                  toWrite = projectToYaml({ projectName: data.projectName ?? name, teams: data.teams });
+                  payload = {
+                    id: typeof data.id === 'string' ? data.id.trim() : undefined,
+                    projectName: data.projectName ?? name,
+                    teams: data.teams,
+                  };
                 } else if (typeof markdown === 'string') {
-                  toWrite = projectToYaml(importFromMarkdown(markdown));
+                  const imported = importFromMarkdown(markdown);
+                  payload = { projectName: imported.projectName, teams: imported.teams };
                 } else {
                   res.statusCode = 400;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ ok: false, error: 'Missing data or markdown' }));
                   return;
                 }
+                const fileId = sanitizeId(payload.id || '') || sanitizeId(nameToId(payload.projectName)) || 'project';
+                const toWrite = projectToYaml({
+                  id: fileId,
+                  projectName: payload.projectName,
+                  teams: payload.teams as import('./src/types').Team[],
+                });
+                const filePath = path.join(DATA_PROJECTS_DIR, `${fileId}.yaml`);
                 fs.writeFileSync(filePath, toWrite, 'utf-8');
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ ok: true, path: filePath }));
+                res.end(JSON.stringify({ ok: true, id: fileId, path: filePath }));
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
@@ -310,6 +324,108 @@ export default defineConfig(({mode}) => {
                 }
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ layout: { cabOrder, cabs } }));
+              } catch (e) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: String(e) }));
+              }
+              return;
+            }
+            if (url === '/api/cability/summary' && req.method === 'GET') {
+              try {
+                fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
+                fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
+                const orderPathYaml = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
+                const orderPathMd = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_MD);
+                let cabOrder: string[] = [];
+                if (fs.existsSync(orderPathYaml)) {
+                  cabOrder = yamlToCabOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
+                } else if (fs.existsSync(orderPathMd)) {
+                  cabOrder = orderMarkdownToCabIds(fs.readFileSync(orderPathMd, 'utf-8'));
+                }
+                const cabs: Record<string, { id: string; name: string; projects: Array<{ id: string; name: string }> }> = {};
+                const files = fs.readdirSync(DATA_CABILITY_DIR);
+                const cabFilesYaml = files.filter((f) => f.endsWith('.yaml') && f !== CABILITY_ORDER_FILE_YAML);
+                const cabFilesMd = files.filter((f) => f.endsWith('.md') && f !== CABILITY_ORDER_FILE_MD);
+                const seen = new Set(cabOrder);
+                for (const f of cabFilesYaml) {
+                  const id = f.slice(0, -5);
+                  if (!seen.has(id)) {
+                    seen.add(id);
+                    cabOrder.push(id);
+                  }
+                }
+                for (const f of cabFilesMd) {
+                  const id = f.slice(0, -3);
+                  if (!seen.has(id)) {
+                    seen.add(id);
+                    cabOrder.push(id);
+                  }
+                }
+                for (const id of cabOrder) {
+                  const yamlPath = path.join(DATA_CABILITY_DIR, `${id}.yaml`);
+                  const mdPath = path.join(DATA_CABILITY_DIR, `${id}.md`);
+                  if (fs.existsSync(yamlPath)) {
+                    const cab = yamlToCab(id, fs.readFileSync(yamlPath, 'utf-8'));
+                    cabs[id] = {
+                      id: cab.id,
+                      name: cab.name,
+                      projects: cab.projects.map((p) => ({ id: p.id, name: p.name })),
+                    };
+                  } else if (fs.existsSync(mdPath)) {
+                    const cab = markdownToCab(id, fs.readFileSync(mdPath, 'utf-8'));
+                    cabs[id] = {
+                      id: cab.id,
+                      name: cab.name,
+                      projects: cab.projects.map((p) => ({ id: p.id, name: p.name })),
+                    };
+                  } else {
+                    cabs[id] = { id: safeCabId(id), name: id, projects: [] };
+                  }
+                }
+                const critical: Array<{ cabName: string; projectName: string; taskName: string }> = [];
+                const warning: Array<{ cabName: string; projectName: string; taskName: string }> = [];
+                for (const cabId of cabOrder) {
+                  const cab = cabs[cabId];
+                  if (!cab) continue;
+                  const cabName = cab.name || cabId;
+                  for (const proj of cab.projects) {
+                    const projectName = proj.name || proj.id;
+                    const yamlPath = path.join(DATA_PROJECTS_DIR, `${proj.id}.yaml`);
+                    const mdPath = path.join(DATA_PROJECTS_DIR, `${proj.id}.md`);
+                    let data: { teams?: Array<{ topics?: Array<{ subTopics?: Array<{ title: string; status: string }> }> }> } | null = null;
+                    try {
+                      if (fs.existsSync(yamlPath)) {
+                        const yamlStr = fs.readFileSync(yamlPath, 'utf-8');
+                        data = yamlToProject(yamlStr);
+                      } else if (fs.existsSync(mdPath)) {
+                        const md = fs.readFileSync(mdPath, 'utf-8');
+                        data = importFromMarkdown(md);
+                      }
+                    } catch {
+                      continue;
+                    }
+                    if (!data || !Array.isArray(data.teams)) continue;
+                    for (const team of data.teams) {
+                      if (!Array.isArray(team.topics)) continue;
+                      for (const topic of team.topics) {
+                        if (!Array.isArray(topic.subTopics)) continue;
+                        for (const sub of topic.subTopics) {
+                          const status = String(sub?.status || '').toUpperCase();
+                          const title = typeof sub?.title === 'string' ? sub.title.trim() : '';
+                          if (!title) continue;
+                          if (status === 'RED') {
+                            critical.push({ cabName, projectName, taskName: title });
+                          } else if (status === 'YELLOW') {
+                            warning.push({ cabName, projectName, taskName: title });
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ critical, warning }));
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');

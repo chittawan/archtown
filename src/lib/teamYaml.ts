@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import type { OrgTeam } from '../types';
 
 interface TeamYamlRoot {
+  id?: string;
   name: string;
   owner?: string;
   parent?: string | null;
@@ -30,9 +31,10 @@ export function yamlToOrgTeam(id: string, yamlStr: string): OrgTeam {
   return { id, name, owner, parentId, childIds };
 }
 
-/** Serialize OrgTeam to YAML (id not written; it's the filename) */
+/** Serialize OrgTeam to YAML; id ใช้เชื่อมกับ filename */
 export function orgTeamToYaml(team: OrgTeam): string {
   const root: TeamYamlRoot = {
+    ...(team.id && { id: team.id }),
     name: team.name || 'Team',
     owner: team.owner || '',
     parent: team.parentId ?? null,

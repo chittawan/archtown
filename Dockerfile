@@ -20,10 +20,12 @@ WORKDIR /app
 COPY --from=build /app/package.json /app/package-lock.json* ./
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/data ./data
+COPY --from=build /app/server ./server
+COPY --from=build /app/src ./src
 RUN npm ci --omit=dev
 
 ENV NODE_ENV=production
-VOLUME ["/app/data"]
+VOLUME ["/app/data/"]
 EXPOSE ${PORT}
 
-CMD ["sh", "-c", "npx serve -s dist -l $PORT"]
+CMD ["npm", "start"]

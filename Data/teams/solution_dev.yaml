@@ -1,10 +1,11 @@
+id: solution_dev
 name: SolutionDev
 owner: พี่ Art
 parent: null
 childIds:
-  - otc
   - ftd
   - ptp
   - hc
-  - fa
+  - f_a
   - oth
+  - otc

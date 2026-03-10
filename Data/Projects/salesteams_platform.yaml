@@ -1,0 +1,5 @@
+id: salesteams_platform
+name: salesteams platform
+teams:
+  - name: OTC
+    topics: []

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText, Save } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, X, Download, Upload, FileText } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -18,20 +18,7 @@ import { Team, Topic, SubTopic, Status } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SummaryView } from '../../components/project/SummaryView';
 import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
-import {
-  slugFromName,
-  ensureUniqueSlug,
-} from '../../lib/teamMarkdown';
-
-function toCamelCase(s: string): string {
-  return s
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word, i) =>
-      i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    )
-    .join('');
-}
+import { nameToId, ensureUniqueId } from '../../lib/idUtils';
 
 const INITIAL_DATA: Team[] = [
 ];
@@ -39,6 +26,7 @@ const INITIAL_DATA: Team[] = [
 export default function ProjectManagePage() {
   const [searchParams] = useSearchParams();
   const projectIdFromUrl = searchParams.get('id');
+  const [projectId, setProjectId] = useState<string | null>(projectIdFromUrl);
   const [teams, setTeams] = useState<Team[]>(INITIAL_DATA);
   const [projectLoadState, setProjectLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(
@@ -88,6 +76,10 @@ export default function ProjectManagePage() {
     if (projectName) localStorage.setItem('projectName', projectName);
   }, [projectName]);
 
+  useEffect(() => {
+    setProjectId(projectIdFromUrl);
+  }, [projectIdFromUrl]);
+
   /** โหลดข้อมูลโปรเจกต์จาก data/projects/ เมื่อเปิดจาก Capability (มี ?id= ใน URL) */
   useEffect(() => {
     if (!projectIdFromUrl || projectLoadState !== 'idle') return;
@@ -103,6 +95,7 @@ export default function ProjectManagePage() {
           setProjectLoadState('idle');
           return;
         }
+        if (data.id) setProjectId(data.id);
         const { projectName: name, teams: nextTeams } = payload;
         setProjectName(name || '');
         setProjectNameInput(name || '');
@@ -305,6 +298,19 @@ export default function ProjectManagePage() {
 
   /** บันทึกลง data/projects/{projectName}.md ผ่าน API (dev) หรือ fallback เป็นดาวน์โหลด */
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
+  const skipSaveAfterLoadRef = useRef(true);
+
+  /** Auto-save หลังโหลดแล้ว เมื่อ teams หรือ projectName เปลี่ยน (debounce 1.5s) */
+  useEffect(() => {
+    if (projectLoadState !== 'loaded') return;
+    if (skipSaveAfterLoadRef.current) {
+      skipSaveAfterLoadRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => saveProjectToData(), 1500);
+    return () => clearTimeout(t);
+  }, [teams, projectName, projectLoadState]);
+
   const downloadAsMarkdown = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -316,8 +322,8 @@ export default function ProjectManagePage() {
   };
   const saveProjectToData = async () => {
     const name = (projectName || 'project').trim();
-    const fileBaseName = toCamelCase(name.replace(/[^\p{L}\p{N}\s_-]/gu, ' ').trim()) || 'project';
-    const data = { projectName: name, teams };
+    const fileId = projectId || nameToId(name) || 'project';
+    const data = { id: fileId, projectName: name, teams };
     setSaveStatus('saving');
     try {
       const res = await fetch('/api/save-project', {
@@ -327,17 +333,18 @@ export default function ProjectManagePage() {
       });
       const resData = await res.json().catch(() => ({}));
       if (res.ok && resData.ok) {
+        if (resData.id) setProjectId(resData.id);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
       } else {
         const md = exportToMarkdown(projectName, teams);
-        downloadAsMarkdown(md, fileBaseName);
+        downloadAsMarkdown(md, fileId);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
       }
     } catch {
       const md = exportToMarkdown(projectName, teams);
-      downloadAsMarkdown(md, fileBaseName);
+      downloadAsMarkdown(md, fileId);
       setSaveStatus('ok');
       setTimeout(() => setSaveStatus('idle'), 2000);
     }
@@ -394,7 +401,7 @@ export default function ProjectManagePage() {
     } else if (newTeamName.trim()) {
       const name = newTeamName.trim();
       const existingOrgIds = orgTeamsForSelect.map((o) => o.id);
-      const id = ensureUniqueSlug(slugFromName(name), existingOrgIds);
+      const id = ensureUniqueId(nameToId(name) || 'team', existingOrgIds);
       const orgTeam = {
         id,
         name,
@@ -1353,7 +1360,7 @@ export default function ProjectManagePage() {
 
         {/* ขวา: กลุ่มปุ่มเรียงตามการใช้งาน */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {/* กลุ่ม data: Import → Export → Save (ลำดับการทำงาน) */}
+          {/* กลุ่ม data: Import → Export (auto-save ทำงานอัตโนมัติ) */}
           <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
             <button
               type="button"
@@ -1372,30 +1379,18 @@ export default function ProjectManagePage() {
               <Download className="w-4 h-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Export</span>
             </button>
-            <button
-              type="button"
-              onClick={saveProjectToData}
-              disabled={saveStatus === 'saving'}
-              className={`${btnSecondary} disabled:opacity-60 disabled:cursor-not-allowed`}
-              title="Save ลง data/projects/{projectName}.md"
-            >
-              {saveStatus === 'saving' ? (
-                <>
-                  <span className="w-4 h-4 sm:mr-1.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                  <span className="hidden sm:inline">Saving...</span>
-                </>
-              ) : saveStatus === 'ok' ? (
-                <>
-                  <Check className="w-4 h-4 sm:mr-1.5 text-green-600 flex-shrink-0" />
-                  <span className="hidden sm:inline">Saved</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 sm:mr-1.5 flex-shrink-0" />
-                  <span className="hidden sm:inline">Save</span>
-                </>
-              )}
-            </button>
+            {saveStatus === 'saving' && (
+              <span className="inline-flex items-center px-2 text-xs text-[var(--color-text-muted)]">
+                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <span className="ml-1.5 hidden sm:inline">Saving...</span>
+              </span>
+            )}
+            {saveStatus === 'ok' && (
+              <span className="inline-flex items-center px-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="ml-1 hidden sm:inline">Saved</span>
+              </span>
+            )}
           </div>
           <input
             ref={importFileInputRef}

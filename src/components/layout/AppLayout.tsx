@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import SummaryStatusPanel from './SummaryStatusPanel';
 
 const navItems = [
   { path: '/cability', label: 'Capability', icon: Layers },
@@ -8,8 +9,17 @@ const navItems = [
   { path: '/teams', label: 'Teams', icon: Users },
 ];
 
+const RIGHT_PANEL_STORAGE_KEY = 'archtown-right-panel-open';
+
 export default function AppLayout() {
   const location = useLocation();
+  const [rightPanelOpen, setRightPanelOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = localStorage.getItem(RIGHT_PANEL_STORAGE_KEY);
+    if (stored === 'false') return false;
+    if (stored === 'true') return true;
+    return true;
+  });
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return false;
     return document.documentElement.classList.contains('dark');
@@ -25,6 +35,11 @@ export default function AppLayout() {
       localStorage.setItem('theme', 'light');
     }
   }, [isDark]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(RIGHT_PANEL_STORAGE_KEY, String(rightPanelOpen));
+  }, [rightPanelOpen]);
 
   return (
     <div className="min-h-screen bg-[var(--color-page)] text-[var(--color-text)] font-sans transition-colors">
@@ -60,6 +75,15 @@ export default function AppLayout() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setRightPanelOpen((o) => !o)}
+              className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
+              title={rightPanelOpen ? 'ปิดแผงขวา' : 'เปิดแผงขวา'}
+              aria-label={rightPanelOpen ? 'Close right panel' : 'Open right panel'}
+            >
+              {rightPanelOpen ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
+            </button>
+            <button
+              type="button"
               onClick={() => setIsDark((d) => !d)}
               className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
               title={isDark ? 'สลับเป็น Light' : 'สลับเป็น Dark'}
@@ -70,9 +94,37 @@ export default function AppLayout() {
           </div>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Outlet />
-      </main>
+      <div className="flex flex-1 min-h-0 w-full max-w-[1920px] mx-auto">
+        <main className={`flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-8 transition-[margin] ${rightPanelOpen ? 'lg:mr-0' : ''}`}>
+          <Outlet />
+        </main>
+        {rightPanelOpen && (
+          <aside
+            className="hidden lg:flex flex-col w-[320px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden"
+            aria-label="Summary status"
+          >
+            <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
+              <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-overlay)]">
+                <h2 className="text-sm font-semibold text-[var(--color-text)]">
+                  Summary Status
+                </h2>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                  Critical / Warning ตาม Cap → Project → Task
+                </p>
+              </div>
+              <div className="p-4">
+                {location.pathname === '/cability' ? (
+                  <SummaryStatusPanel />
+                ) : (
+                  <p className="text-sm text-[var(--color-text-muted)]">
+                    เปิดหน้าหลัก Capability เพื่อดูสรุป Critical / Warning
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   );
 }

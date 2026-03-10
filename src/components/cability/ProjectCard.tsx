@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { GripVertical, Trash2 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { ProjectInCab, ProjectStatus } from '../../lib/cabilityMarkdown';
+
+const REMOVE_HOLD_MS = 1000;
 
 export const PROJECT_PREFIX = 'project::';
 
@@ -44,6 +47,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 
 export interface SortableProjectCardProps {
   cabId: string;
+  cabName: string;
   project: ProjectInCab;
   displayStatus: ProjectStatus | null;
   onRemove: () => void;
@@ -53,6 +57,7 @@ export interface SortableProjectCardProps {
 
 export function SortableProjectCard({
   cabId,
+  cabName,
   project,
   displayStatus,
   onRemove,
@@ -71,12 +76,90 @@ export function SortableProjectCard({
   const style = { transform: CSS.Transform.toString(transform), transition };
   const projectWidthClass = cabWidthClass(project.cols);
   const accentClass = displayStatus ? STATUS_ACCENT[displayStatus] : 'border-l-[var(--color-border)]';
+  const [highlightedFromSummary, setHighlightedFromSummary] = useState(false);
+  const [removeHoldProgress, setRemoveHoldProgress] = useState(0);
+  const removeHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const removeHoldStartRef = useRef(0);
+  const removeHoldRafRef = useRef<number>(0);
+
+  const clearRemoveHold = () => {
+    if (removeHoldTimerRef.current) {
+      clearTimeout(removeHoldTimerRef.current);
+      removeHoldTimerRef.current = null;
+    }
+    if (removeHoldRafRef.current) {
+      cancelAnimationFrame(removeHoldRafRef.current);
+      removeHoldRafRef.current = 0;
+    }
+    setRemoveHoldProgress(0);
+  };
+
+  const handleRemovePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    clearRemoveHold();
+    removeHoldStartRef.current = Date.now();
+    removeHoldTimerRef.current = setTimeout(() => {
+      removeHoldTimerRef.current = null;
+      if (removeHoldRafRef.current) {
+        cancelAnimationFrame(removeHoldRafRef.current);
+        removeHoldRafRef.current = 0;
+      }
+      setRemoveHoldProgress(0);
+      onRemove();
+    }, REMOVE_HOLD_MS);
+    const tick = () => {
+      const elapsed = Date.now() - removeHoldStartRef.current;
+      const progress = Math.min(100, (elapsed / REMOVE_HOLD_MS) * 100);
+      setRemoveHoldProgress(progress);
+      if (progress < 100 && removeHoldTimerRef.current != null) {
+        removeHoldRafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    removeHoldRafRef.current = requestAnimationFrame(tick);
+  };
+
+  useEffect(() => {
+    function handleHover(event: Event) {
+      const custom = event as CustomEvent<
+        | {
+            cabName: string;
+            projectName: string;
+          }
+        | null
+      >;
+      const detail = custom.detail;
+      if (!detail) {
+        setHighlightedFromSummary(false);
+        return;
+      }
+      const matches =
+        detail.projectName === project.name &&
+        detail.cabName === cabName;
+      setHighlightedFromSummary(matches);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('summary-project-hover', handleHover as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('summary-project-hover', handleHover as EventListener);
+      }
+    };
+  }, [cabName, project.name]);
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
       className={`group ${projectWidthClass} min-w-0`}
+      layout={!isDragging}
+      transition={{
+        layout: {
+          duration: 0.4,
+          ease: [0.32, 0.72, 0, 1],
+        },
+      }}
     >
       <div
         onDoubleClick={onDoubleClick}
@@ -84,7 +167,16 @@ export function SortableProjectCard({
           relative rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]
           shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none
           overflow-hidden border-l-4 ${accentClass}
-          ${isDragging ? 'shadow-lg ring-2 ring-[var(--color-primary)]/30 opacity-95 z-10 scale-[1.02]' : ''}
+          ${
+            isDragging
+              ? 'shadow-lg ring-2 ring-[var(--color-primary)]/30 opacity-95 z-10 scale-[1.02]'
+              : ''
+          }
+          ${
+            highlightedFromSummary && !isDragging
+              ? 'ring-2 ring-[var(--color-primary)]/80 bg-[var(--color-primary-muted)]/30 scale-[1.01]'
+              : ''
+          }
         `}
         title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
       >
@@ -140,15 +232,24 @@ export function SortableProjectCard({
               </select>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemove();
-                }}
-                className="shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                title="เอาออกจากกลุ่มนี้"
-                aria-label="เอาโปรเจกต์ออกจากกลุ่ม"
+                onPointerDown={handleRemovePointerDown}
+                onPointerUp={clearRemoveHold}
+                onPointerLeave={clearRemoveHold}
+                onPointerCancel={clearRemoveHold}
+                onClick={(e) => e.stopPropagation()}
+                className="relative shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-500/10 transition-colors overflow-hidden"
+                title="กดค้าง 1 วินาทีเพื่อเอาออกจากกลุ่มนี้"
+                aria-label="กดค้าง 1 วินาทีเพื่อเอาโปรเจกต์ออกจากกลุ่ม"
               >
-                <Trash2 className="w-3 h-3" />
+                {removeHoldProgress > 0 && (
+                  <span
+                    className="absolute inset-0 bg-red-500/30 rounded ease-linear"
+                    style={{ width: `${removeHoldProgress}%`, transition: 'none' }}
+                  />
+                )}
+                <span className="relative z-10 block">
+                  <Trash2 className="w-3 h-3" />
+                </span>
               </button>
             </div>
             {displayStatus && (
@@ -161,6 +262,6 @@ export function SortableProjectCard({
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -5,6 +5,7 @@
 
 IMAGE=registry.codewalk.myds.me/archtown
 TAG=$(date +"%Y.%m.%d-%H%M%S")
+TAG=latest
 
 echo "=========================================="
 echo "Building Docker Image"

@@ -33,9 +33,8 @@ import { CSS } from '@dnd-kit/utilities';
 import type { OrgTeam } from '../../types';
 import {
   orgTeamToMarkdown,
-  slugFromName,
-  ensureUniqueSlug,
 } from '../../lib/teamMarkdown';
+import { nameToId, ensureUniqueId } from '../../lib/idUtils';
 
 type TeamMap = Map<string, OrgTeam>;
 
@@ -361,8 +360,8 @@ export default function TeamsManagePage() {
     const name = formName.trim();
     if (!name) return;
     const existingIds = Array.from(teams.keys()) as string[];
-    const baseSlug = slugFromName(name);
-    const id = ensureUniqueSlug(baseSlug, existingIds);
+    const baseId = nameToId(name);
+    const id = ensureUniqueId(baseId || 'team', existingIds);
     const newTeam: OrgTeam = {
       id,
       name,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Layers,
@@ -30,21 +30,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Cab, CabilityLayout, ProjectInCab } from '../../lib/cabilityMarkdown';
-import { slugFromName, ensureUniqueSlug } from '../../lib/teamMarkdown';
+import { nameToId, ensureUniqueId } from '../../lib/idUtils';
+import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/cability/ProjectCard';
-
-/** ใช้ id ให้ตรงกับชื่อไฟล์ใน data/projects (เหมือน save-project) */
-function toCamelCase(s: string): string {
-  return s
-    .trim()
-    .replace(/[^\p{L}\p{N}\s_-]/gu, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word, i) =>
-      i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    )
-    .join('') || 'project';
-}
+import { SaveStatusIndicator, type SaveStatusIndicatorRef } from '../../components/cability/SaveStatusIndicator';
 
 export interface ProjectSummary {
   id: string;
@@ -87,12 +76,46 @@ async function saveLayout(layout: CabilityLayout): Promise<boolean> {
   return !!data.ok;
 }
 
+function cabWidthClass(cols?: 12 | 6 | 4 | 3): string {
+  const value = cols && [12, 6, 4, 3].includes(cols) ? cols : 4;
+  switch (value) {
+    case 12: return 'col-span-12';
+    case 6: return 'col-span-12 sm:col-span-6';
+    case 4: return 'col-span-12 sm:col-span-4';
+    case 3: return 'col-span-12 sm:col-span-3';
+    default: return 'col-span-12';
+  }
+}
+
+/** Cache ล่าสุดของ layout ใช้เพื่อไม่ให้แสดง "กำลังโหลด" ตอน remount (เช่น หลัง save) */
+let lastLayoutCache: CabilityLayout | null = null;
+
+const MemoizedCabCard = memo(function MemoizedCabCard({
+  cab,
+  cabId,
+  editingCabId,
+  cabNameInput,
+  children,
+}: {
+  cab: Cab;
+  cabId: string;
+  editingCabId: string | null;
+  cabNameInput: string;
+  children: React.ReactNode;
+}) {
+  return <>{children}</>;
+}, (prev, next) =>
+  prev.cabId === next.cabId &&
+  prev.cab === next.cab &&
+  prev.editingCabId === next.editingCabId &&
+  prev.cabNameInput === next.cabNameInput);
+
 export default function CapabilityManagePage() {
   const navigate = useNavigate();
-  const [layout, setLayout] = useState<CabilityLayout>({ cabOrder: [], cabs: {} });
+  const [layout, setLayout] = useState<CabilityLayout>(() => lastLayoutCache ?? { cabOrder: [], cabs: {} });
   const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const saveStatusRef = useRef<SaveStatusIndicatorRef | null>(null);
   const [addCabOpen, setAddCabOpen] = useState(false);
   const [addProjectCabId, setAddProjectCabId] = useState<string | null>(null);
   const [addProjectMode, setAddProjectMode] = useState<'select' | 'new'>('select');
@@ -104,6 +127,9 @@ export default function CapabilityManagePage() {
   const [projectListLoading, setProjectListLoading] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [projectSelectOpen, setProjectSelectOpen] = useState(false);
+  const savedScrollYRef = useRef<number | null>(null);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -115,6 +141,7 @@ export default function CapabilityManagePage() {
     setError(null);
     try {
       const data = await fetchLayout();
+      lastLayoutCache = data;
       setLayout(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'โหลดไม่สำเร็จ');
@@ -124,6 +151,11 @@ export default function CapabilityManagePage() {
   }, []);
 
   useEffect(() => {
+    if (lastLayoutCache) {
+      setLayout(lastLayoutCache);
+      setLoading(false);
+      return;
+    }
     loadLayout();
   }, [loadLayout]);
 
@@ -152,22 +184,63 @@ export default function CapabilityManagePage() {
     }
   }, [addProjectCabId, loadProjectList]);
 
+  const restoreScrollIfNeeded = useCallback(() => {
+    if (savedScrollYRef.current === null) return;
+    const y = savedScrollYRef.current;
+    savedScrollYRef.current = null;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, y);
+      });
+    });
+  }, []);
+
+  /**
+   * บันทึก layout ไป server โดยไม่โหลดข้อมูลใหม่ (ไม่ refetch).
+   * Caller ต้องอัปเดต UI (setLayout) ก่อนเรียก — ฟังก์ชันนี้ไม่เรียก setLayout เพื่อไม่ให้ re-render ทั้งหน้าหลัง save
+   */
   const persistLayout = useCallback(async (next: CabilityLayout) => {
-    setLayout(next);
-    setSaveStatus('saving');
+    lastLayoutCache = next;
+    saveStatusRef.current?.setSaveStatus('saving');
     try {
       const ok = await saveLayout(next);
-      setSaveStatus(ok ? 'ok' : 'error');
-      if (ok) setTimeout(() => setSaveStatus('idle'), 2000);
+      saveStatusRef.current?.setSaveStatus(ok ? 'ok' : 'error');
+      if (ok) setTimeout(() => saveStatusRef.current?.setSaveStatus('idle'), 2000);
     } catch {
-      setSaveStatus('error');
+      saveStatusRef.current?.setSaveStatus('error');
     }
   }, []);
+
+  const handleCabColsChange = useCallback((cabId: string, value: 12 | 6 | 4 | 3) => {
+    const layout = layoutRef.current;
+    const cab = layout.cabs[cabId];
+    if (!cab) return;
+    const next = { ...layout, cabs: { ...layout.cabs } };
+    next.cabs[cabId] = { ...cab, cols: value };
+    savedScrollYRef.current = window.scrollY;
+    setLayout(next);
+    persistLayout(next);
+  }, [persistLayout]);
+
+  const handleProjectColsChange = useCallback((cabId: string, projectId: string, cols: 12 | 6 | 4 | 3) => {
+    const layout = layoutRef.current;
+    const cab = layout.cabs[cabId];
+    if (!cab) return;
+    const next = { ...layout, cabs: { ...layout.cabs } };
+    next.cabs[cabId] = {
+      ...cab,
+      projects: cab.projects.map((p) => (p.id === projectId ? { ...p, cols } : p)),
+    };
+    savedScrollYRef.current = window.scrollY;
+    setLayout(next);
+    persistLayout(next);
+  }, [persistLayout]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over) return;
+      savedScrollYRef.current = window.scrollY;
       const overId = String(over.id);
 
       const projectPayload = parseProjectDragId(String(active.id));
@@ -191,6 +264,7 @@ export default function CapabilityManagePage() {
             ...targetCab,
             projects: [...targetCab.projects, project],
           };
+          setLayout(next);
           persistLayout(next);
           return;
         }
@@ -217,12 +291,14 @@ export default function CapabilityManagePage() {
               .filter(Boolean) as ProjectInCab[];
             const next = { ...layout, cabs: { ...layout.cabs } };
             next.cabs[sourceCabId] = { ...sourceCab, projects: ordered };
+            setLayout(next);
             persistLayout(next);
           } else {
             targetProjects.splice(insertIndex, 0, project);
             const next = { ...layout, cabs: { ...layout.cabs } };
             next.cabs[sourceCabId] = { ...sourceCab, projects: sourceProjects };
             next.cabs[targetCabId] = { ...targetCab, projects: targetProjects };
+            setLayout(next);
             persistLayout(next);
           }
         }
@@ -238,7 +314,9 @@ export default function CapabilityManagePage() {
         const to = layout.cabOrder.indexOf(overCabId);
         if (from === -1 || to === -1) return;
         const nextOrder = arrayMove(layout.cabOrder, from, to);
-        persistLayout({ ...layout, cabOrder: nextOrder });
+        const nextLayout = { ...layout, cabOrder: nextOrder };
+        setLayout(nextLayout);
+        persistLayout(nextLayout);
       }
     },
     [layout, persistLayout]
@@ -249,14 +327,16 @@ export default function CapabilityManagePage() {
     const name = cabNameInput.trim();
     if (!name) return;
     const existing = Object.keys(layout.cabs);
-    const id = ensureUniqueSlug(slugFromName(name), existing);
+    const id = ensureUniqueId(nameToId(name), existing);
     const next: CabilityLayout = {
       cabOrder: [...layout.cabOrder, id],
       cabs: { ...layout.cabs, [id]: { id, name, cols: 4, projects: [] } },
     };
-    persistLayout(next);
+    savedScrollYRef.current = window.scrollY;
+    setLayout(next);
     setCabNameInput('');
     setAddCabOpen(false);
+    persistLayout(next);
   };
 
   const handleEditCab = (e: React.FormEvent) => {
@@ -268,9 +348,11 @@ export default function CapabilityManagePage() {
     if (!cab) return;
     const next = { ...layout, cabs: { ...layout.cabs } };
     next.cabs[editingCabId] = { ...cab, name };
-    persistLayout(next);
+    savedScrollYRef.current = window.scrollY;
+    setLayout(next);
     setEditingCabId(null);
     setCabNameInput('');
+    persistLayout(next);
   };
 
   const handleDeleteCab = (cabId: string) => {
@@ -279,8 +361,11 @@ export default function CapabilityManagePage() {
     if (!confirm(`ลบกลุ่ม "${cabName}" ใช่หรือไม่? โปรเจกต์ภายในจะถูกเอาออกจากกลุ่มนี้ (ไม่ลบข้อมูลโปรเจกต์)`)) return;
     const nextOrder = layout.cabOrder.filter((id) => id !== cabId);
     const { [cabId]: _, ...restCabs } = layout.cabs;
-    persistLayout({ cabOrder: nextOrder, cabs: restCabs });
+    const nextLayout = { cabOrder: nextOrder, cabs: restCabs };
+    savedScrollYRef.current = window.scrollY;
+    setLayout(nextLayout);
     setEditingCabId(null);
+    persistLayout(nextLayout);
   };
 
   const handleAddProject = (e: React.FormEvent) => {
@@ -299,17 +384,19 @@ export default function CapabilityManagePage() {
     } else {
       name = newProjectName.trim();
       if (!name) return;
-      id = toCamelCase(name);
+      id = nameToId(name);
     }
     const existingIds = cab.projects.map((p) => p.id);
     if (existingIds.includes(id)) return;
     const project: ProjectInCab = { id, name, cols: 4 };
     const next = { ...layout, cabs: { ...layout.cabs } };
     next.cabs[cabId] = { ...cab, projects: [...cab.projects, project] };
-    persistLayout(next);
+    savedScrollYRef.current = window.scrollY;
+    setLayout(next);
     setSelectedProjectId(null);
     setNewProjectName('');
     setAddProjectCabId(null);
+    persistLayout(next);
   };
 
   const handleRemoveProject = (cabId: string, projectId: string) => {
@@ -320,6 +407,8 @@ export default function CapabilityManagePage() {
       ...cab,
       projects: cab.projects.filter((p) => p.id !== projectId),
     };
+    savedScrollYRef.current = window.scrollY;
+    setLayout(next);
     persistLayout(next);
   };
 
@@ -331,25 +420,19 @@ export default function CapabilityManagePage() {
     navigate(`/project?id=${encodeURIComponent(project.id)}`);
   };
 
-  function cabWidthClass(cols?: 12 | 6 | 4 | 3): string {
-    const value = cols && [12, 6, 4, 3].includes(cols) ? cols : 4;
-    switch (value) {
-      case 12:
-        return 'col-span-12';
-      case 6:
-        return 'col-span-12 sm:col-span-6';
-      case 4:
-        return 'col-span-12 sm:col-span-4';
-      case 3:
-        return 'col-span-12 sm:col-span-3';
-      default:
-        return 'col-span-12';
-    }
-  }
-
-  function SortableCabCard({ cabId }: { cabId: string; key?: React.Key }) {
-    const cab = layout.cabs[cabId];
+  function SortableCabCard({
+    cabId,
+    cab,
+    editingCabId: editingCabIdProp,
+    cabNameInput: cabNameInputProp,
+  }: {
+    cabId: string;
+    cab: Cab;
+    editingCabId: string | null;
+    cabNameInput: string;
+  }) {
     if (!cab) return null;
+    const isEditing = editingCabIdProp === cabId;
     const {
       attributes,
       listeners,
@@ -388,11 +471,11 @@ export default function CapabilityManagePage() {
             >
               <GripVertical className="w-4 h-4" />
             </button>
-            <h3 className="flex-1 font-semibold text-[var(--color-text)] truncate">
-              {editingCabId === cabId ? (
+            <h3 className="flex-1 font-semibold text-[var(--color-text)] truncate transition-[color,opacity] duration-200 ease-out">
+              {isEditing ? (
                 <input
                   type="text"
-                  value={cabNameInput}
+                  value={cabNameInputProp}
                   onChange={(e) => setCabNameInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleEditCab(e as any)}
                   className="w-full bg-transparent border-b border-[var(--color-border)] focus:outline-none focus:border-[var(--color-primary)] text-[var(--color-text)]"
@@ -404,7 +487,7 @@ export default function CapabilityManagePage() {
             </h3>
             <div
               className={`flex items-center gap-1.5 transition-opacity ${
-                editingCabId === cabId ? 'opacity-100' : 'opacity-0 group-hover/cab:opacity-100'
+                isEditing ? 'opacity-100' : 'opacity-0 group-hover/cab:opacity-100'
               }`}
             >
               <div className="hidden sm:block">
@@ -415,10 +498,7 @@ export default function CapabilityManagePage() {
                   id={`cab-cols-${cabId}`}
                   value={cab.cols ?? 4}
                   onChange={(e) => {
-                    const value = Number(e.target.value) as 12 | 6 | 4 | 3;
-                    const next = { ...layout, cabs: { ...layout.cabs } };
-                    next.cabs[cabId] = { ...cab, cols: value };
-                    persistLayout(next);
+                    handleCabColsChange(cabId, Number(e.target.value) as 12 | 6 | 4 | 3);
                   }}
                   title="ปรับความกว้างกล่องกลุ่ม"
                   className="text-[10px] px-1.5 py-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
@@ -429,7 +509,7 @@ export default function CapabilityManagePage() {
                   <option value={3}>1/4 แถว</option>
                 </select>
               </div>
-              {editingCabId === cabId ? (
+              {isEditing ? (
                 <>
                   <button
                     type="button"
@@ -473,7 +553,16 @@ export default function CapabilityManagePage() {
           </div>
           <div className="p-3 min-h-[100px]">
             <SortableContext items={sortableProjectIds} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-12 gap-2">
+              <motion.div
+                layout
+                className="grid grid-cols-12 gap-2"
+                transition={{
+                  layout: {
+                    duration: 0.4,
+                    ease: [0.32, 0.72, 0, 1],
+                  },
+                }}
+              >
                 {cab.projects.map((project) => {
                   const summary = projectList.find((p) => p.id === project.id);
                   const displayStatus = summary?.summaryStatus ?? project.status ?? null;
@@ -481,27 +570,19 @@ export default function CapabilityManagePage() {
                     <React.Fragment key={`${cabId}-${project.id}`}>
                       <SortableProjectCard
                         cabId={cabId}
+                        cabName={cab.name}
                         project={project}
                         displayStatus={displayStatus}
                         onRemove={() => handleRemoveProject(cabId, project.id)}
                         onDoubleClick={() => handleDoubleClickProject(project)}
                         onChangeCols={(cols) => {
-                          const next = { ...layout, cabs: { ...layout.cabs } };
-                          const currentCab = next.cabs[cabId];
-                          if (!currentCab) return;
-                          next.cabs[cabId] = {
-                            ...currentCab,
-                            projects: currentCab.projects.map((p) =>
-                              p.id === project.id ? { ...p, cols } : p
-                            ),
-                          };
-                          persistLayout(next);
+                          handleProjectColsChange(cabId, project.id, cols);
                         }}
                       />
                     </React.Fragment>
                   );
                 })}
-              </div>
+              </motion.div>
             </SortableContext>
             {cab.projects.length === 0 && (
               <p className="text-sm text-[var(--color-text-muted)] italic py-6 text-center">
@@ -527,14 +608,7 @@ export default function CapabilityManagePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {saveStatus === 'saving' && (
-            <span className="text-sm text-[var(--color-text-muted)]">กำลังบันทึก...</span>
-          )}
-          {saveStatus === 'ok' && (
-            <span className="text-sm text-[var(--color-primary)] flex items-center gap-1">
-              <Save className="w-4 h-4" /> บันทึกแล้ว
-            </span>
-          )}
+          <SaveStatusIndicator ref={saveStatusRef} onSettled={restoreScrollIfNeeded} />
           <button
             type="button"
             onClick={() => {
@@ -558,7 +632,7 @@ export default function CapabilityManagePage() {
         </div>
       )}
 
-      {loading ? (
+      {loading && !lastLayoutCache ? (
         <div className="py-12 text-center text-[var(--color-text-muted)]">กำลังโหลด...</div>
       ) : layout.cabOrder.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-12 text-center">
@@ -587,9 +661,29 @@ export default function CapabilityManagePage() {
             strategy={rectSortingStrategy}
           >
             <div className="grid grid-cols-12 gap-6">
-              {layout.cabOrder.map((cabId) => (
-                <SortableCabCard key={cabId} cabId={cabId} />
-              ))}
+              {layout.cabOrder.map((cabId) => {
+                const cab = layout.cabs[cabId];
+                if (!cab) return null;
+                const isEditingThisCab = editingCabId === cabId;
+                const scopedEditingCabId = isEditingThisCab ? editingCabId : null;
+                const scopedCabNameInput = isEditingThisCab ? cabNameInput : '';
+                return (
+                  <MemoizedCabCard
+                    key={cabId}
+                    cabId={cabId}
+                    cab={cab}
+                    editingCabId={scopedEditingCabId}
+                    cabNameInput={scopedCabNameInput}
+                  >
+                    <SortableCabCard
+                      cabId={cabId}
+                      cab={cab}
+                      editingCabId={scopedEditingCabId}
+                      cabNameInput={scopedCabNameInput}
+                    />
+                  </MemoizedCabCard>
+                );
+              })}
             </div>
           </SortableContext>
         </DndContext>

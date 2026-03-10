@@ -1,0 +1,12 @@
+id: key_account_managment
+name: Key Account Managment
+teams:
+  - name: OTC
+    topics:
+      - title: SalesTeams App
+        subTopics:
+          - title: เข้าระบบแล้วช้ามาก ENV UAT
+            status: GREEN
+            details:
+              - text: นัดตรวจสอบว่าทำไมถึงช้า หาสาเหตุและวิธีการแก้ไข
+                done: false

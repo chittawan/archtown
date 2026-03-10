@@ -1,2 +1,7 @@
+id: hc
 name: HC
 cols: 4
+projects:
+  - id: bev_life_platform
+    name: BevLife Platform
+    cols: 12

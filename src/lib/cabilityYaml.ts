@@ -27,17 +27,20 @@ interface ProjectInCabYaml {
 }
 
 interface CabYamlRoot {
+  id?: string;
   name: string;
   cols?: number;
   projects?: ProjectInCabYaml[];
 }
 
-/** Parse YAML string into Cab; id comes from filename */
+/** Parse YAML string into Cab; id มาจาก filename แต่ถ้ามีใน YAML จะใช้เป็นหลัก */
 export function yamlToCab(id: string, yamlStr: string): Cab {
   const raw = yaml.load(yamlStr) as CabYamlRoot | null;
   if (!raw || typeof raw !== 'object') {
     return { id: safeId(id), name: 'Cab', projects: [] };
   }
+  const cabId =
+    typeof raw.id === 'string' && raw.id.trim() ? safeId(raw.id.trim()) : safeId(id);
   const name = typeof raw.name === 'string' ? raw.name.trim() : 'Cab';
   const cols = isCols(raw.cols) ? raw.cols : undefined;
   const projects: ProjectInCab[] = [];
@@ -50,12 +53,13 @@ export function yamlToCab(id: string, yamlStr: string): Cab {
     const projCols = isCols(p.cols) ? p.cols : undefined;
     projects.push({ id: projectId, name: projectName, status, cols: projCols });
   }
-  return { id: safeId(id), name, cols, projects };
+  return { id: cabId, name, cols, projects };
 }
 
 /** Serialize Cab to YAML */
 export function cabToYaml(cab: Cab): string {
   const root: CabYamlRoot = {
+    id: cab.id,
     name: cab.name || 'Cab',
     cols: cab.cols,
     projects:

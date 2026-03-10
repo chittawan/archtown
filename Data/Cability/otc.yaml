@@ -1,9 +1,13 @@
+id: otc
 name: OTC
 cols: 4
 projects:
-  - id: salesteamsPlatform
+  - id: salesteams_platform
     name: salesteams platform
     cols: 12
-  - id: keyAccountManagment
+  - id: key_account_managment
     name: Key Account Managment
+    cols: 12
+  - id: product_and_price
+    name: Product And Price
     cols: 12
