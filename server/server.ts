@@ -115,6 +115,7 @@ app.get('/api/projects', (_req, res) => {
     const list: Array<{
       id: string;
       name: string;
+      description?: string | null;
       summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null;
     }> = [];
     const seenIds = new Set<string>();
@@ -126,11 +127,16 @@ app.get('/api/projects', (_req, res) => {
     ) => {
       let name = fileId;
       let summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null = null;
+      let description: string | null = null;
       let id = fileId;
       try {
         if (isYaml) {
           const data = yamlToProject(content);
           name = data.projectName || fileId;
+          description =
+            typeof data.description === 'string' && data.description.trim()
+              ? data.description.trim()
+              : null;
           if (data.id && typeof data.id === 'string' && data.id.trim()) {
             id = data.id.trim();
           }
@@ -159,7 +165,7 @@ app.get('/api/projects', (_req, res) => {
       } catch (_) {}
       if (seenIds.has(id)) return;
       seenIds.add(id);
-      list.push({ id, name, summaryStatus });
+      list.push({ id, name, description, summaryStatus });
     };
     const yamlFiles = files.filter((f) => f.endsWith('.yaml'));
     const mdFiles = files.filter((f) => f.endsWith('.md'));

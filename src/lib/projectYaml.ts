@@ -27,12 +27,14 @@ interface ProjectYamlTeam {
 interface ProjectYamlRoot {
   id?: string;
   name: string;
+  description?: string;
   teams: ProjectYamlTeam[];
 }
 
 export interface ProjectData {
   id?: string;
   projectName: string;
+  description?: string;
   teams: Team[];
 }
 
@@ -48,6 +50,10 @@ export function yamlToProject(yamlStr: string): ProjectData {
   }
   const projectName = typeof raw.name === 'string' ? raw.name.trim() : 'Project';
   const id = typeof raw.id === 'string' ? raw.id.trim() : undefined;
+  const description =
+    typeof raw.description === 'string' && raw.description.trim()
+      ? raw.description.trim()
+      : undefined;
   const teams: Team[] = [];
   const teamsList = Array.isArray(raw.teams) ? raw.teams : [];
   for (const t of teamsList) {
@@ -88,7 +94,7 @@ export function yamlToProject(yamlStr: string): ProjectData {
       topics,
     });
   }
-  return { id, projectName, teams };
+  return { id, projectName, description, teams };
 }
 
 /** Serialize project data to YAML; id ใช้เชื่อมกับ cability */
@@ -96,6 +102,7 @@ export function projectToYaml(data: ProjectData): string {
   const root: ProjectYamlRoot = {
     ...(data.id && { id: data.id }),
     name: data.projectName.trim() || 'Project',
+    ...(data.description && { description: data.description }),
     teams: data.teams.map((t) => ({
       name: t.name,
       topics: t.topics.map((top) => ({

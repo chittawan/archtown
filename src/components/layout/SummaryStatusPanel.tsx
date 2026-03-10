@@ -89,6 +89,20 @@ export default function SummaryStatusPanel() {
   const groupedCritical = groupByCabAndProject(data.critical);
   const groupedWarning = groupByCabAndProject(data.warning);
 
+  const dispatchOpen = (cabName: string, projectName: string) => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('summary-project-open', {
+        detail: { cabName, projectName },
+      })
+    );
+  };
+
+  const dispatchHover = (detail: { cabName: string; projectName: string } | null) => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('summary-project-hover', { detail }));
+  };
+
   if (!hasCritical && !hasWarning) {
     return (
       <div className="p-4 text-sm text-[var(--color-text-muted)]">
@@ -122,28 +136,22 @@ export default function SummaryStatusPanel() {
               {groupedCritical.map((item, i) => (
                 <li
                   key={`c-${i}`}
-                  className="group text-sm border-l-2 border-red-500/50 pl-2 py-0.5 rounded-sm hover:bg-red-500/5 hover:border-red-500/80 transition-colors"
-                  onMouseEnter={() => {
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(
-                        new CustomEvent('summary-project-hover', {
-                          detail: {
-                            cabName: item.cabName,
-                            projectName: item.projectName,
-                          },
-                        })
-                      );
+                  role="button"
+                  tabIndex={0}
+                  title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
+                  className="group text-sm border-l-2 border-red-500/50 pl-2 py-0.5 rounded-sm cursor-pointer
+                    hover:bg-red-500/5 hover:border-red-500/80 hover:shadow-sm
+                    focus:outline-none focus:ring-1 focus:ring-red-500/40 focus:ring-offset-1 focus:ring-offset-[var(--color-surface)]
+                    transition-colors duration-150"
+                  onDoubleClick={() => dispatchOpen(item.cabName, item.projectName)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      dispatchOpen(item.cabName, item.projectName);
                     }
                   }}
-                  onMouseLeave={() => {
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(
-                        new CustomEvent('summary-project-hover', {
-                          detail: null,
-                        })
-                      );
-                    }
-                  }}
+                  onMouseEnter={() => dispatchHover({ cabName: item.cabName, projectName: item.projectName })}
+                  onMouseLeave={() => dispatchHover(null)}
                 >
                   <span className="font-medium text-[var(--color-text)] group-hover:text-red-600 dark:group-hover:text-red-400">
                     {item.cabName}
@@ -172,28 +180,22 @@ export default function SummaryStatusPanel() {
               {groupedWarning.map((item, i) => (
                 <li
                   key={`w-${i}`}
-                  className="group text-sm border-l-2 border-amber-500/50 pl-2 py-0.5 rounded-sm hover:bg-amber-500/5 hover:border-amber-500/80 transition-colors"
-                  onMouseEnter={() => {
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(
-                        new CustomEvent('summary-project-hover', {
-                          detail: {
-                            cabName: item.cabName,
-                            projectName: item.projectName,
-                          },
-                        })
-                      );
+                  role="button"
+                  tabIndex={0}
+                  title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
+                  className="group text-sm border-l-2 border-amber-500/50 pl-2 py-0.5 rounded-sm cursor-pointer
+                    hover:bg-amber-500/5 hover:border-amber-500/80 hover:shadow-sm
+                    focus:outline-none focus:ring-1 focus:ring-amber-500/40 focus:ring-offset-1 focus:ring-offset-[var(--color-surface)]
+                    transition-colors duration-150"
+                  onDoubleClick={() => dispatchOpen(item.cabName, item.projectName)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      dispatchOpen(item.cabName, item.projectName);
                     }
                   }}
-                  onMouseLeave={() => {
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(
-                        new CustomEvent('summary-project-hover', {
-                          detail: null,
-                        })
-                      );
-                    }
-                  }}
+                  onMouseEnter={() => dispatchHover({ cabName: item.cabName, projectName: item.projectName })}
+                  onMouseLeave={() => dispatchHover(null)}
                 >
                   <span className="font-medium text-[var(--color-text)] group-hover:text-amber-600 dark:group-hover:text-amber-400">
                     {item.cabName}

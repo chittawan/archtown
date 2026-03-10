@@ -50,6 +50,7 @@ export interface SortableProjectCardProps {
   cabName: string;
   project: ProjectInCab;
   displayStatus: ProjectStatus | null;
+  description?: string | null;
   onRemove: () => void;
   onDoubleClick: () => void;
   onChangeCols: (cols: 12 | 6 | 4 | 3) => void;
@@ -60,6 +61,7 @@ export function SortableProjectCard({
   cabName,
   project,
   displayStatus,
+  description,
   onRemove,
   onDoubleClick,
   onChangeCols,
@@ -76,6 +78,8 @@ export function SortableProjectCard({
   const style = { transform: CSS.Transform.toString(transform), transition };
   const projectWidthClass = cabWidthClass(project.cols);
   const accentClass = displayStatus ? STATUS_ACCENT[displayStatus] : 'border-l-[var(--color-border)]';
+  const descriptionText =
+    typeof description === 'string' && description.trim() ? description.trim() : '';
   const [highlightedFromSummary, setHighlightedFromSummary] = useState(false);
   const [removeHoldProgress, setRemoveHoldProgress] = useState(0);
   const removeHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -194,14 +198,16 @@ export function SortableProjectCard({
               <GripVertical className="w-4 h-4" />
             </button>
             <div className="flex-1 min-w-0 relative flex items-center">
-              {/* Label — แสดงปกติตลอด */}
+              {/* Label — แสดงชื่อ + description จาก project */}
               <div className="flex flex-col min-w-0 py-0.5 pointer-events-none">
                 <p className="text-sm font-medium text-[var(--color-text)] line-clamp-2 break-words leading-snug">
                   {project.name}
                 </p>
-                <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]/80">
-                  ดับเบิลคลิกเพื่อเปิด
-                </p>
+                {descriptionText && (
+                  <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]/90 line-clamp-2 break-words">
+                    {descriptionText}
+                  </p>
+                )}
               </div>
               {/* ปุ่มทับ label อีกชั้น — โชว์ตอน hover, ชิดขวา */}
               <div

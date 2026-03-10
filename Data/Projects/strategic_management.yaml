@@ -1,5 +1,6 @@
 id: strategic_management
 name: Strategic Management
+description: ภาพรวมโครงสร้างและทิศทางเชิงกลยุทธ์ขององค์กร
 teams:
   - name: Infra (Network)
     topics:

@@ -26,10 +26,11 @@ export const SaveStatusIndicator = forwardRef<SaveStatusIndicatorRef, SaveStatus
       onSettledRef.current?.();
     }, [saveStatus]);
 
-    if (saveStatus === 'idle' || saveStatus === 'error') {
+    if (saveStatus === 'idle') return null;
+    if (saveStatus === 'error') {
       return (
-        <span className="text-sm text-[var(--color-text-muted)]/70 flex items-center gap-1 min-w-[4rem]">
-          {saveStatus === 'error' ? 'บันทึกไม่สำเร็จ' : '—'}
+        <span className="text-sm text-[var(--color-text-muted)]/80 flex items-center gap-1">
+          บันทึกไม่สำเร็จ
         </span>
       );
     }

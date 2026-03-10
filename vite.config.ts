@@ -85,17 +85,22 @@ export default defineConfig(({mode}) => {
             try {
               fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
               const files = fs.readdirSync(DATA_PROJECTS_DIR);
-              const list: Array<{ id: string; name: string; summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null }> = [];
+              const list: Array<{ id: string; name: string; description?: string | null; summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null }> = [];
               const seenIds = new Set<string>();
               const addFromFile = (f: string, id: string, content: string, isYaml: boolean) => {
                 if (seenIds.has(id)) return;
                 seenIds.add(id);
                 let name = id;
                 let summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null = null;
+                let description: string | null = null;
                 try {
                   if (isYaml) {
                     const data = yamlToProject(content);
                     name = data.projectName || id;
+                    description =
+                      typeof data.description === 'string' && data.description.trim()
+                        ? data.description.trim()
+                        : null;
                     for (const t of data.teams) {
                       for (const top of t.topics) {
                         for (const sub of top.subTopics) {
@@ -117,7 +122,7 @@ export default defineConfig(({mode}) => {
                     }
                   }
                 } catch (_) {}
-                list.push({ id, name, summaryStatus });
+                list.push({ id, name, description, summaryStatus });
               };
               const yamlFiles = files.filter((f) => f.endsWith('.yaml'));
               const mdFiles = files.filter((f) => f.endsWith('.md'));

@@ -35,9 +35,12 @@ import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/cability/ProjectCard';
 import { SaveStatusIndicator, type SaveStatusIndicatorRef } from '../../components/cability/SaveStatusIndicator';
 
+const SortableProjectCardAny = SortableProjectCard as any;
+
 export interface ProjectSummary {
   id: string;
   name: string;
+  description?: string | null;
   summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null;
 }
 
@@ -89,6 +92,8 @@ function cabWidthClass(cols?: 12 | 6 | 4 | 3): string {
 
 /** Cache ล่าสุดของ layout ใช้เพื่อไม่ให้แสดง "กำลังโหลด" ตอน remount (เช่น หลัง save) */
 let lastLayoutCache: CabilityLayout | null = null;
+/** Cache ล่าสุดของรายชื่อโปรเจกต์ + summaryStatus เพื่อไม่ให้ status หายตอนกลับเข้าหน้า */
+let lastProjectListCache: ProjectSummary[] | null = null;
 
 const MemoizedCabCard = memo(function MemoizedCabCard({
   cab,
@@ -123,7 +128,7 @@ export default function CapabilityManagePage() {
   const [editingCabId, setEditingCabId] = useState<string | null>(null);
   const [cabNameInput, setCabNameInput] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
-  const [projectList, setProjectList] = useState<ProjectSummary[]>([]);
+  const [projectList, setProjectList] = useState<ProjectSummary[]>(() => lastProjectListCache ?? []);
   const [projectListLoading, setProjectListLoading] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [projectSelectOpen, setProjectSelectOpen] = useState(false);
@@ -163,6 +168,7 @@ export default function CapabilityManagePage() {
     setProjectListLoading(true);
     try {
       const list = await fetchProjectList();
+      lastProjectListCache = list;
       setProjectList(list);
     } finally {
       setProjectListLoading(false);
@@ -412,13 +418,49 @@ export default function CapabilityManagePage() {
     persistLayout(next);
   };
 
-  const handleDoubleClickProject = (project: ProjectInCab) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('projectName', project.name);
-      localStorage.setItem('projectId', project.id);
+  const handleDoubleClickProject = useCallback(
+    (project: ProjectInCab) => {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('projectName', project.name);
+        localStorage.setItem('projectId', project.id);
+      }
+      navigate(`/project?id=${encodeURIComponent(project.id)}`);
+    },
+    [navigate]
+  );
+
+  useEffect(() => {
+    function handleSummaryOpen(event: Event) {
+      const custom = event as CustomEvent<
+        | {
+            cabName: string;
+            projectName: string;
+          }
+        | null
+      >;
+      const detail = custom.detail;
+      if (!detail) return;
+
+      const layout = layoutRef.current;
+      const cab = Object.values<Cab>(layout.cabs).find(
+        (c) => c.name === detail.cabName
+      );
+      if (!cab) return;
+      const project = cab.projects.find((p) => p.name === detail.projectName);
+      if (!project) return;
+
+      handleDoubleClickProject(project);
     }
-    navigate(`/project?id=${encodeURIComponent(project.id)}`);
-  };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('summary-project-open', handleSummaryOpen as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('summary-project-open', handleSummaryOpen as EventListener);
+      }
+    };
+  }, [handleDoubleClickProject]);
 
   function SortableCabCard({
     cabId,
@@ -566,13 +608,15 @@ export default function CapabilityManagePage() {
                 {cab.projects.map((project) => {
                   const summary = projectList.find((p) => p.id === project.id);
                   const displayStatus = summary?.summaryStatus ?? project.status ?? null;
+                  const description = summary?.description ?? null;
                   return (
                     <React.Fragment key={`${cabId}-${project.id}`}>
-                      <SortableProjectCard
+                      <SortableProjectCardAny
                         cabId={cabId}
                         cabName={cab.name}
                         project={project}
                         displayStatus={displayStatus}
+                        description={description}
                         onRemove={() => handleRemoveProject(cabId, project.id)}
                         onDoubleClick={() => handleDoubleClickProject(project)}
                         onChangeCols={(cols) => {
