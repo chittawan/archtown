@@ -551,7 +551,7 @@ export default function CapabilityManagePage() {
               )}
             </div>
           </div>
-          <div className="p-3 min-h-[100px]">
+          <div className="p-3 min-h-0">
             <SortableContext items={sortableProjectIds} strategy={rectSortingStrategy}>
               <motion.div
                 layout
@@ -585,7 +585,7 @@ export default function CapabilityManagePage() {
               </motion.div>
             </SortableContext>
             {cab.projects.length === 0 && (
-              <p className="text-sm text-[var(--color-text-muted)] italic py-6 text-center">
+              <p className="text-sm text-[var(--color-text-muted)] italic py-2 text-center">
                 ยังไม่มีโปรเจกต์ในกลุ่มนี้ — กด <span className="font-medium not-italic text-[var(--color-primary)]">+</span> เพื่อเพิ่ม หรือลากการ์ดจากกลุ่มอื่นมาวาง
               </p>
             )}
