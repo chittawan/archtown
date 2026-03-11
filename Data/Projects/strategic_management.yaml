@@ -10,13 +10,14 @@ teams:
             status: YELLOW
             details:
               - text: ประสานงาน Load test performance - with sap
-                done: false
+                done: true
+                dueDate: '2026-03-11'
               - text: เก็บผล Recovery
                 done: false
-                dueDate: '2026-03-11'
+                dueDate: '2026-03-13'
               - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
                 done: false
-                dueDate: '2026-03-11'
+                dueDate: '2026-03-13'
       - title: Kafka
         subTopics:
           - title: kafka confluent poc roadmap
