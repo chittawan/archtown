@@ -1,0 +1,71 @@
+/* Theme overrides for react-calendar-timeline */
+.tasks-timeline-wrapper.react-calendar-timeline,
+.tasks-timeline-wrapper .react-calendar-timeline {
+  --rct-border: var(--color-border);
+  --rct-bg-odd: var(--color-overlay);
+  --rct-bg-sidebar: var(--color-surface);
+  --rct-bg-header: var(--color-primary);
+  --rct-color-text: var(--color-text);
+  --rct-color-muted: var(--color-text-muted);
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-sidebar,
+.tasks-timeline-wrapper .react-calendar-timeline .rct-sidebar .rct-sidebar-row,
+.tasks-timeline-wrapper .react-calendar-timeline .rct-vertical-lines .rct-vl,
+.tasks-timeline-wrapper .react-calendar-timeline .rct-horizontal-lines .rct-hl-even,
+.tasks-timeline-wrapper .react-calendar-timeline .rct-horizontal-lines .rct-hl-odd {
+  border-color: var(--rct-border) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-sidebar .rct-sidebar-row-odd {
+  background: var(--rct-bg-odd) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-sidebar .rct-sidebar-row {
+  color: var(--rct-color-text);
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-header-root {
+  background: var(--rct-bg-header) !important;
+  border-color: var(--rct-border) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-dateHeader {
+  background-color: var(--color-surface) !important;
+  color: var(--rct-color-text);
+  border-color: var(--rct-border) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-dateHeader-primary {
+  background: var(--color-primary-muted) !important;
+  color: var(--color-primary) !important;
+  border-color: var(--rct-border) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-item .rct-item-content {
+  color: var(--rct-color-text);
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: 1.2;
+  padding: 2px 6px;
+  min-height: 100%;
+  word-break: break-word;
+  min-width: 140px; /* ให้ label แสดงได้อย่างน้อย ~140px */
+}
+.tasks-timeline-wrapper .react-calendar-timeline .rct-item {
+  min-width: 140px;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-vertical-lines .rct-vl.rct-day-6,
+.tasks-timeline-wrapper .react-calendar-timeline .rct-vertical-lines .rct-vl.rct-day-0 {
+  background: rgba(245, 158, 11, 0.08) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-item-overdue .rct-item-content {
+  background: rgba(244, 63, 94, 0.25) !important;
+}
+
+.tasks-timeline-wrapper .react-calendar-timeline .rct-item-near .rct-item-content {
+  background: rgba(245, 158, 11, 0.2) !important;
+}

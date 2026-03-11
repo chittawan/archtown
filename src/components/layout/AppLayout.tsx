@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3 } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
-  { path: '/project', label: 'Project', icon: FolderKanban },
   { path: '/teams', label: 'Teams', icon: Users },
+  { path: '/tasks', label: 'Tasks', icon: ListTodo },
 ];
 
 const RIGHT_PANEL_STORAGE_KEY = 'archtown-right-panel-open';

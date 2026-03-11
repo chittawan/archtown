@@ -1,0 +1,124 @@
+/* Override react-calendar to use app theme (--color-*) and weekend/task styles */
+.tasks-calendar-wrapper {
+  --rc-bg: var(--color-surface);
+  --rc-border: var(--color-border);
+  --rc-text: var(--color-text);
+  --rc-text-muted: var(--color-text-muted);
+  --rc-hover: var(--color-overlay);
+  --rc-today: var(--color-primary-muted);
+  --rc-weekend: rgba(245, 158, 11, 0.12);
+  --rc-weekend-dark: rgba(245, 158, 11, 0.18);
+}
+
+.tasks-calendar-wrapper .react-calendar {
+  width: 100%;
+  max-width: 100%;
+  background: var(--rc-bg);
+  border: none;
+  border-radius: 1rem;
+  font-family: inherit;
+  line-height: 1.25;
+}
+
+.tasks-calendar-wrapper .react-calendar__navigation {
+  margin-bottom: 0.5rem;
+}
+
+.tasks-calendar-wrapper .react-calendar__navigation button {
+  color: var(--rc-text);
+}
+
+.tasks-calendar-wrapper .react-calendar__navigation button:disabled {
+  background: var(--rc-hover);
+  color: var(--rc-text-muted);
+  opacity: 0.7;
+}
+
+.tasks-calendar-wrapper .react-calendar__navigation button:enabled:hover,
+.tasks-calendar-wrapper .react-calendar__navigation button:enabled:focus {
+  background: var(--rc-hover);
+  color: var(--color-primary);
+}
+
+.tasks-calendar-wrapper .react-calendar__month-view__weekdays__weekday {
+  color: var(--rc-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.tasks-calendar-wrapper .react-calendar__month-view__days__day--weekend {
+  color: var(--rc-text-muted);
+}
+
+.tasks-calendar-wrapper .react-calendar__month-view__days__day--weekend.react-calendar__tile {
+  background: var(--rc-weekend);
+}
+
+.dark .tasks-calendar-wrapper .react-calendar__month-view__days__day--weekend.react-calendar__tile {
+  background: var(--rc-weekend-dark);
+}
+
+.tasks-calendar-wrapper .react-calendar__tile {
+  color: var(--rc-text);
+  font-size: 0.8rem;
+  padding: 0.5rem 0.25rem;
+  min-height: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.tasks-calendar-wrapper .react-calendar__tile:enabled:hover,
+.tasks-calendar-wrapper .react-calendar__tile:enabled:focus {
+  background: var(--rc-hover);
+}
+
+.tasks-calendar-wrapper .react-calendar__tile--now {
+  background: var(--rc-today);
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.tasks-calendar-wrapper .react-calendar__tile--now:enabled:hover,
+.tasks-calendar-wrapper .react-calendar__tile--now:enabled:focus {
+  background: var(--color-primary-muted-hover, var(--rc-today));
+}
+
+.tasks-calendar-wrapper .react-calendar__month-view__days__day--neighboringMonth {
+  color: var(--rc-text-muted);
+  opacity: 0.6;
+}
+
+.tasks-calendar-wrapper .react-calendar__tile abbr {
+  text-decoration: none;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Task dots under the date number */
+.tasks-calendar-wrapper .tasks-calendar-tile-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: center;
+  margin-top: 2px;
+  min-height: 14px;
+}
+
+.tasks-calendar-wrapper .tasks-calendar-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.tasks-calendar-wrapper .tasks-calendar-dot--overdue { background: #f43f5e; }
+.tasks-calendar-wrapper .tasks-calendar-dot--near { background: #f59e0b; }
+.tasks-calendar-wrapper .tasks-calendar-dot--mid { background: #0ea5e9; }
+.tasks-calendar-wrapper .tasks-calendar-dot--far { background: #10b981; }
+
+.tasks-calendar-wrapper .tasks-calendar-more {
+  font-size: 9px;
+  color: var(--rc-text-muted);
+  margin-top: 1px;
+}
