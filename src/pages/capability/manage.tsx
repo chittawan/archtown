@@ -662,7 +662,7 @@ export default function CapabilityManagePage() {
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-card)]"
           >
             <Plus className="w-4 h-4" />
-            เพิ่มกลุ่ม (Cap)
+            เพิ่มกลุ่ม
           </button>
         </div>
       </div>
