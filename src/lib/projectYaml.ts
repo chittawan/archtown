@@ -19,7 +19,7 @@ interface ProjectYamlTeam {
     subTopics: Array<{
       title: string;
       status: Status;
-      details?: Array<{ text: string; done: boolean }>;
+      details?: Array<{ text: string; done: boolean; dueDate?: string }>;
     }>;
   }>;
 }
@@ -70,9 +70,15 @@ export function yamlToProject(yamlStr: string): ProjectData {
         const details: SubTopicDetail[] = [];
         const detailList = Array.isArray(sub.details) ? sub.details : [];
         for (const d of detailList) {
+          const dueDate =
+            typeof (d as { dueDate?: string })?.dueDate === 'string' &&
+            (d as { dueDate: string }).dueDate.trim()
+              ? (d as { dueDate: string }).dueDate.trim()
+              : undefined;
           details.push({
             text: typeof d?.text === 'string' ? d.text : '',
             done: Boolean(d?.done),
+            ...(dueDate && { dueDate }),
           });
         }
         subTopics.push({
@@ -110,7 +116,11 @@ export function projectToYaml(data: ProjectData): string {
         subTopics: top.subTopics.map((sub) => ({
           title: sub.title,
           status: sub.status,
-          details: (sub.details ?? []).map((d) => ({ text: d.text, done: d.done })),
+          details: (sub.details ?? []).map((d) => ({
+            text: d.text,
+            done: d.done,
+            ...(d.dueDate && { dueDate: d.dueDate }),
+          })),
         })),
       })),
     })),

@@ -790,6 +790,41 @@ export default function ProjectManagePage() {
     );
   };
 
+  const updateSubTopicDetailDueDate = (
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    index: number,
+    dueDate: string | undefined
+  ) => {
+    setTeams(
+      teams.map((t) =>
+        t.id !== teamId
+          ? t
+          : {
+              ...t,
+              topics: t.topics.map((topic) =>
+                topic.id !== topicId
+                  ? topic
+                  : {
+                      ...topic,
+                      subTopics: topic.subTopics.map((s) => {
+                        if (s.id !== subTopicId) return s;
+                        const next = [...(s.details ?? [])];
+                        if (next[index])
+                          next[index] = {
+                            ...next[index],
+                            dueDate: dueDate && dueDate.trim() ? dueDate.trim() : undefined,
+                          };
+                        return { ...s, details: next };
+                      }),
+                    }
+              ),
+            }
+      )
+    );
+  };
+
   const removeSubTopicDetail = (
     teamId: string,
     topicId: string,
@@ -1099,6 +1134,7 @@ export default function ProjectManagePage() {
     onCancelEditTitle,
     onAddDetail,
     onUpdateDetail,
+    onUpdateDetailDueDate,
     onRemoveDetail,
     onToggleDetailDone,
     isTodoSectionOpen,
@@ -1118,6 +1154,7 @@ export default function ProjectManagePage() {
     onCancelEditTitle: () => void;
     onAddDetail: () => void;
     onUpdateDetail: (index: number, value: string) => void;
+    onUpdateDetailDueDate: (index: number, dueDate: string | undefined) => void;
     onRemoveDetail: (index: number) => void;
     onToggleDetailDone: (index: number) => void;
     isTodoSectionOpen: boolean;
@@ -1283,6 +1320,13 @@ export default function ProjectManagePage() {
                       placeholder={`Task ${index + 1}`}
                       className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${item.done ? 'line-through text-[var(--color-text-subtle)]' : 'text-[var(--color-text)]'}`}
                     />
+                    <input
+                      type="date"
+                      value={item.dueDate ?? ''}
+                      onChange={(e) => onUpdateDetailDueDate(index, e.target.value || undefined)}
+                      title="Due date"
+                      className="shrink-0 text-[11px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    />
                     <LongPressDeleteButton
                       onDelete={() => onRemoveDetail(index)}
                       title="ลบรายการ"
@@ -1321,6 +1365,7 @@ export default function ProjectManagePage() {
     onCancelEditSubTopicTitle,
     onAddDetail,
     onUpdateDetail,
+    onUpdateDetailDueDate,
     onRemoveDetail,
     onToggleDetailDone,
     openTodoSectionIds,
@@ -1351,6 +1396,12 @@ export default function ProjectManagePage() {
       subTopicId: string,
       index: number,
       value: string
+    ) => void;
+    onUpdateDetailDueDate: (
+      topicId: string,
+      subTopicId: string,
+      index: number,
+      dueDate: string | undefined
     ) => void;
     onRemoveDetail: (
       topicId: string,
@@ -1411,6 +1462,9 @@ export default function ProjectManagePage() {
                   onAddDetail={() => onAddDetail(topic.id, subTopic.id)}
                   onUpdateDetail={(index, value) =>
                     onUpdateDetail(topic.id, subTopic.id, index, value)
+                  }
+                  onUpdateDetailDueDate={(index, dueDate) =>
+                    onUpdateDetailDueDate(topic.id, subTopic.id, index, dueDate)
                   }
                   onRemoveDetail={(index) =>
                     onRemoveDetail(topic.id, subTopic.id, index)
@@ -1847,6 +1901,15 @@ export default function ProjectManagePage() {
                                   subTopicId,
                                   index,
                                   value
+                                )
+                              }
+                              onUpdateDetailDueDate={(topicId, subTopicId, index, dueDate) =>
+                                updateSubTopicDetailDueDate(
+                                  team.id,
+                                  topicId,
+                                  subTopicId,
+                                  index,
+                                  dueDate
                                 )
                               }
                               onRemoveDetail={(topicId, subTopicId, index) =>

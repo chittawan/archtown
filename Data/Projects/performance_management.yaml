@@ -11,7 +11,7 @@ teams:
           - title: VPN & Load Balancer
             status: GREEN
             details:
-              - text: ''
+              - text: LoadBalance
                 done: false
       - title: Server / Resource Cost
         subTopics:

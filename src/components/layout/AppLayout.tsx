@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3 } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel';
+import TodoPanel from './TodoPanel';
 
 const navItems = [
   { path: '/capability', label: 'Capability', icon: Layers },
@@ -10,12 +11,14 @@ const navItems = [
 ];
 
 const RIGHT_PANEL_STORAGE_KEY = 'archtown-right-panel-open';
+type RightPanelTab = 'summary' | 'todo';
 
 export default function AppLayout() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const isProjectPage = location.pathname === '/project';
   const projectIdFromUrl = isProjectPage ? searchParams.get('id') : null;
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('summary');
   const [rightPanelOpen, setRightPanelOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     const stored = localStorage.getItem(RIGHT_PANEL_STORAGE_KEY);
@@ -115,28 +118,59 @@ export default function AppLayout() {
             className="hidden lg:flex flex-col w-[320px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden"
             aria-label="Summary status"
           >
-            <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
-              <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-overlay)]">
-                <h2 className="text-sm font-semibold text-[var(--color-text)]">
-                  Summary Status
-                </h2>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  {projectIdFromUrl
-                    ? 'Critical / Warning ของโปรเจกต์นี้'
-                    : 'Critical / Warning ตาม Cap → Project → Task'}
+            <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto flex flex-col">
+              <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-overlay)] shrink-0">
+                <div className="flex rounded-lg p-0.5 bg-[var(--color-page)] border border-[var(--color-border)]">
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab('summary')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      rightPanelTab === 'summary'
+                        ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-sm border border-[var(--color-border)]'
+                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    Summary
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab('todo')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      rightPanelTab === 'todo'
+                        ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-sm border border-[var(--color-border)]'
+                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                    }`}
+                  >
+                    <ListTodo className="w-4 h-4" />
+                    Todo
+                  </button>
+                </div>
+                <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                  {rightPanelTab === 'summary'
+                    ? (projectIdFromUrl
+                        ? 'Critical / Warning ของโปรเจกต์นี้'
+                        : 'Critical / Warning ตาม Cap → Project → Task')
+                    : (projectIdFromUrl
+                        ? 'Task ทั้งหมดของโปรเจกต์นี้ (ทำแล้ว / ยังไม่ทำ)'
+                        : 'เปิดโปรเจกต์เพื่อดู Todo')}
                 </p>
               </div>
-              <div className="p-4">
-                {location.pathname === '/capability' ? (
-                  <SummaryStatusPanel />
-                ) : projectIdFromUrl ? (
-                  <SummaryStatusPanel projectId={projectIdFromUrl} />
+              <div className="p-4 flex-1 min-h-0 overflow-auto">
+                {rightPanelTab === 'summary' ? (
+                  location.pathname === '/capability' ? (
+                    <SummaryStatusPanel />
+                  ) : projectIdFromUrl ? (
+                    <SummaryStatusPanel projectId={projectIdFromUrl} />
+                  ) : (
+                    <p className="text-sm text-[var(--color-text-muted)]">
+                      {isProjectPage
+                        ? 'เปิดโปรเจกต์เพื่อดูสรุป Critical / Warning ของโปรเจกต์นี้'
+                        : 'เปิดหน้าหลัก Capability เพื่อดูสรุป Critical / Warning'}
+                    </p>
+                  )
                 ) : (
-                  <p className="text-sm text-[var(--color-text-muted)]">
-                    {isProjectPage
-                      ? 'เปิดโปรเจกต์เพื่อดูสรุป Critical / Warning ของโปรเจกต์นี้'
-                      : 'เปิดหน้าหลัก Capability เพื่อดูสรุป Critical / Warning'}
-                  </p>
+                  <TodoPanel projectId={projectIdFromUrl} />
                 )}
               </div>
             </div>

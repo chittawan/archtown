@@ -1,9 +1,11 @@
 export type Status = 'GREEN' | 'YELLOW' | 'RED';
 
-/** Task ย่อยตาม Detail — แต่ละรายการเป็น Todo (มี checkbox done) */
+/** Task ย่อยตาม Detail — แต่ละรายการเป็น Todo (มี checkbox done, dueDate optional) */
 export interface SubTopicDetail {
   text: string;
   done: boolean;
+  /** ISO date YYYY-MM-DD */
+  dueDate?: string;
 }
 
 export interface SubTopic {
