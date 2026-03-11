@@ -9,4 +9,8 @@ teams:
             status: YELLOW
             details:
               - text: นัดตรวจสอบว่าทำไมถึงช้า หาสาเหตุและวิธีการแก้ไข
+                done: true
+              - text: การ Render หน้า UI ช้าเกิดจาก การ Set การ Render มีความซับซ้อน
+                done: false
+              - text: 'map โหลด api ทุกครั้งที่มีการ toutch ขยับแผนทึ่ :: หา solution - poc แล้วมานำมาดูใหม่'
                 done: false

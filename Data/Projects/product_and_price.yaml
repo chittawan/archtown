@@ -7,4 +7,6 @@ teams:
         subTopics:
           - title: Resource On Kube ไม่เพียงพอสำหรับการ Load เนื่องจากเพิ่ม Resource ไปแล้วโดน Service ใน namepsace เดียวกันดึงไปใช้งาน
             status: YELLOW
-            details: []
+            details:
+              - text: ''
+                done: false

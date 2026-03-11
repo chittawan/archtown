@@ -112,8 +112,9 @@ export default function ProjectManagePage() {
   const [projectId, setProjectId] = useState<string | null>(projectIdFromUrl);
   const [teams, setTeams] = useState<Team[]>(INITIAL_DATA);
   const [projectLoadState, setProjectLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  // เริ่มต้นให้หัวข้อใหญ่ทั้งหมด "หุบ" ไว้ก่อน
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(
-    new Set(['top1', 'top2', 'top3'])
+    () => new Set()
   );
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [orgTeamsForSelect, setOrgTeamsForSelect] = useState<{ id: string; name: string }[]>([]);
@@ -201,9 +202,8 @@ export default function ProjectManagePage() {
         setProjectNameInput(name || '');
         setProjectDescription(desc ?? '');
         setTeams(nextTeams);
-        if (nextTeams.length > 0) {
-          setExpandedTopics(new Set(nextTeams.flatMap((t) => t.topics.map((top) => top.id))));
-        }
+        // เข้ามาครั้งแรกให้หุบหมด (ไม่ auto-expand หัวข้อใหญ่)
+        setExpandedTopics(new Set());
         setProjectLoadState('loaded');
       })
       .catch(() => setProjectLoadState('error'));
@@ -423,16 +423,22 @@ export default function ProjectManagePage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const skipSaveAfterLoadRef = useRef(true);
 
-  /** Auto-save เฉพาะเมื่อเปิดจาก URL ที่มี ?id= (projectLoadState === 'loaded') — ถ้าไม่มี ?id= ไม่ทำอะไร */
+  /**
+   * Auto-save:
+   * - มี ?id= ใน URL เท่านั้น (projectIdFromUrl)
+   * - ทำงานเมื่อโหลดสำเร็จ (loaded) หรือโหลดไม่เจอไฟล์ (error → โปรเจกต์ใหม่)
+   * - ข้ามครั้งแรกหลัง loaded เพื่อไม่ให้ save ทันทีหลังโหลดจากไฟล์
+   */
   useEffect(() => {
-    if (projectLoadState !== 'loaded') return;
-    if (skipSaveAfterLoadRef.current) {
+    if (!projectIdFromUrl) return;
+    if (projectLoadState === 'idle' || projectLoadState === 'loading') return;
+    if (projectLoadState === 'loaded' && skipSaveAfterLoadRef.current) {
       skipSaveAfterLoadRef.current = false;
       return;
     }
     const t = setTimeout(() => saveProjectToData(), 700);
     return () => clearTimeout(t);
-  }, [teams, projectName, projectDescription, projectLoadState]);
+  }, [teams, projectName, projectDescription, projectLoadState, projectIdFromUrl]);
 
   const downloadAsMarkdown = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -1213,6 +1219,24 @@ export default function ProjectManagePage() {
         return next;
       });
     };
+    const getDaysLeft = (dueDate?: string) => {
+      if (!dueDate) return null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const due = new Date(dueDate + 'T00:00:00');
+      const diffMs = due.getTime() - today.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) return null;
+      if (diffDays === 0) return 'วันนี้';
+      return `อีก ${diffDays} วัน`;
+    };
+    const isOverdueAndNotDone = (dueDate?: string, done?: boolean) => {
+      if (!dueDate || done) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const due = new Date(dueDate + 'T00:00:00');
+      return due.getTime() < today.getTime();
+    };
     return (
       <div
         ref={setNodeRef}
@@ -1319,35 +1343,50 @@ export default function ProjectManagePage() {
                         <Circle className="w-4 h-4" />
                       )}
                     </button>
-                    <span className="text-xs font-medium text-[var(--color-text-subtle)] w-5 flex-shrink-0">
+                    <span className="text-xs font-medium text-[var(--color-text-subtle)] w-5 flex-shrink-0 text-right">
                       {index + 1}.
                     </span>
-                    <input
-                      type="text"
-                      value={getDetailDisplayValue(index, item)}
-                      onChange={(e) =>
-                        setDraftDetailText((prev) => ({
-                          ...prev,
-                          [index]: e.target.value,
-                        }))
-                      }
-                      onBlur={() => flushDetailDraft(index)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          flushDetailDraft(index);
-                          (e.target as HTMLInputElement).blur();
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={getDetailDisplayValue(index, item)}
+                        onChange={(e) =>
+                          setDraftDetailText((prev) => ({
+                            ...prev,
+                            [index]: e.target.value,
+                          }))
                         }
-                      }}
-                      placeholder={`Task ${index + 1}`}
-                      className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${item.done ? 'line-through text-[var(--color-text-subtle)]' : 'text-[var(--color-text)]'}`}
-                    />
-                    <input
-                      type="date"
-                      value={item.dueDate ?? ''}
-                      onChange={(e) => onUpdateDetailDueDate(index, e.target.value || undefined)}
-                      title="Due date"
-                      className="shrink-0 text-[11px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                    />
+                        onBlur={() => flushDetailDraft(index)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            flushDetailDraft(index);
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        placeholder={`Task ${index + 1}`}
+                        className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${item.done ? 'line-through text-[var(--color-text-subtle)]' : 'text-[var(--color-text)]'}`}
+                      />
+                      <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[180px] justify-start">
+                        <input
+                          type="date"
+                          value={item.dueDate ?? ''}
+                          onChange={(e) =>
+                            onUpdateDetailDueDate(index, e.target.value || undefined)
+                          }
+                          title="Due date"
+                          className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                            isOverdueAndNotDone(item.dueDate, item.done)
+                              ? 'border-red-500 text-red-500 focus:ring-red-500'
+                              : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
+                          }`}
+                        />
+                        {getDaysLeft(item.dueDate) && (
+                          <span className="text-[var(--color-text-subtle)] whitespace-nowrap">
+                            {getDaysLeft(item.dueDate)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <LongPressDeleteButton
                       onDelete={() => onRemoveDetail(index)}
                       title="ลบรายการ"

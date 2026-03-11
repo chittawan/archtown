@@ -1,5 +1,6 @@
 id: risk_management
 name: Risk Management
+description: เพื่อป้องกันผลกระทบต่อการดำเนินธุรกิจ ครอบคลุมความเสี่ยงด้าน Operational, Security, Compliance และ Architecture เพื่อให้ระบบมีความมั่นคงและปลอดภัยในระยะยาว
 teams:
   - name: Infra
     topics:

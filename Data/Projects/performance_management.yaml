@@ -1,5 +1,6 @@
 id: performance_management
 name: Performance Management
+description: ให้ระบบมีเสถียรภาพ รองรับการใช้งานได้ตามความต้องการของธุรกิจ โดยพิจารณาจากตัวชี้วัดสำคัญ เช่น Resource Utilization, System Performance, Scalability และ Availability
 teams:
   - name: Infra
     topics:

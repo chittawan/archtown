@@ -1,0 +1,12 @@
+id: one_customer
+name: One Customer
+teams:
+  - name: OTC
+    topics:
+      - title: resource managment
+        subTopics:
+          - title: พบว่าการใช้งานมี Resource จำนวนมา
+            status: GREEN
+            details:
+              - text: update การใช้งาน resource แนะนำให้แยก namesapce
+                done: false

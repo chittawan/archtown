@@ -1,6 +1,6 @@
 id: strategic_management
 name: Strategic Management
-description: คุยเรื่องของทิศทางใกล้ กลาง ไกล technology และ architectureการสินทรัพย์สำหรับธุรกิจ
+description: การกำหนดทิศทางด้าน Technology และ Architecture ในระยะสั้น กลาง และยาว เพื่อสนับสนุนกลยุทธ์ของธุรกิจ ครอบคลุมการวาง Technology Strategy, Architecture Roadmap
 teams:
   - name: Solution Architect
     topics:
@@ -11,18 +11,17 @@ teams:
             details:
               - text: ประสานงาน Load test performance - with sap
                 done: false
-              - text: เก็บผล Recovery Time 123
+              - text: เก็บผล Recovery
                 done: false
+                dueDate: '2026-03-11'
               - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
                 done: false
-      - title: APIM Gravitee
+                dueDate: '2026-03-11'
+      - title: Kafka
         subTopics:
-          - title: 'State: Installation Prod'
-            status: YELLOW
+          - title: kafka confluent poc roadmap
+            status: GREEN
             details:
-              - text: ประสานงาน Load test performance - with sap
+              - text: ทำแผนและนัดคุยกับทาง K.Amy - Kafka วันที่ 27/03/2028
                 done: false
-              - text: เก็บผล Recovery Tim
-                done: false
-              - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
-                done: false
+                dueDate: '2026-03-11'

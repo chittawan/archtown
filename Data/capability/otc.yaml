@@ -11,3 +11,6 @@ projects:
   - id: product_and_price
     name: Product And Price
     cols: 12
+  - id: one_customer
+    name: One Customer
+    cols: 12
