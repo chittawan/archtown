@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Layers,
@@ -8,9 +8,6 @@ import {
   Save,
   GripVertical,
   FolderPlus,
-  FolderKanban,
-  Search,
-  ChevronDown,
 } from 'lucide-react';
 import {
   DndContext,
@@ -34,6 +31,8 @@ import { nameToId, ensureUniqueId } from '../../lib/idUtils';
 import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/capability/ProjectCard';
 import { SaveStatusIndicator, type SaveStatusIndicatorRef } from '../../components/capability/SaveStatusIndicator';
+import { AddCapModal } from './AddCapModal';
+import { AddProjectModal } from './AddProjectModal';
 
 const SortableProjectCardAny = SortableProjectCard as any;
 
@@ -136,6 +135,32 @@ export default function CapabilityManagePage() {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
+  const projectSummaryById = useMemo(() => {
+    const map = new Map<string, ProjectSummary>();
+    for (const p of projectList) {
+      map.set(p.id, p);
+    }
+    return map;
+  }, [projectList]);
+
+  const filteredProjectList = useMemo(() => {
+    const q = projectSearchQuery.trim().toLowerCase();
+    if (!q) return projectList;
+    return projectList.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        (p.summaryStatus && p.summaryStatus.toLowerCase().includes(q))
+    );
+  }, [projectList, projectSearchQuery]);
+
+  const selectedProjectLabel = useMemo(() => {
+    if (!selectedProjectId) return '';
+    const p = projectSummaryById.get(selectedProjectId);
+    if (!p) return '';
+    return `${p.name}${p.summaryStatus ? ` (${p.summaryStatus})` : ''}`;
+  }, [projectSummaryById, selectedProjectId]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor)
@@ -237,36 +262,55 @@ export default function CapabilityManagePage() {
     }
   }, []);
 
+  const updateLayout = useCallback(
+    (updater: (current: CapabilityLayout) => CapabilityLayout) => {
+      const current = layoutRef.current;
+      const next = updater(current);
+      if (next === current) return;
+      savedScrollYRef.current = window.scrollY;
+      setLayout(next);
+      persistLayout(next);
+    },
+    [persistLayout]
+  );
+
   const handleCapColsChange = useCallback((capId: string, value: 12 | 6 | 4 | 3) => {
-    const layout = layoutRef.current;
-    const cap = layout.caps[capId];
-    if (!cap) return;
-    const next = { ...layout, caps: { ...layout.caps } };
-    next.caps[capId] = { ...cap, cols: value };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(next);
-    persistLayout(next);
-  }, [persistLayout]);
+    updateLayout((layout) => {
+      const cap = layout.caps[capId];
+      if (!cap) return layout;
+      return {
+        ...layout,
+        caps: {
+          ...layout.caps,
+          [capId]: { ...cap, cols: value },
+        },
+      };
+    });
+  }, [updateLayout]);
 
   const handleProjectColsChange = useCallback((capId: string, projectId: string, cols: 12 | 6 | 4 | 3) => {
-    const layout = layoutRef.current;
-    const cap = layout.caps[capId];
-    if (!cap) return;
-    const next = { ...layout, caps: { ...layout.caps } };
-    next.caps[capId] = {
-      ...cap,
-      projects: cap.projects.map((p) => (p.id === projectId ? { ...p, cols } : p)),
-    };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(next);
-    persistLayout(next);
-  }, [persistLayout]);
+    updateLayout((layout) => {
+      const cap = layout.caps[capId];
+      if (!cap) return layout;
+      return {
+        ...layout,
+        caps: {
+          ...layout.caps,
+          [capId]: {
+            ...cap,
+            projects: cap.projects.map((p) =>
+              p.id === projectId ? { ...p, cols } : p
+            ),
+          },
+        },
+      };
+    });
+  }, [updateLayout]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over) return;
-      savedScrollYRef.current = window.scrollY;
       const overId = String(over.id);
 
       const projectPayload = parseProjectDragId(String(active.id));
@@ -281,17 +325,27 @@ export default function CapabilityManagePage() {
           if (targetCapId === sourceCapId) return;
           const targetCap = layout.caps[targetCapId];
           if (!targetCap) return;
-          const next = { ...layout, caps: { ...layout.caps } };
-          next.caps[sourceCapId] = {
-            ...sourceCap,
-            projects: sourceCap.projects.filter((p) => p.id !== projectId),
-          };
-          next.caps[targetCapId] = {
-            ...targetCap,
-            projects: [...targetCap.projects, project],
-          };
-          setLayout(next);
-          persistLayout(next);
+          updateLayout((current) => {
+            const currentSource = current.caps[sourceCapId];
+            const currentTarget = current.caps[targetCapId];
+            if (!currentSource || !currentTarget) return current;
+            const proj = currentSource.projects.find((p) => p.id === projectId);
+            if (!proj) return current;
+            return {
+              ...current,
+              caps: {
+                ...current.caps,
+                [sourceCapId]: {
+                  ...currentSource,
+                  projects: currentSource.projects.filter((p) => p.id !== projectId),
+                },
+                [targetCapId]: {
+                  ...currentTarget,
+                  projects: [...currentTarget.projects, proj],
+                },
+              },
+            };
+          });
           return;
         }
 
@@ -315,17 +369,32 @@ export default function CapabilityManagePage() {
             const ordered = reordered
               .map((id) => sourceCap.projects.find((p) => p.id === id))
               .filter(Boolean) as ProjectInCap[];
-            const next = { ...layout, caps: { ...layout.caps } };
-            next.caps[sourceCapId] = { ...sourceCap, projects: ordered };
-            setLayout(next);
-            persistLayout(next);
+            updateLayout((current) => {
+              const currentSource = current.caps[sourceCapId];
+              if (!currentSource) return current;
+              return {
+                ...current,
+                caps: {
+                  ...current.caps,
+                  [sourceCapId]: { ...currentSource, projects: ordered },
+                },
+              };
+            });
           } else {
             targetProjects.splice(insertIndex, 0, project);
-            const next = { ...layout, caps: { ...layout.caps } };
-            next.caps[sourceCapId] = { ...sourceCap, projects: sourceProjects };
-            next.caps[targetCapId] = { ...targetCap, projects: targetProjects };
-            setLayout(next);
-            persistLayout(next);
+            updateLayout((current) => {
+              const currentSource = current.caps[sourceCapId];
+              const currentTarget = current.caps[targetCapId];
+              if (!currentSource || !currentTarget) return current;
+              return {
+                ...current,
+                caps: {
+                  ...current.caps,
+                  [sourceCapId]: { ...currentSource, projects: sourceProjects },
+                  [targetCapId]: { ...currentTarget, projects: targetProjects },
+                },
+              };
+            });
           }
         }
         return;
@@ -340,12 +409,13 @@ export default function CapabilityManagePage() {
         const to = layout.capOrder.indexOf(overCapId);
         if (from === -1 || to === -1) return;
         const nextOrder = arrayMove(layout.capOrder, from, to);
-        const nextLayout = { ...layout, capOrder: nextOrder };
-        setLayout(nextLayout);
-        persistLayout(nextLayout);
+        updateLayout((current) => ({
+          ...current,
+          capOrder: nextOrder,
+        }));
       }
     },
-    [layout, persistLayout]
+    [layout, updateLayout]
   );
 
   const handleAddCap = (e: React.FormEvent) => {
@@ -358,11 +428,9 @@ export default function CapabilityManagePage() {
       capOrder: [...layout.capOrder, id],
       caps: { ...layout.caps, [id]: { id, name, cols: 4, projects: [] } },
     };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(next);
+    updateLayout(() => next);
     setCapNameInput('');
     setAddCapOpen(false);
-    persistLayout(next);
   };
 
   const handleEditCap = (e: React.FormEvent) => {
@@ -372,13 +440,10 @@ export default function CapabilityManagePage() {
     if (!name) return;
     const cap = layout.caps[editingCapId];
     if (!cap) return;
-    const next = { ...layout, caps: { ...layout.caps } };
-    next.caps[editingCapId] = { ...cap, name };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(next);
+    const next = { ...layout, caps: { ...layout.caps, [editingCapId]: { ...cap, name } } };
+    updateLayout(() => next);
     setEditingCapId(null);
     setCapNameInput('');
-    persistLayout(next);
   };
 
   const handleDeleteCap = (capId: string) => {
@@ -388,10 +453,8 @@ export default function CapabilityManagePage() {
     const nextOrder = layout.capOrder.filter((id) => id !== capId);
     const { [capId]: _, ...restCaps } = layout.caps;
     const nextLayout = { capOrder: nextOrder, caps: restCaps };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(nextLayout);
+    updateLayout(() => nextLayout);
     setEditingCapId(null);
-    persistLayout(nextLayout);
   };
 
   const handleAddProject = (e: React.FormEvent) => {
@@ -415,27 +478,33 @@ export default function CapabilityManagePage() {
     const existingIds = cap.projects.map((p) => p.id);
     if (existingIds.includes(id)) return;
     const project: ProjectInCap = { id, name, cols: 4 };
-    const next = { ...layout, caps: { ...layout.caps } };
-    next.caps[capId] = { ...cap, projects: [...cap.projects, project] };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(next);
+    const next = {
+      ...layout,
+      caps: {
+        ...layout.caps,
+        [capId]: { ...cap, projects: [...cap.projects, project] },
+      },
+    };
+    updateLayout(() => next);
     setSelectedProjectId(null);
     setNewProjectName('');
     setAddProjectCapId(null);
-    persistLayout(next);
   };
 
   const handleRemoveProject = (capId: string, projectId: string) => {
     const cap = layout.caps[capId];
     if (!cap) return;
-    const next = { ...layout, caps: { ...layout.caps } };
-    next.caps[capId] = {
-      ...cap,
-      projects: cap.projects.filter((p) => p.id !== projectId),
+    const next = {
+      ...layout,
+      caps: {
+        ...layout.caps,
+        [capId]: {
+          ...cap,
+          projects: cap.projects.filter((p) => p.id !== projectId),
+        },
+      },
     };
-    savedScrollYRef.current = window.scrollY;
-    setLayout(next);
-    persistLayout(next);
+    updateLayout(() => next);
   };
 
   const handleDoubleClickProject = useCallback(
@@ -626,7 +695,7 @@ export default function CapabilityManagePage() {
                 }}
               >
                 {cap.projects.map((project) => {
-                  const summary = projectList.find((p) => p.id === project.id);
+                  const summary = projectSummaryById.get(project.id);
                   const displayStatus = summary?.summaryStatus ?? project.status ?? null;
                   const description = summary?.description ?? null;
                   return (
@@ -753,204 +822,32 @@ export default function CapabilityManagePage() {
         </DndContext>
       )}
 
-      {addCapOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setAddCapOpen(false)}>
-          <div
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-[var(--color-text)] mb-4">เพิ่มกลุ่ม (Cap)</h3>
-            <form onSubmit={handleAddCap}>
-              <input
-                type="text"
-                value={capNameInput}
-                onChange={(e) => setCapNameInput(e.target.value)}
-                placeholder="ชื่อ Cap (เช่น Business Management)"
-                className="w-full px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] mb-4"
-                autoFocus
-              />
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setAddCapOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-overlay)]"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90"
-                >
-                  สร้าง
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddCapModal
+        isOpen={addCapOpen}
+        capNameInput={capNameInput}
+        onCapNameChange={setCapNameInput}
+        onSubmit={handleAddCap}
+        onClose={() => setAddCapOpen(false)}
+      />
 
-      {addProjectCapId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setAddProjectCapId(null)}
-        >
-          <div
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
-              <FolderKanban className="w-5 h-5" />
-              เพิ่มโปรเจกต์ในกลุ่มนี้
-            </h3>
-            <p className="text-sm text-[var(--color-text-muted)] mb-3">
-              เลือกโปรเจกต์ที่มีอยู่ หรือสร้างชื่อใหม่
-            </p>
-            <form onSubmit={handleAddProject}>
-              <div className="flex gap-2 mb-3">
-                <button
-                  type="button"
-                  onClick={() => setAddProjectMode('select')}
-                  className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-colors ${
-                    addProjectMode === 'select'
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
-                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-overlay)]'
-                  }`}
-                >
-                  เลือกจากรายการ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAddProjectMode('new')}
-                  className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-colors ${
-                    addProjectMode === 'new'
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
-                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-overlay)]'
-                  }`}
-                >
-                  สร้างใหม่
-                </button>
-              </div>
-              {addProjectMode === 'select' ? (
-                <div className="mb-4 relative">
-                  <label className="block text-sm text-[var(--color-text-muted)] mb-1">
-                    เลือกโปรเจกต์
-                  </label>
-                  <input type="hidden" name="selectedProjectId" value={selectedProjectId ?? ''} required />
-                  <div
-                    className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-page)] focus-within:ring-2 focus-within:ring-[var(--color-primary)] focus-within:border-transparent"
-                    onBlur={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget)) setProjectSelectOpen(false);
-                    }}
-                  >
-                    <div className="flex items-center gap-2 px-4 py-2 min-h-[42px]">
-                      <Search className="w-4 h-4 shrink-0 text-[var(--color-text-subtle)]" />
-                      <input
-                        type="text"
-                        value={projectSelectOpen ? projectSearchQuery : (selectedProjectId ? (() => { const p = projectList.find((x) => x.id === selectedProjectId); return p ? `${p.name}${p.summaryStatus ? ` (${p.summaryStatus})` : ''}` : ''; })() : '')}
-                        onChange={(e) => {
-                          setProjectSearchQuery(e.target.value);
-                          setProjectSelectOpen(true);
-                          if (!e.target.value) setSelectedProjectId(null);
-                        }}
-                        onFocus={() => setProjectSelectOpen(true)}
-                        placeholder="— เลือกโปรเจกต์ — พิมพ์เพื่อค้นหา..."
-                        className="flex-1 min-w-0 bg-transparent text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none text-sm"
-                        aria-invalid={!selectedProjectId}
-                        aria-describedby="project-list"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setProjectSelectOpen((o) => !o)}
-                        className="shrink-0 p-1 rounded-md text-[var(--color-text-subtle)] hover:bg-[var(--color-overlay)]"
-                        aria-label={projectSelectOpen ? 'ปิดรายการ' : 'เปิดรายการ'}
-                      >
-                        <ChevronDown className={`w-4 h-4 transition-transform ${projectSelectOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                    </div>
-                    {projectSelectOpen && (
-                      <ul
-                        id="project-list"
-                        className="max-h-48 overflow-y-auto border-t border-[var(--color-border)] py-1"
-                        role="listbox"
-                      >
-                        {projectListLoading ? (
-                          <li className="px-4 py-2 text-sm text-[var(--color-text-muted)]">กำลังโหลด...</li>
-                        ) : (() => {
-                          const q = projectSearchQuery.trim().toLowerCase();
-                          const filtered = q
-                            ? projectList.filter(
-                                (p) =>
-                                  p.name.toLowerCase().includes(q) ||
-                                  p.id.toLowerCase().includes(q) ||
-                                  (p.summaryStatus && p.summaryStatus.toLowerCase().includes(q))
-                              )
-                            : projectList;
-                          return filtered.length === 0 ? (
-                            <li className="px-4 py-2 text-sm text-[var(--color-text-muted)]">ไม่พบโปรเจกต์</li>
-                          ) : (
-                            filtered.map((p) => {
-                              const label = `${p.name}${p.summaryStatus ? ` (${p.summaryStatus})` : ''}`;
-                              return (
-                                <li
-                                  key={p.id}
-                                  role="option"
-                                  aria-selected={selectedProjectId === p.id}
-                                  className={`px-4 py-2 text-sm cursor-pointer hover:bg-[var(--color-overlay)] ${
-                                    selectedProjectId === p.id ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]' : 'text-[var(--color-text)]'
-                                  }`}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    setSelectedProjectId(p.id);
-                                    setProjectSearchQuery('');
-                                    setProjectSelectOpen(false);
-                                  }}
-                                >
-                                  {label}
-                                </li>
-                              );
-                            })
-                          );
-                        })()}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <label className="block text-sm text-[var(--color-text-muted)] mb-1">
-                    ชื่อโปรเจกต์ (จะสร้างเมื่อเข้าไปบันทึกครั้งแรก)
-                  </label>
-                  <input
-                    type="text"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    placeholder="เช่น Performance Management"
-                    className="w-full px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                  />
-                </div>
-              )}
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setAddProjectCapId(null)}
-                  className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-overlay)]"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    addProjectMode === 'select' ? !selectedProjectId : !newProjectName.trim()
-                  }
-                  className="px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  เพิ่ม
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddProjectModal
+        capId={addProjectCapId}
+        addProjectMode={addProjectMode}
+        setAddProjectMode={setAddProjectMode}
+        selectedProjectId={selectedProjectId}
+        setSelectedProjectId={setSelectedProjectId}
+        newProjectName={newProjectName}
+        setNewProjectName={setNewProjectName}
+        projectListLoading={projectListLoading}
+        filteredProjectList={filteredProjectList}
+        projectSearchQuery={projectSearchQuery}
+        setProjectSearchQuery={setProjectSearchQuery}
+        projectSelectOpen={projectSelectOpen}
+        setProjectSelectOpen={setProjectSelectOpen}
+        selectedProjectLabel={selectedProjectLabel}
+        onSubmit={handleAddProject}
+        onClose={() => setAddProjectCapId(null)}
+      />
     </div>
   );
 }

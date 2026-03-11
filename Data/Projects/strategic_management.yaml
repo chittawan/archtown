@@ -6,18 +6,26 @@ teams:
     topics:
       - title: APIM Gravitee
         subTopics:
-          - title: 'State: Installation Prod'
+          - title: (1) Setup & Deployment
             status: YELLOW
             details:
               - text: ประสานงาน Load test performance - with sap
                 done: true
-                dueDate: '2026-03-11'
               - text: 'เก็บผล Recovery '
                 done: false
                 dueDate: '2026-03-13'
               - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
                 done: false
                 dueDate: '2026-03-13'
+          - title: (2) Governance & Policy
+            status: GREEN
+            details: []
+          - title: (3) Best Practices & Optimization
+            status: GREEN
+            details: []
+          - title: (4) Continuous Improvement
+            status: GREEN
+            details: []
       - title: Kafka
         subTopics:
           - title: kafka confluent poc roadmap
