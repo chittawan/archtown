@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useReducer } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, Download, Upload, FileText, FolderKanban, Save } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Users, FolderPlus, Download, Upload, FileText, FolderKanban, Save } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -16,117 +16,46 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { Team, Topic, SubTopic, Status } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { LongPressDeleteButton } from '../../components/ui/LongPressDeleteButton';
+import { SortableTopicRow } from '../../components/project/SortableTopicRow';
+import { SubtopicDroppableArea } from '../../components/project/SubtopicDroppableArea';
 import { SummaryView } from '../../components/project/SummaryView';
 import { projectToYaml, yamlToProject, type ProjectData } from '../../lib/projectYaml';
-import { nameToId, ensureUniqueId } from '../../lib/idUtils';
+import { nameToId } from '../../lib/idUtils';
+import { useTeamModal } from './hooks/useTeamModal';
+import { useTopicModal } from './hooks/useTopicModal';
+import { useSubTopicModal } from './hooks/useSubTopicModal';
+import { TeamModal } from './TeamModal';
+import { TopicModal } from './TopicModal';
+import { SubTopicModal } from './SubTopicModal';
 
-const REMOVE_HOLD_MS = 1000;
+const INITIAL_DATA: Team[] = [];
 
-/** ปุ่มลบแบบกดค้าง 1 วินาที (แนวทางเดียวกับ capability/ProjectCard) */
-function LongPressDeleteButton({
-  onDelete,
-  title,
-  className = '',
-  iconClassName = 'w-4 h-4',
-  ariaLabel,
-}: {
-  onDelete: () => void;
-  title: string;
-  className?: string;
-  iconClassName?: string;
-  ariaLabel?: string;
-}) {
-  const [progress, setProgress] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startRef = useRef(0);
-  const rafRef = useRef<number>(0);
+type TeamsAction =
+  | { type: 'setAll'; teams: Team[] }
+  | { type: 'update'; updater: (state: Team[]) => Team[] };
 
-  const clear = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
-    setProgress(0);
-  };
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    clear();
-    startRef.current = Date.now();
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = 0;
-      }
-      setProgress(0);
-      onDelete();
-    }, REMOVE_HOLD_MS);
-    const tick = () => {
-      const elapsed = Date.now() - startRef.current;
-      const p = Math.min(100, (elapsed / REMOVE_HOLD_MS) * 100);
-      setProgress(p);
-      if (p < 100 && timerRef.current != null) {
-        rafRef.current = requestAnimationFrame(tick);
-      }
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  };
-
-  return (
-    <button
-      type="button"
-      onPointerDown={onPointerDown}
-      onPointerUp={clear}
-      onPointerLeave={clear}
-      onPointerCancel={clear}
-      onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => e.stopPropagation()}
-      className={`relative p-1.5 rounded-md text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 overflow-hidden transition-colors ${className}`}
-      title={`${title} — กดค้าง 1 วินาที`}
-      aria-label={ariaLabel ?? `กดค้าง 1 วินาทีเพื่อ${title}`}
-    >
-      {progress > 0 && (
-        <span
-          className="absolute inset-0 bg-red-500/30 rounded-md ease-linear"
-          style={{ width: `${progress}%`, transition: 'none' }}
-        />
-      )}
-      <span className="relative z-10 block">
-        <Trash2 className={iconClassName} />
-      </span>
-    </button>
-  );
+function teamsReducer(state: Team[], action: TeamsAction): Team[] {
+  switch (action.type) {
+    case 'setAll':
+      return action.teams;
+    case 'update':
+      return action.updater(state);
+    default:
+      return state;
+  }
 }
-
-const INITIAL_DATA: Team[] = [
-];
 
 export default function ProjectManagePage() {
   const [searchParams] = useSearchParams();
   const projectIdFromUrl = searchParams.get('id');
   const [projectId, setProjectId] = useState<string | null>(projectIdFromUrl);
-  const [teams, setTeams] = useState<Team[]>(INITIAL_DATA);
+  const [teams, dispatchTeams] = useReducer(teamsReducer, INITIAL_DATA);
   const [projectLoadState, setProjectLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   // เริ่มต้นให้หัวข้อใหญ่ทั้งหมด "หุบ" ไว้ก่อน
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(
     () => new Set()
   );
-  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
-  const [orgTeamsForSelect, setOrgTeamsForSelect] = useState<{ id: string; name: string }[]>([]);
-  const [loadingOrgTeams, setLoadingOrgTeams] = useState(false);
-  const [selectedOrgTeamId, setSelectedOrgTeamId] = useState<string | null>(null);
-  const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
-  const [isSubTopicModalOpen, setIsSubTopicModalOpen] = useState(false);
-  const [newTeamName, setNewTeamName] = useState('');
-  const [newTopicTitle, setNewTopicTitle] = useState('');
-  const [newSubTopicTitle, setNewSubTopicTitle] = useState('');
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState(() => {
     if (typeof window === 'undefined') return 'Performance Management';
     return localStorage.getItem('projectName') ?? 'Performance Management';
@@ -134,8 +63,6 @@ export default function ProjectManagePage() {
   const [projectDescription, setProjectDescription] = useState('');
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
   const [projectNameInput, setProjectNameInput] = useState(projectName);
-  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
-  const [editTeamName, setEditTeamName] = useState('');
   const [editingTopic, setEditingTopic] = useState<{ teamId: string; topicId: string } | null>(
     null
   );
@@ -157,6 +84,10 @@ export default function ProjectManagePage() {
   const expandDidLongPressRef = useRef(false);
   const [isSummaryViewOpen, setIsSummaryViewOpen] = useState(false);
 
+  const updateTeams = (updater: (state: Team[]) => Team[]) => {
+    dispatchTeams({ type: 'update', updater });
+  };
+
   useEffect(() => {
     if (projectName) localStorage.setItem('projectName', projectName);
   }, [projectName]);
@@ -173,7 +104,7 @@ export default function ProjectManagePage() {
       const detail = custom.detail;
       if (!detail?.projectId || !projectIdFromUrl) return;
       if (detail.projectId !== projectIdFromUrl) return;
-      setTeams(detail.teams ?? []);
+      dispatchTeams({ type: 'setAll', teams: detail.teams ?? [] });
     };
     window.addEventListener('project-todos-updated', handler as EventListener);
     return () => {
@@ -197,54 +128,21 @@ export default function ProjectManagePage() {
           return;
         }
         if (data.id) setProjectId(data.id);
-        const { projectName: name, description: desc, teams: nextTeams } = payload;
+        const {
+          projectName: name,
+          description: desc,
+          teams: nextTeams,
+        } = payload;
         setProjectName(name || '');
         setProjectNameInput(name || '');
         setProjectDescription(desc ?? '');
-        setTeams(nextTeams);
+        dispatchTeams({ type: 'setAll', teams: nextTeams });
         // เข้ามาครั้งแรกให้หุบหมด (ไม่ auto-expand หัวข้อใหญ่)
         setExpandedTopics(new Set());
         setProjectLoadState('loaded');
       })
       .catch(() => setProjectLoadState('error'));
   }, [projectIdFromUrl, projectLoadState]);
-
-  useEffect(() => {
-    if (!isTeamModalOpen && !editingTeamId) return;
-    setLoadingOrgTeams(true);
-    if (!editingTeamId) {
-      setSelectedOrgTeamId(null);
-      setNewTeamName('');
-    }
-    fetch('/api/teams')
-      .then((res) => (res.ok ? res.json() : { ids: [] }))
-      .then((data: { ids?: string[] }) => {
-        const ids = Array.isArray(data.ids) ? data.ids : [];
-        return Promise.all(
-          ids.map((id: string) =>
-            fetch(`/api/teams/${encodeURIComponent(id)}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .then((raw: { id?: string; data?: { name: string }; markdown?: string } | null) =>
-                raw != null && raw.data != null
-                  ? { id: raw.id ?? id, name: raw.data.name }
-                  : null
-              )
-          )
-        );
-      })
-      .then((list) => setOrgTeamsForSelect(list.filter(Boolean) as { id: string; name: string }[]))
-      .catch(() => setOrgTeamsForSelect([]))
-      .finally(() => setLoadingOrgTeams(false));
-  }, [isTeamModalOpen, editingTeamId]);
-
-  // เมื่อเปิด modal แก้ไขชื่อทีม และโหลดรายชื่อทีมเสร็จ ให้เลือกทีมที่ชื่อตรงกับทีมที่กำลังแก้
-  useEffect(() => {
-    if (!editingTeamId || orgTeamsForSelect.length === 0) return;
-    const team = teams.find((t) => t.id === editingTeamId);
-    if (!team) return;
-    const org = orgTeamsForSelect.find((o) => o.name === team.name);
-    setSelectedOrgTeamId(org?.id ?? null);
-  }, [editingTeamId, orgTeamsForSelect, teams]);
 
   const getTopicStatus = (topic: Topic): Status => {
     if (topic.subTopics.length === 0) return 'GREEN';
@@ -332,6 +230,41 @@ export default function ProjectManagePage() {
     });
     return counts;
   }, [teams]);
+
+  const filteredTeams = useMemo(
+    () => getFilteredTeams(teams, statusFilter),
+    [teams, statusFilter]
+  );
+
+  const updateSubTopicDetails = (
+    state: Team[],
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    updater: (details: NonNullable<SubTopic['details']>) => NonNullable<SubTopic['details']>
+  ): Team[] =>
+    state.map((t) =>
+      t.id !== teamId
+        ? t
+        : {
+            ...t,
+            topics: t.topics.map((topic) =>
+              topic.id !== topicId
+                ? topic
+                : {
+                    ...topic,
+                    subTopics: topic.subTopics.map((s) =>
+                      s.id !== subTopicId
+                        ? s
+                        : {
+                            ...s,
+                            details: updater(s.details ?? []),
+                          }
+                    ),
+                  }
+            ),
+          }
+    );
 
   const expandAllRedWithTodos = () => {
     const topicIdsWithRed = teams.flatMap((t) =>
@@ -520,8 +453,10 @@ export default function ProjectManagePage() {
       try {
         const data = yamlToProject(text);
         setProjectName(data.projectName || projectName);
-        setTeams(data.teams);
-        const allTopicIds = data.teams.flatMap((t) => t.topics.map((top) => top.id));
+        dispatchTeams({ type: 'setAll', teams: data.teams });
+        const allTopicIds = data.teams.flatMap((t) =>
+          t.topics.map((top) => top.id)
+        );
         setExpandedTopics(new Set(allTopicIds));
         setOpenTodoSectionIds(new Set());
         setStatusFilter(new Set());
@@ -533,124 +468,14 @@ export default function ProjectManagePage() {
     e.target.value = '';
   };
 
-  const handleAddTeam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingTeamId) {
-      const name = selectedOrgTeamId
-        ? (orgTeamsForSelect.find((o) => o.id === selectedOrgTeamId)?.name ?? newTeamName.trim())
-        : newTeamName.trim();
-      if (name.trim()) {
-        updateTeamName(editingTeamId, name.trim());
-      }
-      setEditingTeamId(null);
-      setIsTeamModalOpen(false);
-      setSelectedOrgTeamId(null);
-      setNewTeamName('');
-      return;
-    }
-    const projectTeamIds = new Set(teams.map((t) => t.id));
-    if (selectedOrgTeamId) {
-      const org = orgTeamsForSelect.find((o) => o.id === selectedOrgTeamId);
-      if (org) {
-        let id = org.id;
-        if (projectTeamIds.has(id)) id = `${id}-${Date.now()}`;
-        setTeams([...teams, { id, name: org.name, topics: [] }]);
-      }
-      setSelectedOrgTeamId(null);
-    } else if (newTeamName.trim()) {
-      const name = newTeamName.trim();
-      const existingOrgIds = orgTeamsForSelect.map((o) => o.id);
-      const id = ensureUniqueId(nameToId(name) || 'team', existingOrgIds);
-      const orgTeam = {
-        id,
-        name,
-        owner: '',
-        parentId: null as string | null,
-        childIds: [] as string[],
-      };
-      const res = await fetch('/api/teams/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, data: orgTeam }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
-        setOrgTeamsForSelect((prev) => [...prev, { id, name }]);
-      }
-      setTeams([...teams, { id, name, topics: [] }]);
-      setNewTeamName('');
-    } else return;
-    setIsTeamModalOpen(false);
-  };
-
-  const handleAddTopic = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTopicTitle.trim() || !selectedTeamId) return;
-    setTeams(
-      teams.map((team) =>
-        team.id === selectedTeamId
-          ? {
-              ...team,
-              topics: [
-                ...team.topics,
-                {
-                  id: `top-${Date.now()}`,
-                  title: newTopicTitle,
-                  subTopics: [],
-                },
-              ],
-            }
-          : team
-      )
-    );
-    setNewTopicTitle('');
-    setIsTopicModalOpen(false);
-    setSelectedTeamId(null);
-  };
-
-  const handleAddSubTopic = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSubTopicTitle.trim() || !selectedTeamId || !selectedTopicId) return;
-    setTeams(
-      teams.map((team) =>
-        team.id === selectedTeamId
-          ? {
-              ...team,
-              topics: team.topics.map((topic) =>
-                topic.id === selectedTopicId
-                  ? {
-                      ...topic,
-                      subTopics: [
-                        ...topic.subTopics,
-                        {
-                          id: `sub-${Date.now()}`,
-                          title: newSubTopicTitle,
-                          status: 'GREEN',
-                          details: [],
-                        },
-                      ],
-                    }
-                  : topic
-              ),
-            }
-          : team
-      )
-    );
-    setExpandedTopics((prev) => new Set(prev).add(selectedTopicId));
-    setNewSubTopicTitle('');
-    setIsSubTopicModalOpen(false);
-    setSelectedTeamId(null);
-    setSelectedTopicId(null);
-  };
-
   const updateSubTopicStatus = (
     teamId: string,
     topicId: string,
     subTopicId: string,
     newStatus: Status
   ) => {
-    setTeams(
-      teams.map((team) =>
+    updateTeams((prev) =>
+      prev.map((team) =>
         team.id === teamId
           ? {
               ...team,
@@ -671,12 +496,12 @@ export default function ProjectManagePage() {
   };
 
   const deleteTeam = (teamId: string) => {
-    setTeams(teams.filter((t) => t.id !== teamId));
+    updateTeams((prev) => prev.filter((t) => t.id !== teamId));
   };
 
   const deleteTopic = (teamId: string, topicId: string) => {
-    setTeams(
-      teams.map((team) =>
+    updateTeams((prev) =>
+      prev.map((team) =>
         team.id === teamId
           ? { ...team, topics: team.topics.filter((t) => t.id !== topicId) }
           : team
@@ -689,8 +514,8 @@ export default function ProjectManagePage() {
     topicId: string,
     subTopicId: string
   ) => {
-    setTeams(
-      teams.map((team) =>
+    updateTeams((prev) =>
+      prev.map((team) =>
         team.id === teamId
           ? {
               ...team,
@@ -711,10 +536,22 @@ export default function ProjectManagePage() {
   const updateTeamName = (teamId: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    setTeams(
-      teams.map((t) => (t.id === teamId ? { ...t, name: trimmed } : t))
+    updateTeams((prev) =>
+      prev.map((t) => (t.id === teamId ? { ...t, name: trimmed } : t))
     );
   };
+
+  const teamModal = useTeamModal({
+    teams,
+    updateTeamName,
+    updateTeams,
+  });
+  const topicModal = useTopicModal({ teams, updateTeams });
+  const subTopicModal = useSubTopicModal({
+    teams,
+    updateTeams,
+    setExpandedTopics,
+  });
 
   const updateTopicTitle = (
     teamId: string,
@@ -723,8 +560,8 @@ export default function ProjectManagePage() {
   ) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    setTeams(
-      teams.map((t) =>
+    updateTeams((prev) =>
+      prev.map((t) =>
         t.id !== teamId
           ? t
           : {
@@ -745,8 +582,8 @@ export default function ProjectManagePage() {
   ) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    setTeams(
-      teams.map((t) =>
+    updateTeams((prev) =>
+      prev.map((t) =>
         t.id !== teamId
           ? t
           : {
@@ -771,29 +608,11 @@ export default function ProjectManagePage() {
     topicId: string,
     subTopicId: string
   ) => {
-    setTeams(
-      teams.map((t) =>
-        t.id !== teamId
-          ? t
-          : {
-              ...t,
-              topics: t.topics.map((topic) =>
-                topic.id === topicId
-                  ? {
-                      ...topic,
-                      subTopics: topic.subTopics.map((s) =>
-                        s.id === subTopicId
-                          ? {
-                              ...s,
-                              details: [...(s.details ?? []), { text: '', done: false }],
-                            }
-                          : s
-                      ),
-                    }
-                  : topic
-              ),
-            }
-      )
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => [
+        ...details,
+        { text: '', done: false },
+      ])
     );
   };
 
@@ -804,27 +623,12 @@ export default function ProjectManagePage() {
     index: number,
     text: string
   ) => {
-    setTeams(
-      teams.map((t) =>
-        t.id !== teamId
-          ? t
-          : {
-              ...t,
-              topics: t.topics.map((topic) =>
-                topic.id === topicId
-                  ? {
-                      ...topic,
-                      subTopics: topic.subTopics.map((s) => {
-                        if (s.id !== subTopicId) return s;
-                        const next = [...(s.details ?? [])];
-                        if (next[index]) next[index] = { ...next[index], text };
-                        return { ...s, details: next };
-                      }),
-                    }
-                  : topic
-              ),
-            }
-      )
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
+        const next = [...details];
+        if (next[index]) next[index] = { ...next[index], text };
+        return next;
+      })
     );
   };
 
@@ -835,31 +639,16 @@ export default function ProjectManagePage() {
     index: number,
     dueDate: string | undefined
   ) => {
-    setTeams(
-      teams.map((t) =>
-        t.id !== teamId
-          ? t
-          : {
-              ...t,
-              topics: t.topics.map((topic) =>
-                topic.id !== topicId
-                  ? topic
-                  : {
-                      ...topic,
-                      subTopics: topic.subTopics.map((s) => {
-                        if (s.id !== subTopicId) return s;
-                        const next = [...(s.details ?? [])];
-                        if (next[index])
-                          next[index] = {
-                            ...next[index],
-                            dueDate: dueDate && dueDate.trim() ? dueDate.trim() : undefined,
-                          };
-                        return { ...s, details: next };
-                      }),
-                    }
-              ),
-            }
-      )
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
+        const next = [...details];
+        if (next[index])
+          next[index] = {
+            ...next[index],
+            dueDate: dueDate && dueDate.trim() ? dueDate.trim() : undefined,
+          };
+        return next;
+      })
     );
   };
 
@@ -869,25 +658,9 @@ export default function ProjectManagePage() {
     subTopicId: string,
     index: number
   ) => {
-    setTeams(
-      teams.map((t) =>
-        t.id !== teamId
-          ? t
-          : {
-              ...t,
-              topics: t.topics.map((topic) =>
-                topic.id === topicId
-                  ? {
-                      ...topic,
-                      subTopics: topic.subTopics.map((s) => {
-                        if (s.id !== subTopicId) return s;
-                        const next = (s.details ?? []).filter((_, i) => i !== index);
-                        return { ...s, details: next };
-                      }),
-                    }
-                  : topic
-              ),
-            }
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) =>
+        details.filter((_, i) => i !== index)
       )
     );
   };
@@ -898,35 +671,20 @@ export default function ProjectManagePage() {
     subTopicId: string,
     index: number
   ) => {
-    setTeams(
-      teams.map((t) =>
-        t.id !== teamId
-          ? t
-          : {
-              ...t,
-              topics: t.topics.map((topic) =>
-                topic.id === topicId
-                  ? {
-                      ...topic,
-                      subTopics: topic.subTopics.map((s) => {
-                        if (s.id !== subTopicId) return s;
-                        const next = [...(s.details ?? [])];
-                        if (next[index])
-                          next[index] = { ...next[index], done: !next[index].done };
-                        return { ...s, details: next };
-                      }),
-                    }
-                  : topic
-              ),
-            }
-      )
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
+        const next = [...details];
+        if (next[index])
+          next[index] = { ...next[index], done: !next[index].done };
+        return next;
+      })
     );
   };
 
   const reorderTopics = (teamId: string, fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
-    setTeams(
-      teams.map((team) =>
+    updateTeams((prev) =>
+      prev.map((team) =>
         team.id !== teamId
           ? team
           : { ...team, topics: arrayMove(team.topics, fromIndex, toIndex) }
@@ -941,8 +699,8 @@ export default function ProjectManagePage() {
     targetTopicId: string,
     targetIndex: number
   ) => {
-    setTeams(
-      teams.map((t) => {
+    updateTeams((prev) =>
+      prev.map((t) => {
         if (t.id !== teamId) return t;
         if (sourceTopicId === targetTopicId) {
           const topic = t.topics.find((topic) => topic.id === sourceTopicId);
@@ -1050,513 +808,6 @@ export default function ProjectManagePage() {
     }
   };
 
-  function SortableTopicRow({
-    teamId,
-    topic,
-    isExpanded,
-    onToggle,
-    topicStatus,
-    onAddSubTopic,
-    onDeleteTopic,
-    isEditingTitle,
-    editTitleValue,
-    onEditTitleChange,
-    onStartEditTitle,
-    onSaveEditTitle,
-    onCancelEditTitle,
-  }: {
-    teamId: string;
-    topic: Topic;
-    isExpanded: boolean;
-    onToggle: () => void;
-    topicStatus: Status;
-    onAddSubTopic: () => void;
-    onDeleteTopic: () => void;
-    isEditingTitle: boolean;
-    editTitleValue: string;
-    onEditTitleChange: (v: string) => void;
-    onStartEditTitle: () => void;
-    onSaveEditTitle: () => void;
-    onCancelEditTitle: () => void;
-  }) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-      useSortable({ id: topic.id, data: { type: 'topic' as const } });
-    const style = { transform: CSS.Transform.toString(transform), transition };
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className={`flex flex-col ${isDragging ? 'opacity-60 z-20' : ''}`}
-      >
-        <div
-          className={`group/topic px-6 py-4 flex items-center justify-between hover:bg-[var(--color-overlay)] transition-colors cursor-pointer border-l-4 border-l-transparent ${isExpanded ? 'bg-[var(--color-overlay)] border-l-[var(--color-primary)]' : ''}`}
-          onClick={onToggle}
-        >
-          <div className="flex items-center flex-1 min-w-0">
-            <button
-              className="p-1 mr-2 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing"
-              onClick={(e) => e.stopPropagation()}
-              {...attributes}
-              {...listeners}
-              aria-label="ลากเพื่อเรียงลำดับ"
-            >
-              <GripVertical className="w-5 h-5" />
-            </button>
-            <button className="p-1 mr-2 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded">
-              {isExpanded ? (
-                <ChevronDown className="w-5 h-5" />
-              ) : (
-                <ChevronRight className="w-5 h-5" />
-              )}
-            </button>
-            {isEditingTitle ? (
-              <input
-                type="text"
-                value={editTitleValue}
-                onChange={(e) => onEditTitleChange(e.target.value)}
-                onBlur={() => onSaveEditTitle()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onSaveEditTitle();
-                  if (e.key === 'Escape') onCancelEditTitle();
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="text-base font-medium text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded px-2 py-0.5 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                autoFocus
-              />
-            ) : (
-              <h3
-                className="text-base font-medium text-[var(--color-text)] cursor-text flex-1 min-w-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartEditTitle();
-                }}
-              >
-                {topic.title}
-              </h3>
-            )}
-          </div>
-          <div className="flex items-center space-x-4 flex-shrink-0">
-            <div
-              className="flex items-center space-x-2 opacity-0 group-hover/topic:opacity-100 transition-opacity"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => onAddSubTopic()}
-                className="inline-flex items-center px-2.5 py-1.5 bg-[var(--color-primary-muted)] text-[var(--color-primary)] hover:bg-[var(--color-primary-muted-hover)] dark:text-[var(--color-primary)] text-xs font-medium rounded-md transition-colors"
-              >
-                <FilePlus className="w-3.5 h-3.5 mr-1" />
-                เพิ่มหัวข้อย่อย
-              </button>
-              <LongPressDeleteButton
-                onDelete={onDeleteTopic}
-                title="ลบหัวข้อใหญ่"
-              />
-            </div>
-            <StatusBadge status={topicStatus} variant="compact" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function SortableSubTopicCard({
-    topicId,
-    subTopic,
-    onUpdateStatus,
-    onDelete,
-    isEditingTitle,
-    editTitleValue,
-    onEditTitleChange,
-    onStartEditTitle,
-    onSaveEditTitle,
-    onCancelEditTitle,
-    onAddDetail,
-    onUpdateDetail,
-    onUpdateDetailDueDate,
-    onRemoveDetail,
-    onToggleDetailDone,
-    isTodoSectionOpen,
-    onTodoSectionToggle,
-  }: {
-    key?: React.Key;
-    teamId: string;
-    topicId: string;
-    subTopic: SubTopic;
-    onUpdateStatus: (s: Status) => void;
-    onDelete: () => void;
-    isEditingTitle: boolean;
-    editTitleValue: string;
-    onEditTitleChange: (v: string) => void;
-    onStartEditTitle: () => void;
-    onSaveEditTitle: (finalTitle?: string) => void;
-    onCancelEditTitle: () => void;
-    onAddDetail: () => void;
-    onUpdateDetail: (index: number, value: string) => void;
-    onUpdateDetailDueDate: (index: number, dueDate: string | undefined) => void;
-    onRemoveDetail: (index: number) => void;
-    onToggleDetailDone: (index: number) => void;
-    isTodoSectionOpen: boolean;
-    onTodoSectionToggle: () => void;
-  }) {
-    const id = `sub__${topicId}__${subTopic.id}`;
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-      useSortable({
-        id,
-        data: { type: 'subtopic' as const, topicId, subTopic },
-      });
-    const style = { transform: CSS.Transform.toString(transform), transition };
-    const details = subTopic.details ?? [];
-    const [draftDetailText, setDraftDetailText] = useState<Record<number, string>>({});
-    // Local state for title while editing so parent doesn't re-render on every keystroke (avoids cursor jumping)
-    const [localTitle, setLocalTitle] = useState(editTitleValue);
-    const prevIsEditingTitle = useRef(false);
-    useEffect(() => {
-      // Only sync from parent when we first enter edit mode; avoid overwriting while user types (cursor jump to end)
-      if (isEditingTitle && !prevIsEditingTitle.current) {
-        setLocalTitle(editTitleValue);
-      }
-      prevIsEditingTitle.current = isEditingTitle;
-    }, [isEditingTitle, editTitleValue]);
-    const handleSaveEditTitle = () => {
-      onEditTitleChange(localTitle);
-      onSaveEditTitle(localTitle);
-    };
-    const getDetailDisplayValue = (index: number, item: { text: string }) =>
-      draftDetailText[index] !== undefined ? draftDetailText[index] : item.text;
-    const flushDetailDraft = (index: number) => {
-      const value =
-        draftDetailText[index] !== undefined
-          ? draftDetailText[index]
-          : details[index]?.text ?? '';
-      onUpdateDetail(index, value);
-      setDraftDetailText((prev) => {
-        const next = { ...prev };
-        delete next[index];
-        return next;
-      });
-    };
-    const getDaysLeft = (dueDate?: string) => {
-      if (!dueDate) return null;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const due = new Date(dueDate + 'T00:00:00');
-      const diffMs = due.getTime() - today.getTime();
-      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-      if (diffDays < 0) return null;
-      if (diffDays === 0) return 'วันนี้';
-      return `อีก ${diffDays} วัน`;
-    };
-    const isOverdueAndNotDone = (dueDate?: string, done?: boolean) => {
-      if (!dueDate || done) return false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const due = new Date(dueDate + 'T00:00:00');
-      return due.getTime() < today.getTime();
-    };
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className={`flex flex-col bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] shadow-[var(--shadow-card)] overflow-hidden ${isDragging ? 'opacity-80 shadow-lg z-10' : ''}`}
-      >
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <button
-              className="p-1 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing flex-shrink-0"
-              {...attributes}
-              {...listeners}
-              aria-label="ลากเพื่อเรียงหรือย้าย"
-            >
-              <GripVertical className="w-4 h-4" />
-            </button>
-            {isEditingTitle ? (
-              <input
-                type="text"
-                value={localTitle}
-                onChange={(e) => setLocalTitle(e.target.value)}
-                onBlur={() => handleSaveEditTitle()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveEditTitle();
-                  if (e.key === 'Escape') onCancelEditTitle();
-                }}
-                className="text-sm font-medium text-[var(--color-text)] bg-[var(--color-page)] border border-[var(--color-border-strong)] rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                autoFocus
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => onStartEditTitle()}
-                className="flex-1 min-w-0 text-sm font-medium text-[var(--color-text)] truncate text-left hover:bg-[var(--color-overlay)] rounded px-1 -mx-1 py-0.5"
-              >
-                {subTopic.title}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center space-x-3 flex-shrink-0">
-            <div className="flex bg-[var(--color-overlay)] p-1 rounded-lg">
-              {(['GREEN', 'YELLOW', 'RED'] as Status[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => onUpdateStatus(s)}
-                  className={`w-[7.5rem] min-w-[7.5rem] px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                    subTopic.status === s
-                      ? s === 'GREEN'
-                        ? 'bg-emerald-500 text-white shadow-sm'
-                        : s === 'YELLOW'
-                          ? 'bg-amber-500 text-white shadow-sm'
-                          : 'bg-rose-500 text-white shadow-sm'
-                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-strong)]'
-                  }`}
-                >
-                  {s === 'GREEN'
-                    ? 'ปกติ'
-                    : s === 'YELLOW'
-                      ? 'จัดการได้'
-                      : 'ต้องการ Support'}
-                </button>
-              ))}
-            </div>
-            <LongPressDeleteButton
-              onDelete={onDelete}
-              title="ลบหัวข้อย่อย"
-            />
-          </div>
-        </div>
-        <div className="border-t border-[var(--color-border)] bg-[var(--color-page)]/50">
-          <button
-            type="button"
-            onClick={onTodoSectionToggle}
-            className="w-full px-4 py-3 flex items-center justify-start gap-2 text-left hover:bg-[var(--color-overlay)] transition-colors"
-          >
-            {isTodoSectionOpen ? (
-              <ChevronDown className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
-            )}
-            <span className="text-xs font-medium text-[var(--color-text-muted)]">
-              Todo / Task
-              {details.length > 0 && (
-                <span className="ml-1.5 text-[var(--color-text-subtle)]">
-                  — {details.length} รายการ
-                </span>
-              )}
-            </span>
-          </button>
-          {isTodoSectionOpen && (
-            <div className="px-4 pb-3 pt-0">
-              <div className="space-y-1.5">
-                {details.map((item, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onToggleDetailDone(index)}
-                      className="flex-shrink-0 p-0.5 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-primary)]"
-                      title={item.done ? 'ยกเลิกทำแล้ว' : 'ทำแล้ว'}
-                    >
-                      {item.done ? (
-                        <Check className="w-4 h-4 text-emerald-500" />
-                      ) : (
-                        <Circle className="w-4 h-4" />
-                      )}
-                    </button>
-                    <span className="text-xs font-medium text-[var(--color-text-subtle)] w-5 flex-shrink-0 text-right">
-                      {index + 1}.
-                    </span>
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={getDetailDisplayValue(index, item)}
-                        onChange={(e) =>
-                          setDraftDetailText((prev) => ({
-                            ...prev,
-                            [index]: e.target.value,
-                          }))
-                        }
-                        onBlur={() => flushDetailDraft(index)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            flushDetailDraft(index);
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                        placeholder={`Task ${index + 1}`}
-                        className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${item.done ? 'line-through text-[var(--color-text-subtle)]' : 'text-[var(--color-text)]'}`}
-                      />
-                      <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[180px] justify-start">
-                        <input
-                          type="date"
-                          value={item.dueDate ?? ''}
-                          onChange={(e) =>
-                            onUpdateDetailDueDate(index, e.target.value || undefined)
-                          }
-                          title="Due date"
-                          className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 ${
-                            isOverdueAndNotDone(item.dueDate, item.done)
-                              ? 'border-red-500 text-red-500 focus:ring-red-500'
-                              : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
-                          }`}
-                        />
-                        {getDaysLeft(item.dueDate) && (
-                          <span className="text-[var(--color-text-subtle)] whitespace-nowrap">
-                            {getDaysLeft(item.dueDate)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <LongPressDeleteButton
-                      onDelete={() => onRemoveDetail(index)}
-                      title="ลบรายการ"
-                      className="p-1"
-                      iconClassName="w-3.5 h-3.5"
-                    />
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={onAddDetail}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] mt-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  เพิ่ม Task / รายการ
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  function SubtopicDroppableArea({
-    teamId,
-    topic,
-    isExpanded,
-    updateSubTopicStatus,
-    deleteSubTopic,
-    editingSubTopic,
-    editSubTopicTitle,
-    onEditSubTopicTitleChange,
-    onStartEditSubTopicTitle,
-    onSaveEditSubTopicTitle,
-    onCancelEditSubTopicTitle,
-    onAddDetail,
-    onUpdateDetail,
-    onUpdateDetailDueDate,
-    onRemoveDetail,
-    onToggleDetailDone,
-    openTodoSectionIds,
-    onTodoSectionToggle,
-  }: {
-    teamId: string;
-    topic: Topic;
-    isExpanded: boolean;
-    updateSubTopicStatus: (
-      topicId: string,
-      subTopicId: string,
-      s: Status
-    ) => void;
-    deleteSubTopic: (topicId: string, subTopicId: string) => void;
-    editingSubTopic: {
-      teamId: string;
-      topicId: string;
-      subTopicId: string;
-    } | null;
-    editSubTopicTitle: string;
-    onEditSubTopicTitleChange: (v: string) => void;
-    onStartEditSubTopicTitle: (topicId: string, subTopicId: string) => void;
-    onSaveEditSubTopicTitle: (finalTitle?: string) => void;
-    onCancelEditSubTopicTitle: () => void;
-    onAddDetail: (topicId: string, subTopicId: string) => void;
-    onUpdateDetail: (
-      topicId: string,
-      subTopicId: string,
-      index: number,
-      value: string
-    ) => void;
-    onUpdateDetailDueDate: (
-      topicId: string,
-      subTopicId: string,
-      index: number,
-      dueDate: string | undefined
-    ) => void;
-    onRemoveDetail: (
-      topicId: string,
-      subTopicId: string,
-      index: number
-    ) => void;
-    onToggleDetailDone: (
-      topicId: string,
-      subTopicId: string,
-      index: number
-    ) => void;
-    openTodoSectionIds: Set<string>;
-    onTodoSectionToggle: (subTopicId: string) => void;
-  }) {
-    const { setNodeRef, isOver } = useDroppable({
-      id: `subtopic-list-${teamId}-${topic.id}`,
-    });
-    if (!isExpanded) return null;
-    return (
-      <div
-        ref={setNodeRef}
-        className={`border-t border-[var(--color-border)] px-6 py-3 transition-colors ${isOver ? 'bg-[var(--color-primary-muted)]/50' : 'bg-[var(--color-overlay)]'}`}
-      >
-        {topic.subTopics.length === 0 ? (
-          <div className="pl-10 py-3 text-sm text-[var(--color-text-muted)] italic min-h-[44px]">
-            ยังไม่มีหัวข้อย่อย — ลากหัวข้อย่อยจากหัวข้ออื่นมาวางที่นี่ได้
-          </div>
-        ) : (
-          <SortableContext
-            items={topic.subTopics.map((s) => `sub__${topic.id}__${s.id}`)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="space-y-2 pl-10">
-              {topic.subTopics.map((subTopic) => (
-                <SortableSubTopicCard
-                  key={subTopic.id}
-                  teamId={teamId}
-                  topicId={topic.id}
-                  subTopic={subTopic}
-                  isTodoSectionOpen={openTodoSectionIds.has(subTopic.id)}
-                  onTodoSectionToggle={() => onTodoSectionToggle(subTopic.id)}
-                  onUpdateStatus={(status) =>
-                    updateSubTopicStatus(topic.id, subTopic.id, status)
-                  }
-                  onDelete={() => deleteSubTopic(topic.id, subTopic.id)}
-                  isEditingTitle={
-                    editingSubTopic?.teamId === teamId &&
-                    editingSubTopic?.topicId === topic.id &&
-                    editingSubTopic?.subTopicId === subTopic.id
-                  }
-                  editTitleValue={editSubTopicTitle}
-                  onEditTitleChange={onEditSubTopicTitleChange}
-                  onStartEditTitle={() =>
-                    onStartEditSubTopicTitle(topic.id, subTopic.id)
-                  }
-                  onSaveEditTitle={onSaveEditSubTopicTitle}
-                  onCancelEditTitle={onCancelEditSubTopicTitle}
-                  onAddDetail={() => onAddDetail(topic.id, subTopic.id)}
-                  onUpdateDetail={(index, value) =>
-                    onUpdateDetail(topic.id, subTopic.id, index, value)
-                  }
-                  onUpdateDetailDueDate={(index, dueDate) =>
-                    onUpdateDetailDueDate(topic.id, subTopic.id, index, dueDate)
-                  }
-                  onRemoveDetail={(index) =>
-                    onRemoveDetail(topic.id, subTopic.id, index)
-                  }
-                  onToggleDetailDone={(index) =>
-                    onToggleDetailDone(topic.id, subTopic.id, index)
-                  }
-                />
-              ))}
-            </div>
-          </SortableContext>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto">
       {projectLoadState === 'loading' && (
@@ -1624,25 +875,27 @@ export default function ProjectManagePage() {
               บันทึกแล้ว
             </span>
           )}
-          <div className="flex items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
-            <button
-              type="button"
-              onClick={() => importFileInputRef.current?.click()}
-              className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-0 rounded-lg text-sm font-medium transition-colors"
-              title="Import จากไฟล์ Markdown"
-            >
-              <Upload className="w-4 h-4 sm:mr-1.5" />
-              <span className="hidden sm:inline">Import</span>
-            </button>
-            <button
-              onClick={exportProject}
-              className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-0 rounded-lg text-sm font-medium transition-colors"
-              title="Export เป็นไฟล์ Markdown"
-            >
-              <Download className="w-4 h-4 sm:mr-1.5" />
-              <span className="hidden sm:inline">Export</span>
-            </button>
-          </div>
+          {false && (
+            <div className="flex items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
+              <button
+                type="button"
+                onClick={() => importFileInputRef.current?.click()}
+                className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-0 rounded-lg text-sm font-medium transition-colors"
+                title="Import จากไฟล์ Markdown"
+              >
+                <Upload className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Import</span>
+              </button>
+              <button
+                onClick={exportProject}
+                className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-0 rounded-lg text-sm font-medium transition-colors"
+                title="Export เป็นไฟล์ Markdown"
+              >
+                <Download className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            </div>
+          )}
           <input
             ref={importFileInputRef}
             type="file"
@@ -1662,7 +915,7 @@ export default function ProjectManagePage() {
           </button>
           <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
           <button
-            onClick={() => setIsTeamModalOpen(true)}
+            onClick={() => teamModal.open()}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-card)]"
           >
             <Plus className="w-4 h-4" />
@@ -1799,7 +1052,7 @@ export default function ProjectManagePage() {
           </p>
           <div className="mt-6">
             <button
-              onClick={() => setIsTeamModalOpen(true)}
+              onClick={() => teamModal.open()}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-card)]"
             >
               <Plus className="w-4 h-4" />
@@ -1840,10 +1093,7 @@ export default function ProjectManagePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setEditTeamName(team.name);
-                      setNewTeamName(team.name);
-                      setEditingTeamId(team.id);
-                      setIsTeamModalOpen(true);
+                      teamModal.openForEdit(team.id, team.name);
                     }}
                     className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded-lg px-1 -mx-1 py-0.5 transition-colors text-left w-fit"
                   >
@@ -1852,10 +1102,7 @@ export default function ProjectManagePage() {
                   </button>
                   <div className="flex items-center gap-2 opacity-0 group-hover/team:opacity-100 transition-opacity">
                     <button
-                      onClick={() => {
-                        setSelectedTeamId(team.id);
-                        setIsTopicModalOpen(true);
-                      }}
+                      onClick={() => topicModal.open(team.id)}
                       className="inline-flex items-center px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border-strong)] hover:bg-[var(--color-primary-muted)] text-[var(--color-text)] text-sm font-medium rounded-xl transition-colors"
                     >
                       <FolderPlus className="w-4 h-4 mr-1.5" />
@@ -1889,11 +1136,9 @@ export default function ProjectManagePage() {
                               isExpanded={isExpanded}
                               onToggle={() => toggleTopic(topic.id)}
                               topicStatus={topicStatus}
-                              onAddSubTopic={() => {
-                                setSelectedTeamId(team.id);
-                                setSelectedTopicId(topic.id);
-                                setIsSubTopicModalOpen(true);
-                              }}
+                                onAddSubTopic={() =>
+                                  subTopicModal.open(team.id, topic.id)
+                                }
                               onDeleteTopic={() =>
                                 deleteTopic(team.id, topic.id)
                               }
@@ -2018,223 +1263,9 @@ export default function ProjectManagePage() {
         );
       })()}
 
-      {isTeamModalOpen && (
-        <div className="fixed inset-0 bg-[var(--color-modal-backdrop)] backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[var(--color-surface)] rounded-2xl shadow-[var(--shadow-modal)] w-full max-w-md overflow-hidden border border-[var(--color-border)]">
-            <div className="px-6 py-4 border-b border-[var(--color-border)]">
-              <h3 className="text-lg font-semibold text-[var(--color-text)]">
-                {editingTeamId ? 'แก้ไขชื่อทีม' : 'เพิ่มทีม (Add Team)'}
-              </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-                {editingTeamId ? 'เลือกจาก data/teams หรือพิมพ์ชื่อที่ต้องการ' : 'เลือกจาก data/teams หรือสร้างทีมใหม่'}
-              </p>
-            </div>
-            <form onSubmit={handleAddTeam} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
-                  เลือกจากทีมที่มี (data/teams)
-                </label>
-                {loadingOrgTeams ? (
-                  <div className="py-3 text-sm text-[var(--color-text-muted)]">
-                    กำลังโหลดรายการทีม...
-                  </div>
-                ) : (
-                  <select
-                    value={selectedOrgTeamId ?? ''}
-                    onChange={(e) => {
-                      setSelectedOrgTeamId(e.target.value || null);
-                      if (e.target.value) {
-                        const org = orgTeamsForSelect.find((o) => o.id === e.target.value);
-                        if (org) setNewTeamName(org.name);
-                        else if (!editingTeamId) setNewTeamName('');
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-[var(--color-border-strong)] rounded-lg bg-[var(--color-page)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                  >
-                    <option value="">-- เลือกทีม --</option>
-                    {editingTeamId
-                      ? orgTeamsForSelect.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name} ({o.id})
-                          </option>
-                        ))
-                      : orgTeamsForSelect
-                          .filter((o) => !teams.some((t) => t.id === o.id))
-                          .map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.name} ({o.id})
-                            </option>
-                          ))}
-                    {!editingTeamId && orgTeamsForSelect.length > 0 &&
-                      orgTeamsForSelect.every((o) => teams.some((t) => t.id === o.id)) && (
-                      <option value="" disabled>
-                        ทุกทีมถูกเพิ่มแล้ว
-                      </option>
-                    )}
-                  </select>
-                )}
-              </div>
-              <div className="relative">
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-full border-t border-[var(--color-border)]" />
-                <span className="relative block text-center">
-                  <span className="bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-muted)]">
-                    หรือสร้างทีมใหม่
-                  </span>
-                </span>
-              </div>
-              <div>
-                <label
-                  htmlFor="teamName"
-                  className="block text-sm font-medium text-[var(--color-text-muted)] mb-1"
-                >
-                  {editingTeamId ? 'หรือชื่อที่แสดง' : 'ชื่อทีมใหม่'}
-                </label>
-                <input
-                  type="text"
-                  id="teamName"
-                  value={newTeamName}
-                  onChange={(e) => {
-                    setNewTeamName(e.target.value);
-                    if (e.target.value.trim()) setSelectedOrgTeamId(null);
-                  }}
-                  className="w-full px-3 py-2 border border-[var(--color-border-strong)] rounded-lg bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)]"
-                  placeholder="e.g., Infra, Platform Core"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsTeamModalOpen(false);
-                    setEditingTeamId(null);
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-lg hover:bg-[var(--color-overlay)]"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={!selectedOrgTeamId && !newTeamName.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-lg hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {editingTeamId ? 'บันทึก' : 'เพิ่มทีม'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {isTopicModalOpen && (
-        <div className="fixed inset-0 bg-[var(--color-modal-backdrop)] backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[var(--color-surface)] rounded-2xl shadow-[var(--shadow-modal)] w-full max-w-md overflow-hidden border border-[var(--color-border)]">
-            <div className="px-6 py-4 border-b border-[var(--color-border)]">
-              <h3 className="text-lg font-semibold text-[var(--color-text)]">
-                เพิ่ม Session (Add New Topic)
-              </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                สำหรับทีม:{' '}
-                {teams.find((t) => t.id === selectedTeamId)?.name}
-              </p>
-            </div>
-            <form onSubmit={handleAddTopic} className="p-6">
-              <div className="mb-4">
-                <label
-                  htmlFor="topicTitle"
-                  className="block text-sm font-medium text-[var(--color-text-muted)] mb-1"
-                >
-                  ชื่อเรื่อง (Topic Title)
-                </label>
-                <input
-                  type="text"
-                  id="topicTitle"
-                  value={newTopicTitle}
-                  onChange={(e) => setNewTopicTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-[var(--color-border-strong)] rounded-lg bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)]"
-                  placeholder="e.g., Network & Connectivity"
-                  autoFocus
-                />
-              </div>
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsTopicModalOpen(false);
-                    setSelectedTeamId(null);
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-lg hover:bg-[var(--color-overlay)]"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newTopicTitle.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-lg hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {isSubTopicModalOpen && (
-        <div className="fixed inset-0 bg-[var(--color-modal-backdrop)] backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[var(--color-surface)] rounded-2xl shadow-[var(--shadow-modal)] w-full max-w-md overflow-hidden border border-[var(--color-border)]">
-            <div className="px-6 py-4 border-b border-[var(--color-border)]">
-              <h3 className="text-lg font-semibold text-[var(--color-text)]">
-                เพิ่มหัวข้อย่อย (Add Sub-Topic)
-              </h3>
-              <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                ภายใต้หัวข้อ:{' '}
-                {teams
-                  .find((t) => t.id === selectedTeamId)
-                  ?.topics.find((top) => top.id === selectedTopicId)?.title}
-              </p>
-            </div>
-            <form onSubmit={handleAddSubTopic} className="p-6">
-              <div className="mb-4">
-                <label
-                  htmlFor="subTopicTitle"
-                  className="block text-sm font-medium text-[var(--color-text-muted)] mb-1"
-                >
-                  ชื่อหัวข้อย่อย (Sub-Topic Title)
-                </label>
-                <input
-                  type="text"
-                  id="subTopicTitle"
-                  value={newSubTopicTitle}
-                  onChange={(e) => setNewSubTopicTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-[var(--color-border-strong)] rounded-lg bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)]"
-                  placeholder="e.g., Firewall Rules Update"
-                  autoFocus
-                />
-              </div>
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSubTopicModalOpen(false);
-                    setSelectedTeamId(null);
-                    setSelectedTopicId(null);
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-lg hover:bg-[var(--color-overlay)]"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newSubTopicTitle.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-[var(--color-primary)] rounded-lg hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  บันทึก
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <TeamModal {...teamModal} />
+      <TopicModal {...topicModal} />
+      <SubTopicModal {...subTopicModal} />
 
       {isSummaryViewOpen && (
         <div

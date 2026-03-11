@@ -3,9 +3,9 @@ name: SolutionDev
 owner: พี่ Art
 parent: null
 childIds:
+  - otc
   - ftd
-  - ptp
   - hc
   - f_a
+  - ptp
   - oth
-  - otc
