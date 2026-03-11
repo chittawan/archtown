@@ -17,7 +17,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Team, Topic, SubTopic, Status } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SummaryView } from '../../components/project/SummaryView';
-import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
+import { projectToYaml, yamlToProject, type ProjectData } from '../../lib/projectYaml';
 import { nameToId, ensureUniqueId } from '../../lib/idUtils';
 
 const REMOVE_HOLD_MS = 1000;
@@ -409,12 +409,18 @@ export default function ProjectManagePage() {
   };
 
   const exportProject = () => {
-    const md = exportToMarkdown(projectName, teams);
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const fileId = projectId || nameToId(projectName || 'project') || 'project';
+    const yamlStr = projectToYaml({
+      id: fileId,
+      projectName: projectName || 'Project',
+      description: projectDescription.trim() || undefined,
+      teams,
+    });
+    const blob = new Blob([yamlStr], { type: 'application/x-yaml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${(projectName || 'project').replace(/[^\p{L}\p{N}\s_-]/gu, '_')}.md`;
+    a.download = `${(projectName || 'project').replace(/[^\p{L}\p{N}\s_-]/gu, '_')}.yaml`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -440,12 +446,12 @@ export default function ProjectManagePage() {
     return () => clearTimeout(t);
   }, [teams, projectName, projectDescription, projectLoadState, projectIdFromUrl]);
 
-  const downloadAsMarkdown = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const downloadAsYaml = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'application/x-yaml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${filename}.md`;
+    a.download = `${filename}.yaml`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -474,8 +480,13 @@ export default function ProjectManagePage() {
           window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: savedId } }));
         }
       } else {
-        const md = exportToMarkdown(projectName, teams);
-        downloadAsMarkdown(md, fileId);
+        const yamlStr = projectToYaml({
+          id: fileId,
+          projectName: name,
+          description: projectDescription.trim() || undefined,
+          teams,
+        });
+        downloadAsYaml(yamlStr, fileId);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
         if (typeof window !== 'undefined') {
@@ -483,8 +494,13 @@ export default function ProjectManagePage() {
         }
       }
     } catch {
-      const md = exportToMarkdown(projectName, teams);
-      downloadAsMarkdown(md, fileId);
+      const yamlStr = projectToYaml({
+        id: fileId,
+        projectName: name,
+        description: projectDescription.trim() || undefined,
+        teams,
+      });
+      downloadAsYaml(yamlStr, fileId);
       setSaveStatus('ok');
       setTimeout(() => setSaveStatus('idle'), 2000);
       if (typeof window !== 'undefined') {
@@ -502,10 +518,10 @@ export default function ProjectManagePage() {
     reader.onload = () => {
       const text = reader.result as string;
       try {
-        const { projectName: name, teams: nextTeams } = importFromMarkdown(text);
-        setProjectName(name || projectName);
-        setTeams(nextTeams);
-        const allTopicIds = nextTeams.flatMap((t) => t.topics.map((top) => top.id));
+        const data = yamlToProject(text);
+        setProjectName(data.projectName || projectName);
+        setTeams(data.teams);
+        const allTopicIds = data.teams.flatMap((t) => t.topics.map((top) => top.id));
         setExpandedTopics(new Set(allTopicIds));
         setOpenTodoSectionIds(new Set());
         setStatusFilter(new Set());

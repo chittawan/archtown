@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3 } from 'lucide-react';
-import SummaryStatusPanel from './SummaryStatusPanel';
-import TodoPanel from './TodoPanel';
+import SummaryStatusPanel from './SummaryStatusPanel.tsx';
+import TodoPanel from './TodoPanel.tsx';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },

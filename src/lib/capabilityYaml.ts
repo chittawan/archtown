@@ -1,8 +1,29 @@
 /**
  * Capability (Cap + order) as YAML. Used by server to read/write data/capability/*.yaml.
+ * Types Cap, ProjectInCap, CapabilityLayout are shared with UI.
  */
 import yaml from 'js-yaml';
-import type { Cap, ProjectInCap, ProjectStatus } from './capabilityMarkdown';
+
+export type ProjectStatus = 'RED' | 'YELLOW' | 'GREEN';
+
+export interface ProjectInCap {
+  id: string;
+  name: string;
+  status?: ProjectStatus;
+  cols?: 12 | 6 | 4 | 3;
+}
+
+export interface Cap {
+  id: string;
+  name: string;
+  cols?: 12 | 6 | 4 | 3;
+  projects: ProjectInCap[];
+}
+
+export interface CapabilityLayout {
+  capOrder: string[];
+  caps: Record<string, Cap>;
+}
 
 const COLS = [12, 6, 4, 3] as const;
 type Cols = (typeof COLS)[number];

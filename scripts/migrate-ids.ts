@@ -11,7 +11,6 @@ import { fileURLToPath } from 'url';
 
 import { nameToId, sanitizeId, ensureUniqueId } from '../src/lib/idUtils';
 import { yamlToProject, projectToYaml } from '../src/lib/projectYaml';
-import { importFromMarkdown } from '../src/lib/projectMarkdown';
 import { yamlToCap, capToYaml, yamlToCapOrder, capOrderToYaml } from '../src/lib/capabilityYaml';
 import { yamlToOrgTeam, orgTeamToYaml } from '../src/lib/teamYaml';
 import type { ProjectData } from '../src/lib/projectYaml';
@@ -29,23 +28,13 @@ function ensureDir(dir: string) {
 
 function migrateProjects() {
   ensureDir(DATA_PROJECTS_DIR);
-  const files = fs.readdirSync(DATA_PROJECTS_DIR).filter(
-    (f) => f.endsWith('.yaml') || f.endsWith('.md')
-  );
+  const files = fs.readdirSync(DATA_PROJECTS_DIR).filter((f) => f.endsWith('.yaml'));
   for (const f of files) {
-    const ext = f.endsWith('.yaml') ? '.yaml' : '.md';
-    const oldStem = f.slice(0, -ext.length);
+    const oldStem = f.slice(0, -5);
     const fullPath = path.join(DATA_PROJECTS_DIR, f);
     const content = fs.readFileSync(fullPath, 'utf-8');
-    let name = oldStem;
-    let data: ProjectData;
-    if (ext === '.yaml') {
-      data = yamlToProject(content);
-      name = data.projectName || oldStem;
-    } else {
-      data = importFromMarkdown(content);
-      name = data.projectName || oldStem;
-    }
+    const data: ProjectData = yamlToProject(content);
+    const name = data.projectName || oldStem;
     const newId = sanitizeId(data.id || '') || sanitizeId(nameToId(name)) || 'project';
     const payload: ProjectData = { ...data, id: newId };
     const toWrite = projectToYaml(payload);
@@ -73,15 +62,11 @@ function migrateCapability() {
 
   for (const oldCapId of capOrder) {
     const yamlPath = path.join(DATA_CAPABILITY_DIR, `${oldCapId}.yaml`);
-    const mdPath = path.join(DATA_CAPABILITY_DIR, `${oldCapId}.md`);
-    if (!fs.existsSync(yamlPath) && !fs.existsSync(mdPath)) {
+    if (!fs.existsSync(yamlPath)) {
       newOrder.push(sanitizeId(nameToId(oldCapId)) || oldCapId);
       continue;
     }
-    const content = fs.readFileSync(
-      fs.existsSync(yamlPath) ? yamlPath : mdPath,
-      'utf-8'
-    );
+    const content = fs.readFileSync(yamlPath, 'utf-8');
     const cap = yamlToCap(oldCapId, content);
     const newCapId = sanitizeId(nameToId(cap.name)) || sanitizeId(oldCapId) || 'cap';
     const newProjects = cap.projects.map((p) => ({
@@ -96,8 +81,7 @@ function migrateCapability() {
     newOrder.push(newCapId);
     if (newCapId !== oldCapId) {
       renames.push({ old: oldCapId, new: newCapId });
-      const oldPath = fs.existsSync(yamlPath) ? yamlPath : mdPath;
-      fs.unlinkSync(oldPath);
+      fs.unlinkSync(yamlPath);
       console.log('Cap:', oldCapId, '->', newCapId);
     }
   }
@@ -108,13 +92,10 @@ function migrateCapability() {
 
 function migrateTeams() {
   ensureDir(DATA_TEAMS_DIR);
-  const files = fs.readdirSync(DATA_TEAMS_DIR).filter(
-    (f) => f.endsWith('.yaml') || f.endsWith('.md')
-  );
+  const files = fs.readdirSync(DATA_TEAMS_DIR).filter((f) => f.endsWith('.yaml'));
   const teams: { oldId: string; team: ReturnType<typeof yamlToOrgTeam> }[] = [];
   for (const f of files) {
-    const ext = f.endsWith('.yaml') ? '.yaml' : '.md';
-    const oldId = f.slice(0, -ext.length);
+    const oldId = f.slice(0, -5);
     const content = fs.readFileSync(path.join(DATA_TEAMS_DIR, f), 'utf-8');
     const team = yamlToOrgTeam(oldId, content);
     teams.push({ oldId, team });
@@ -139,10 +120,8 @@ function migrateTeams() {
     const newPath = path.join(DATA_TEAMS_DIR, `${newId}.yaml`);
     fs.writeFileSync(newPath, toWrite, 'utf-8');
     const oldPath = path.join(DATA_TEAMS_DIR, `${oldId}.yaml`);
-    const oldPathMd = path.join(DATA_TEAMS_DIR, `${oldId}.md`);
-    if (oldId !== newId) {
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      if (fs.existsSync(oldPathMd)) fs.unlinkSync(oldPathMd);
+    if (oldId !== newId && fs.existsSync(oldPath)) {
+      fs.unlinkSync(oldPath);
       console.log('Team:', oldId, '->', newId);
     }
   }

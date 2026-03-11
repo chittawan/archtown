@@ -4,18 +4,14 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {defineConfig, loadEnv} from 'vite';
 
-import {importFromMarkdown} from './src/lib/projectMarkdown';
 import {yamlToProject, projectToYaml} from './src/lib/projectYaml';
 import {nameToId, sanitizeId} from './src/lib/idUtils';
-import {markdownToOrgTeam} from './src/lib/teamMarkdown';
 import {yamlToOrgTeam, orgTeamToYaml} from './src/lib/teamYaml';
-import {markdownToCap, orderMarkdownToCapIds} from './src/lib/capabilityMarkdown';
 import {yamlToCap, capToYaml, yamlToCapOrder, capOrderToYaml} from './src/lib/capabilityYaml';
 
 const DATA_PROJECTS_DIR = path.resolve(__dirname, 'data', 'projects');
 const DATA_TEAMS_DIR = path.resolve(__dirname, 'data', 'teams');
 const DATA_CAPABILITY_DIR = path.resolve(__dirname, 'data', 'capability');
-const CAPABILITY_ORDER_FILE_MD = '_order.md';
 const CAPABILITY_ORDER_FILE_YAML = '_order.yaml';
 
 function safeTeamId(id: string): string {
@@ -26,19 +22,17 @@ function safeCapId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-_]/g, '') || 'cap';
 }
 
-/** Resolve project id to file path: exact match then case-insensitive stem (ชื่อไฟล์ = ตัวเล็ก + _) */
-function resolveProjectPath(projId: string): { path: string; ext: 'yaml' | 'md' } | null {
+/** Resolve project id to file path: YAML only. */
+function resolveProjectPath(projId: string): { path: string; ext: 'yaml' } | null {
   const exactYaml = path.join(DATA_PROJECTS_DIR, `${projId}.yaml`);
-  const exactMd = path.join(DATA_PROJECTS_DIR, `${projId}.md`);
   if (fs.existsSync(exactYaml)) return { path: exactYaml, ext: 'yaml' };
-  if (fs.existsSync(exactMd)) return { path: exactMd, ext: 'md' };
   const lowerId = projId.toLowerCase().replace(/[^a-z0-9_]/g, '');
   const files = fs.readdirSync(DATA_PROJECTS_DIR);
   for (const f of files) {
-    const stem = f.endsWith('.yaml') ? f.slice(0, -5) : f.endsWith('.md') ? f.slice(0, -3) : null;
-    if (stem && stem.toLowerCase() === lowerId) {
-      if (f.endsWith('.yaml')) return { path: path.join(DATA_PROJECTS_DIR, f), ext: 'yaml' };
-      if (f.endsWith('.md')) return { path: path.join(DATA_PROJECTS_DIR, f), ext: 'md' };
+    if (!f.endsWith('.yaml')) continue;
+    const stem = f.slice(0, -5);
+    if (stem.toLowerCase() === lowerId) {
+      return { path: path.join(DATA_PROJECTS_DIR, f), ext: 'yaml' };
     }
   }
   return null;
@@ -68,8 +62,8 @@ export default defineConfig(({mode}) => {
                   return;
                 }
                 const content = fs.readFileSync(resolved.path, 'utf-8');
-                const data = resolved.ext === 'yaml' ? yamlToProject(content) : importFromMarkdown(content);
-                const outId = (data && (data as { id?: string }).id) || path.basename(resolved.path, resolved.ext === 'yaml' ? '.yaml' : '.md');
+                const data = yamlToProject(content);
+                const outId = (data && (data as { id?: string }).id) || path.basename(resolved.path, '.yaml');
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ id: outId, data }));
               } catch (e) {
@@ -87,54 +81,36 @@ export default defineConfig(({mode}) => {
               const files = fs.readdirSync(DATA_PROJECTS_DIR);
               const list: Array<{ id: string; name: string; description?: string | null; summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null }> = [];
               const seenIds = new Set<string>();
-              const addFromFile = (f: string, id: string, content: string, isYaml: boolean) => {
+              const addFromFile = (f: string, id: string, content: string) => {
                 if (seenIds.has(id)) return;
                 seenIds.add(id);
                 let name = id;
                 let summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null = null;
                 let description: string | null = null;
                 try {
-                  if (isYaml) {
-                    const data = yamlToProject(content);
-                    name = data.projectName || id;
-                    description =
-                      typeof data.description === 'string' && data.description.trim()
-                        ? data.description.trim()
-                        : null;
-                    for (const t of data.teams) {
-                      for (const top of t.topics) {
-                        for (const sub of top.subTopics) {
-                          if (sub.status === 'RED') summaryStatus = 'RED';
-                          else if (sub.status === 'YELLOW') summaryStatus = summaryStatus === 'RED' ? 'RED' : 'YELLOW';
-                          else if (!summaryStatus) summaryStatus = 'GREEN';
-                        }
+                  const data = yamlToProject(content);
+                  name = data.projectName || id;
+                  description =
+                    typeof data.description === 'string' && data.description.trim()
+                      ? data.description.trim()
+                      : null;
+                  for (const t of data.teams) {
+                    for (const top of t.topics) {
+                      for (const sub of top.subTopics) {
+                        if (sub.status === 'RED') summaryStatus = 'RED';
+                        else if (sub.status === 'YELLOW') summaryStatus = summaryStatus === 'RED' ? 'RED' : 'YELLOW';
+                        else if (!summaryStatus) summaryStatus = 'GREEN';
                       }
-                    }
-                  } else {
-                    const lines = content.split(/\r?\n/);
-                    const h1 = lines.find((l) => /^#\s+.+/.test(l));
-                    if (h1) name = h1.replace(/^#\s+/, '').trim();
-                    const statusMatch = content.match(/\((RED|YELLOW|GREEN)\)/g);
-                    if (statusMatch && statusMatch.length > 0) {
-                      if (statusMatch.some((s) => s === '(RED)')) summaryStatus = 'RED';
-                      else if (statusMatch.some((s) => s === '(YELLOW)')) summaryStatus = 'YELLOW';
-                      else summaryStatus = 'GREEN';
                     }
                   }
                 } catch (_) {}
                 list.push({ id, name, description, summaryStatus });
               };
               const yamlFiles = files.filter((f) => f.endsWith('.yaml'));
-              const mdFiles = files.filter((f) => f.endsWith('.md'));
               for (const f of yamlFiles) {
                 const id = f.slice(0, -5);
                 const filePath = path.join(DATA_PROJECTS_DIR, f);
-                addFromFile(f, id, fs.readFileSync(filePath, 'utf-8'), true);
-              }
-              for (const f of mdFiles) {
-                const id = f.slice(0, -3);
-                const filePath = path.join(DATA_PROJECTS_DIR, f);
-                addFromFile(f, id, fs.readFileSync(filePath, 'utf-8'), false);
+                addFromFile(f, id, fs.readFileSync(filePath, 'utf-8'));
               }
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ projects: list }));
@@ -157,7 +133,7 @@ export default defineConfig(({mode}) => {
             req.on('data', (chunk) => { body += chunk; });
             req.on('end', () => {
               try {
-                const { projectName, data, markdown } = JSON.parse(body);
+                const { projectName, data } = JSON.parse(body);
                 const name = (projectName || 'project').trim();
                 fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
                 let payload: { id?: string; projectName: string; description?: string; teams: unknown[] };
@@ -168,13 +144,10 @@ export default defineConfig(({mode}) => {
                     description: typeof data.description === 'string' ? data.description.trim() || undefined : undefined,
                     teams: data.teams,
                   };
-                } else if (typeof markdown === 'string') {
-                  const imported = importFromMarkdown(markdown);
-                  payload = { projectName: imported.projectName, teams: imported.teams };
                 } else {
                   res.statusCode = 400;
                   res.setHeader('Content-Type', 'application/json');
-                  res.end(JSON.stringify({ ok: false, error: 'Missing data or markdown' }));
+                  res.end(JSON.stringify({ ok: false, error: 'Missing data' }));
                   return;
                 }
                 const fileId = sanitizeId(payload.id || '') || sanitizeId(nameToId(payload.projectName)) || 'project';
@@ -207,10 +180,8 @@ export default defineConfig(({mode}) => {
                 fs.mkdirSync(DATA_TEAMS_DIR, { recursive: true });
                 const files = fs.readdirSync(DATA_TEAMS_DIR);
                 const yamlFiles = files.filter((f) => f.endsWith('.yaml'));
-                const mdFiles = files.filter((f) => f.endsWith('.md'));
                 const ids = new Set<string>();
                 for (const f of yamlFiles) ids.add(f.slice(0, -5));
-                for (const f of mdFiles) ids.add(f.slice(0, -3));
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ ids: Array.from(ids) }));
               } catch (e) {
@@ -224,15 +195,11 @@ export default defineConfig(({mode}) => {
             if (getMatch && req.method === 'GET') {
               const id = safeTeamId(getMatch[1]);
               const yamlPath = path.join(DATA_TEAMS_DIR, `${id}.yaml`);
-              const mdPath = path.join(DATA_TEAMS_DIR, `${id}.md`);
               try {
                 let data: { id: string; name: string; owner: string; parentId: string | null; childIds: string[] };
                 if (fs.existsSync(yamlPath)) {
                   const yamlStr = fs.readFileSync(yamlPath, 'utf-8');
                   data = yamlToOrgTeam(id, yamlStr);
-                } else if (fs.existsSync(mdPath)) {
-                  const md = fs.readFileSync(mdPath, 'utf-8');
-                  data = markdownToOrgTeam(id, md);
                 } else {
                   res.statusCode = 404;
                   res.setHeader('Content-Type', 'application/json');
@@ -253,19 +220,17 @@ export default defineConfig(({mode}) => {
               req.on('data', (chunk) => { body += chunk; });
               req.on('end', () => {
                 try {
-                  const { id, data, markdown } = JSON.parse(body);
+                  const { id, data } = JSON.parse(body);
                   const safeId = safeTeamId(String(id || 'team'));
                   fs.mkdirSync(DATA_TEAMS_DIR, { recursive: true });
                   const filePath = path.join(DATA_TEAMS_DIR, `${safeId}.yaml`);
                   let toWrite: string;
                   if (data != null && typeof data === 'object' && 'name' in data) {
                     toWrite = orgTeamToYaml({ ...data, id: safeId });
-                  } else if (typeof markdown === 'string') {
-                    toWrite = orgTeamToYaml(markdownToOrgTeam(safeId, markdown));
                   } else {
                     res.statusCode = 400;
                     res.setHeader('Content-Type', 'application/json');
-                    res.end(JSON.stringify({ ok: false, error: 'Missing data or markdown' }));
+                    res.end(JSON.stringify({ ok: false, error: 'Missing data' }));
                     return;
                   }
                   fs.writeFileSync(filePath, toWrite, 'utf-8');
@@ -292,17 +257,13 @@ export default defineConfig(({mode}) => {
               try {
                 fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
                 const orderPathYaml = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
-                const orderPathMd = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
                 let capOrder: string[] = [];
                 if (fs.existsSync(orderPathYaml)) {
                   capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
-                } else if (fs.existsSync(orderPathMd)) {
-                  capOrder = orderMarkdownToCapIds(fs.readFileSync(orderPathMd, 'utf-8'));
                 }
                 const caps: Record<string, { id: string; name: string; cols?: 12 | 6 | 4 | 3; projects: Array<{ id: string; name: string; status?: string; cols?: 12 | 6 | 4 | 3 }> }> = {};
                 const files = fs.readdirSync(DATA_CAPABILITY_DIR);
                 const capFilesYaml = files.filter((f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML);
-                const capFilesMd = files.filter((f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD);
                 const seen = new Set(capOrder);
                 for (const f of capFilesYaml) {
                   const id = f.slice(0, -5);
@@ -311,20 +272,10 @@ export default defineConfig(({mode}) => {
                     capOrder.push(id);
                   }
                 }
-                for (const f of capFilesMd) {
-                  const id = f.slice(0, -3);
-                  if (!seen.has(id)) {
-                    seen.add(id);
-                    capOrder.push(id);
-                  }
-                }
                 for (const id of capOrder) {
                   const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
-                  const mdPath = path.join(DATA_CAPABILITY_DIR, `${id}.md`);
                   if (fs.existsSync(yamlPath)) {
                     caps[id] = yamlToCap(id, fs.readFileSync(yamlPath, 'utf-8'));
-                  } else if (fs.existsSync(mdPath)) {
-                    caps[id] = markdownToCap(id, fs.readFileSync(mdPath, 'utf-8'));
                   } else {
                     caps[id] = { id: safeCapId(id), name: id, cols: 4, projects: [] };
                   }
@@ -344,17 +295,13 @@ export default defineConfig(({mode}) => {
                 fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
                 fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
                 const orderPathYaml = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
-                const orderPathMd = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
                 let capOrder: string[] = [];
                 if (fs.existsSync(orderPathYaml)) {
                   capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
-                } else if (fs.existsSync(orderPathMd)) {
-                  capOrder = orderMarkdownToCapIds(fs.readFileSync(orderPathMd, 'utf-8'));
                 }
                 const caps: Record<string, { id: string; name: string; projects: Array<{ id: string; name: string }> }> = {};
                 const files = fs.readdirSync(DATA_CAPABILITY_DIR);
                 const capFilesYaml = files.filter((f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML);
-                const capFilesMd = files.filter((f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD);
                 const seen = new Set(capOrder);
                 for (const f of capFilesYaml) {
                   const id = f.slice(0, -5);
@@ -363,25 +310,10 @@ export default defineConfig(({mode}) => {
                     capOrder.push(id);
                   }
                 }
-                for (const f of capFilesMd) {
-                  const id = f.slice(0, -3);
-                  if (!seen.has(id)) {
-                    seen.add(id);
-                    capOrder.push(id);
-                  }
-                }
                 for (const id of capOrder) {
                   const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
-                  const mdPath = path.join(DATA_CAPABILITY_DIR, `${id}.md`);
                   if (fs.existsSync(yamlPath)) {
                     const cap = yamlToCap(id, fs.readFileSync(yamlPath, 'utf-8'));
-                    caps[id] = {
-                      id: cap.id,
-                      name: cap.name,
-                      projects: cap.projects.map((p) => ({ id: p.id, name: p.name })),
-                    };
-                  } else if (fs.existsSync(mdPath)) {
-                    const cap = markdownToCap(id, fs.readFileSync(mdPath, 'utf-8'));
                     caps[id] = {
                       id: cap.id,
                       name: cap.name,
@@ -401,15 +333,11 @@ export default defineConfig(({mode}) => {
                     if (projectId && proj.id !== projectId) continue;
                     const projectName = proj.name || proj.id;
                     const yamlPath = path.join(DATA_PROJECTS_DIR, `${proj.id}.yaml`);
-                    const mdPath = path.join(DATA_PROJECTS_DIR, `${proj.id}.md`);
                     let data: { teams?: Array<{ topics?: Array<{ subTopics?: Array<{ title: string; status: string }> }> }> } | null = null;
                     try {
                       if (fs.existsSync(yamlPath)) {
                         const yamlStr = fs.readFileSync(yamlPath, 'utf-8');
                         data = yamlToProject(yamlStr);
-                      } else if (fs.existsSync(mdPath)) {
-                        const md = fs.readFileSync(mdPath, 'utf-8');
-                        data = importFromMarkdown(md);
                       }
                     } catch {
                       continue;

@@ -31,9 +31,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { OrgTeam } from '../../types';
-import {
-  orgTeamToMarkdown,
-} from '../../lib/teamMarkdown';
+import { orgTeamToYaml } from '../../lib/teamYaml';
 import { nameToId, ensureUniqueId } from '../../lib/idUtils';
 
 type TeamMap = Map<string, OrgTeam>;
@@ -371,7 +369,7 @@ export default function TeamsManagePage() {
     };
     const ok = await saveTeam(newTeam);
     if (!ok) {
-      downloadTeamMarkdown(newTeam);
+      downloadTeamYaml(newTeam);
     }
     if (createParentId) {
       const parent = teams.get(createParentId);
@@ -441,13 +439,13 @@ export default function TeamsManagePage() {
     setEditingTeam(null);
   };
 
-  const downloadTeamMarkdown = (team: OrgTeam) => {
-    const md = orgTeamToMarkdown(team);
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const downloadTeamYaml = (team: OrgTeam) => {
+    const yamlStr = orgTeamToYaml(team);
+    const blob = new Blob([yamlStr], { type: 'application/x-yaml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${team.id}.md`;
+    a.download = `${team.id}.yaml`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -607,7 +605,7 @@ export default function TeamsManagePage() {
             </button>
             <button
               type="button"
-              onClick={() => downloadTeamMarkdown(team)}
+              onClick={() => downloadTeamYaml(team)}
               className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-overlay)]"
               title="ดาวน์โหลด .md"
             >

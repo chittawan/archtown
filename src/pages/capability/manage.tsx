@@ -29,7 +29,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Cap, CapabilityLayout, ProjectInCap } from '../../lib/capabilityMarkdown';
+import type { Cap, CapabilityLayout, ProjectInCap } from '../../lib/capabilityYaml';
 import { nameToId, ensureUniqueId } from '../../lib/idUtils';
 import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/capability/ProjectCard';

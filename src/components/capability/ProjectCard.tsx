@@ -3,7 +3,7 @@ import { GripVertical, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { ProjectInCap, ProjectStatus } from '../../lib/capabilityMarkdown';
+import type { ProjectInCap, ProjectStatus } from '../../lib/capabilityYaml';
 import { StatusBadge } from '../ui/StatusBadge';
 
 const REMOVE_HOLD_MS = 1000;
@@ -175,8 +175,62 @@ export function SortableProjectCard({
         `}
         title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
       >
+        {/* ปุ่มลอยมุมขวาบน — โชว์ตอน hover */}
+        <div
+          className="absolute top-2 right-2 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <label className="sr-only" htmlFor={`project-cols-${capId}-${project.id}`}>
+            ความกว้างการ์ด
+          </label>
+          <select
+            id={`project-cols-${capId}-${project.id}`}
+            value={project.cols ?? 4}
+            onChange={(e) => {
+              e.stopPropagation();
+              onChangeCols(Number(e.target.value) as 12 | 6 | 4 | 3);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title="ปรับความกว้างการ์ด"
+            className="h-7 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-overlay)] text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)] appearance-none cursor-pointer shadow-sm"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 0.35rem center',
+              backgroundSize: '10px',
+            }}
+          >
+            <option value={12}>เต็มแถว</option>
+            <option value={6}>ครึ่งแถว</option>
+            <option value={4}>1/3 แถว</option>
+            <option value={3}>1/4 แถว</option>
+          </select>
+          <button
+            type="button"
+            onPointerDown={handleRemovePointerDown}
+            onPointerUp={clearRemoveHold}
+            onPointerLeave={clearRemoveHold}
+            onPointerCancel={clearRemoveHold}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className="relative shrink-0 p-1.5 rounded-md text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/5 transition-colors overflow-hidden"
+            title="กดค้าง 1 วินาทีเพื่อเอาออกจากกลุ่มนี้"
+            aria-label="กดค้าง 1 วินาทีเพื่อเอาโปรเจกต์ออกจากกลุ่ม"
+          >
+            {removeHoldProgress > 0 && (
+              <span
+                className="absolute inset-0 bg-red-500/30 rounded ease-linear"
+                style={{ width: `${removeHoldProgress}%`, transition: 'none' }}
+              />
+            )}
+            <span className="relative z-10 block">
+              <Trash2 className="w-3.5 h-3.5" />
+            </span>
+          </button>
+        </div>
         <div className="flex flex-col w-full">
-          {/* Compact row: Grip | Label area (hover → ปุ่มทับ) | Status เสมอ */}
+          {/* Compact row: Grip | Label | Status */}
           <div className="flex items-center gap-2 px-3 py-2 w-full min-h-[72px]">
             <button
               type="button"
@@ -188,9 +242,8 @@ export function SortableProjectCard({
             >
               <GripVertical className="w-4 h-4" />
             </button>
-            <div className="flex-1 min-w-0 relative flex items-center">
-              {/* Label — แสดงชื่อ + description จาก project */}
-              <div className="flex flex-col min-w-0 py-0.5 pointer-events-none">
+            <div className="flex-1 min-w-0 flex items-center">
+              <div className="flex flex-col min-w-0 py-0.5">
                 <p className="text-sm font-medium text-[var(--color-text)] line-clamp-2 break-words leading-snug">
                   {project.name}
                 </p>
@@ -199,59 +252,6 @@ export function SortableProjectCard({
                     {descriptionText}
                   </p>
                 )}
-              </div>
-              {/* ปุ่มทับ label อีกชั้น — โชว์ตอน hover, ชิดขวา */}
-              <div
-                className="absolute inset-0 flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
-              >
-                <label className="sr-only" htmlFor={`project-cols-${capId}-${project.id}`}>
-                  ความกว้างการ์ด
-                </label>
-                <select
-                  id={`project-cols-${capId}-${project.id}`}
-                  value={project.cols ?? 4}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onChangeCols(Number(e.target.value) as 12 | 6 | 4 | 3);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  title="ปรับความกว้างการ์ด"
-                  className="h-7 px-2 rounded-md border border-transparent bg-transparent hover:bg-[var(--color-overlay)] text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)] appearance-none cursor-pointer"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.35rem center',
-                    backgroundSize: '10px',
-                  }}
-                >
-                  <option value={12}>เต็มแถว</option>
-                  <option value={6}>ครึ่งแถว</option>
-                  <option value={4}>1/3 แถว</option>
-                  <option value={3}>1/4 แถว</option>
-                </select>
-                <button
-                  type="button"
-                  onPointerDown={handleRemovePointerDown}
-                  onPointerUp={clearRemoveHold}
-                  onPointerLeave={clearRemoveHold}
-                  onPointerCancel={clearRemoveHold}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  className="relative shrink-0 p-1.5 rounded-md text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/5 transition-colors overflow-hidden"
-                  title="กดค้าง 1 วินาทีเพื่อเอาออกจากกลุ่มนี้"
-                  aria-label="กดค้าง 1 วินาทีเพื่อเอาโปรเจกต์ออกจากกลุ่ม"
-                >
-                  {removeHoldProgress > 0 && (
-                    <span
-                      className="absolute inset-0 bg-red-500/30 rounded ease-linear"
-                      style={{ width: `${removeHoldProgress}%`, transition: 'none' }}
-                    />
-                  )}
-                  <span className="relative z-10 block">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </span>
-                </button>
               </div>
             </div>
             {/* Status แสดงเสมอ — ใช้ StatusBadge แบบ compact ให้ตรงกับ Project topic row */}
