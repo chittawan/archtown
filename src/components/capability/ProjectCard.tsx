@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { ProjectInCap, ProjectStatus } from '../../lib/capabilityMarkdown';
+import { StatusBadge } from '../ui/StatusBadge';
 
 const REMOVE_HOLD_MS = 1000;
 
@@ -29,20 +30,10 @@ function capWidthClass(cols?: 12 | 6 | 4 | 3): string {
   }
 }
 
-const STATUS_PILL: Record<ProjectStatus, string> = {
-  RED: 'bg-red-500/10 text-red-600 dark:text-red-400',
-  YELLOW: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  GREEN: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-};
 const STATUS_ACCENT: Record<ProjectStatus, string> = {
   RED: 'border-l-red-500',
   YELLOW: 'border-l-amber-500',
   GREEN: 'border-l-emerald-500',
-};
-const STATUS_LABEL: Record<ProjectStatus, string> = {
-  RED: '🔴',
-  YELLOW: '🟡',
-  GREEN: '🟢',
 };
 
 export interface SortableProjectCardProps {
@@ -263,16 +254,14 @@ export function SortableProjectCard({
                 </button>
               </div>
             </div>
-            {/* Status แสดงเสมอ — มีค่าก็แสดง pill, ไม่มีก็แสดง placeholder */}
-            <span
-              className={`shrink-0 inline-flex items-center min-w-[1.25rem] justify-end ${
-                displayStatus
-                  ? `px-1.5 py-0.5 rounded text-[9px] font-medium ${STATUS_PILL[displayStatus]}`
-                  : 'text-[var(--color-text-muted)]/50 text-[10px]'
-              }`}
-            >
-              {displayStatus ? STATUS_LABEL[displayStatus] : '—'}
-            </span>
+            {/* Status แสดงเสมอ — ใช้ StatusBadge แบบ compact ให้ตรงกับ Project topic row */}
+            {displayStatus ? (
+              <StatusBadge status={displayStatus} variant="compact" />
+            ) : (
+              <span className="shrink-0 text-[var(--color-text-muted)]/50 text-[10px] min-w-[1.25rem] flex items-center justify-end">
+                —
+              </span>
+            )}
           </div>
         </div>
       </div>

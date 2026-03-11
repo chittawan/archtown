@@ -407,15 +407,10 @@ export default function ProjectManagePage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const skipSaveAfterLoadRef = useRef(true);
 
-  /** Auto-save หลังโหลดแล้ว เมื่อ teams / projectName / projectDescription เปลี่ยน (debounce 700ms)
-   * ทำงานเมื่อ: (1) โหลดจาก URL แล้ว (loaded) หรือ (2) ยังไม่โหลดแต่มีชื่อโปรเจกต์/ทีมแล้ว (idle) */
+  /** Auto-save เฉพาะเมื่อเปิดจาก URL ที่มี ?id= (projectLoadState === 'loaded') — ถ้าไม่มี ?id= ไม่ทำอะไร */
   useEffect(() => {
-    const hasContent = projectName.trim() || teams.length > 0;
-    const canSave =
-      projectLoadState === 'loaded' ||
-      (projectLoadState === 'idle' && hasContent);
-    if (!canSave) return;
-    if (projectLoadState === 'loaded' && skipSaveAfterLoadRef.current) {
+    if (projectLoadState !== 'loaded') return;
+    if (skipSaveAfterLoadRef.current) {
       skipSaveAfterLoadRef.current = false;
       return;
     }
@@ -434,7 +429,11 @@ export default function ProjectManagePage() {
   };
   const saveProjectToData = async () => {
     const name = (projectName || 'project').trim();
-    const fileId = projectId || nameToId(name) || 'project';
+    /** ไม่ใช้ชื่อจาก localStorage เป็น fileId เมื่อเปิด /project โดยไม่มี ?id= — ใช้ 'project' เพื่อไม่ให้ไปบันทึกทับไฟล์อื่น */
+    const fileId =
+      projectId ||
+      (projectLoadState === 'loaded' ? nameToId(name) : null) ||
+      'project';
     const data = { id: fileId, projectName: name, description: projectDescription.trim() || undefined, teams };
     setSaveStatus('saving');
     try {
@@ -449,10 +448,6 @@ export default function ProjectManagePage() {
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
         const savedId = resData.id || fileId;
-        if (projectLoadState === 'idle') {
-          skipSaveAfterLoadRef.current = false;
-          setProjectLoadState('loaded');
-        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: savedId } }));
         }
@@ -1068,7 +1063,6 @@ export default function ProjectManagePage() {
             )}
           </div>
           <div className="flex items-center space-x-4 flex-shrink-0">
-            <StatusBadge status={topicStatus} label="Summary" />
             <div
               className="flex items-center space-x-2 opacity-0 group-hover/topic:opacity-100 transition-opacity"
               onClick={(e) => e.stopPropagation()}
@@ -1085,6 +1079,7 @@ export default function ProjectManagePage() {
                 title="ลบหัวข้อใหญ่"
               />
             </div>
+            <StatusBadge status={topicStatus} variant="compact" />
           </div>
         </div>
       </div>

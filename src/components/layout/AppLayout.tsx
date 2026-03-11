@@ -58,10 +58,19 @@ export default function AppLayout() {
             <nav className="hidden sm:flex items-center gap-1">
               {navItems.map(({ path, label, icon: Icon }) => {
                 const isActive = location.pathname === path;
+                const isCapability = path === '/capability';
                 return (
                   <Link
                     key={path}
                     to={path}
+                    onClick={() => {
+                      if (isCapability) {
+                        sessionStorage.setItem('capability-refresh', '1');
+                        setTimeout(() => {
+                          window.dispatchEvent(new CustomEvent('capability-refresh'));
+                        }, 0);
+                      }
+                    }}
                     className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive
                         ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'

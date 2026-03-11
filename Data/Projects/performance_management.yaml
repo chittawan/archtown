@@ -10,7 +10,9 @@ teams:
             details: []
           - title: VPN & Load Balancer
             status: GREEN
-            details: []
+            details:
+              - text: ''
+                done: false
       - title: Server / Resource Cost
         subTopics:
           - title: Cloud Spending vs Budget

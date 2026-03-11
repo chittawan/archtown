@@ -1,3 +1,13 @@
 id: strategic_management
 name: Strategic Management
-teams: []
+description: คุยเรื่องของทิศทางใกล้ กลาง ไกล technology และ architectureการสินทรัพย์สำหรับธุรกิจ
+teams:
+  - name: Solution Architect
+    topics:
+      - title: kafka confluent
+        subTopics:
+          - title: Kafka PoC Areas
+            status: YELLOW
+            details:
+              - text: รวบรวมข้อมูลเพื่อนำเสนอ ข้อดี ข้อเสียการใช้งานระหว่าง kafka Strimzi กับ kafka confluent
+                done: false

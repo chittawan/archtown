@@ -155,15 +155,6 @@ export default function CapabilityManagePage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (lastLayoutCache) {
-      setLayout(lastLayoutCache);
-      setLoading(false);
-      return;
-    }
-    loadLayout();
-  }, [loadLayout]);
-
   const loadProjectList = useCallback(async () => {
     setProjectListLoading(true);
     try {
@@ -176,8 +167,37 @@ export default function CapabilityManagePage() {
   }, []);
 
   useEffect(() => {
+    if (lastLayoutCache) {
+      setLayout(lastLayoutCache);
+      setLoading(false);
+      return;
+    }
+    loadLayout();
+  }, [loadLayout]);
+
+  /** กดปุ่ม Capability ใน nav แล้วให้โหลดข้อมูลใหม่ */
+  useEffect(() => {
+    const onRefresh = () => {
+      loadLayout();
+      loadProjectList();
+    };
+    window.addEventListener('capability-refresh', onRefresh);
+    return () => window.removeEventListener('capability-refresh', onRefresh);
+  }, [loadLayout, loadProjectList]);
+
+  useEffect(() => {
     loadProjectList();
   }, [loadProjectList]);
+
+  /** โหลดข้อมูลใหม่เมื่อเข้า Capability โดยคลิกจาก nav (รวมตอนคลิกจากหน้าอื่น) */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (sessionStorage.getItem('capability-refresh')) {
+      sessionStorage.removeItem('capability-refresh');
+      loadLayout();
+      loadProjectList();
+    }
+  }, [loadLayout, loadProjectList]);
 
   useEffect(() => {
     if (addProjectCapId) {
