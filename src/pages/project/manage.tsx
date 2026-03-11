@@ -164,6 +164,22 @@ export default function ProjectManagePage() {
     setProjectId(projectIdFromUrl);
   }, [projectIdFromUrl]);
 
+  // Sync จาก TodoPanel (แผงขวา) → อัปเดต teams บนหน้า Project ให้ตรงกันแบบ realtime
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string | null; teams: Team[] }>;
+      const detail = custom.detail;
+      if (!detail?.projectId || !projectIdFromUrl) return;
+      if (detail.projectId !== projectIdFromUrl) return;
+      setTeams(detail.teams ?? []);
+    };
+    window.addEventListener('project-todos-updated', handler as EventListener);
+    return () => {
+      window.removeEventListener('project-todos-updated', handler as EventListener);
+    };
+  }, [projectIdFromUrl]);
+
   /** โหลดข้อมูลโปรเจกต์จาก data/projects/ เมื่อเปิดจาก Capability (มี ?id= ใน URL) */
   useEffect(() => {
     if (!projectIdFromUrl || projectLoadState !== 'idle') return;
@@ -1051,7 +1067,7 @@ export default function ProjectManagePage() {
         className={`flex flex-col ${isDragging ? 'opacity-60 z-20' : ''}`}
       >
         <div
-          className={`group/topic px-6 py-4 flex items-center justify-between hover:bg-[var(--color-overlay)] transition-colors cursor-pointer ${isExpanded ? 'bg-[var(--color-overlay)]' : ''}`}
+          className={`group/topic px-6 py-4 flex items-center justify-between hover:bg-[var(--color-overlay)] transition-colors cursor-pointer border-l-4 border-l-transparent ${isExpanded ? 'bg-[var(--color-overlay)] border-l-[var(--color-primary)]' : ''}`}
           onClick={onToggle}
         >
           <div className="flex items-center flex-1 min-w-0">
@@ -1171,8 +1187,13 @@ export default function ProjectManagePage() {
     const [draftDetailText, setDraftDetailText] = useState<Record<number, string>>({});
     // Local state for title while editing so parent doesn't re-render on every keystroke (avoids cursor jumping)
     const [localTitle, setLocalTitle] = useState(editTitleValue);
+    const prevIsEditingTitle = useRef(false);
     useEffect(() => {
-      if (isEditingTitle) setLocalTitle(editTitleValue);
+      // Only sync from parent when we first enter edit mode; avoid overwriting while user types (cursor jump to end)
+      if (isEditingTitle && !prevIsEditingTitle.current) {
+        setLocalTitle(editTitleValue);
+      }
+      prevIsEditingTitle.current = isEditingTitle;
     }, [isEditingTitle, editTitleValue]);
     const handleSaveEditTitle = () => {
       onEditTitleChange(localTitle);
@@ -1273,7 +1294,7 @@ export default function ProjectManagePage() {
               <ChevronRight className="w-4 h-4 text-[var(--color-text-subtle)] flex-shrink-0" />
             )}
             <span className="text-xs font-medium text-[var(--color-text-muted)]">
-              Task ย่อย / รายการ (Todo)
+              Todo / Task
               {details.length > 0 && (
                 <span className="ml-1.5 text-[var(--color-text-subtle)]">
                   — {details.length} รายการ
@@ -1769,7 +1790,7 @@ export default function ProjectManagePage() {
                       setEditingTeamId(team.id);
                       setIsTeamModalOpen(true);
                     }}
-                    className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded-lg px-1 -mx-1 py-0.5 transition-colors text-left"
+                    className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded-lg px-1 -mx-1 py-0.5 transition-colors text-left w-fit"
                   >
                     <Users className="w-5 h-5 mr-2 text-[var(--color-text-muted)] flex-shrink-0" />
                     {team.name}
@@ -1783,7 +1804,7 @@ export default function ProjectManagePage() {
                       className="inline-flex items-center px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border-strong)] hover:bg-[var(--color-primary-muted)] text-[var(--color-text)] text-sm font-medium rounded-xl transition-colors"
                     >
                       <FolderPlus className="w-4 h-4 mr-1.5" />
-                      เพิ่มหัวข้อใหญ่
+                      เพิ่ม Session
                     </button>
                     <LongPressDeleteButton
                       onDelete={() => deleteTeam(team.id)}
@@ -1795,7 +1816,7 @@ export default function ProjectManagePage() {
                 <div className="divide-y divide-[var(--color-border)]">
                   {team.topics.length === 0 ? (
                     <div className="px-6 py-8 text-center text-[var(--color-text-muted)] text-sm">
-                      ยังไม่มีหัวข้อใหญ่ในทีมนี้
+                      ยังไม่มี Session ในหัวข้อหลักนี้
                     </div>
                   ) : (
                     <SortableContext
@@ -2054,7 +2075,7 @@ export default function ProjectManagePage() {
           <div className="bg-[var(--color-surface)] rounded-2xl shadow-[var(--shadow-modal)] w-full max-w-md overflow-hidden border border-[var(--color-border)]">
             <div className="px-6 py-4 border-b border-[var(--color-border)]">
               <h3 className="text-lg font-semibold text-[var(--color-text)]">
-                เพิ่มหัวข้อใหญ่ (Add New Topic)
+                เพิ่ม Session (Add New Topic)
               </h3>
               <p className="text-sm text-[var(--color-text-muted)] mt-1">
                 สำหรับทีม:{' '}

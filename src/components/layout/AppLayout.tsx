@@ -5,7 +5,7 @@ import SummaryStatusPanel from './SummaryStatusPanel';
 import TodoPanel from './TodoPanel';
 
 const navItems = [
-  { path: '/capability', label: 'Capability', icon: Layers },
+  { path: '/capability', label: 'TownStation', icon: Layers },
   { path: '/project', label: 'Project', icon: FolderKanban },
   { path: '/teams', label: 'Teams', icon: Users },
 ];
@@ -49,7 +49,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-[var(--color-page)] text-[var(--color-text)] font-sans transition-colors">
-      <header className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-10 shadow-[var(--shadow-card)]">
+      <header className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0 z-20 shadow-[var(--shadow-card)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-6">
             <Link to="/" className="flex items-center space-x-3">
