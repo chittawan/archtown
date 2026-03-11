@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle } from 'lucide-react';
 
 interface SummaryItem {
-  cabName: string;
+  capName: string;
   projectName: string;
   taskName: string;
 }
@@ -13,13 +13,13 @@ interface SummaryData {
 }
 
 interface GroupedSummaryItem {
-  cabName: string;
+  capName: string;
   projectName: string;
   tasks: string[];
 }
 
 async function fetchSummary(projectId?: string): Promise<SummaryData> {
-  const url = projectId ? `/api/cability/summary?projectId=${encodeURIComponent(projectId)}` : '/api/cability/summary';
+  const url = projectId ? `/api/capability/summary?projectId=${encodeURIComponent(projectId)}` : '/api/capability/summary';
   const res = await fetch(url);
   if (!res.ok) return { critical: [], warning: [] };
   const data = await res.json();
@@ -80,10 +80,10 @@ export default function SummaryStatusPanel({ projectId }: { projectId?: string }
   const hasCritical = data.critical.length > 0;
   const hasWarning = data.warning.length > 0;
 
-  const groupByCabAndProject = (items: SummaryItem[]): GroupedSummaryItem[] => {
+  const groupByCapAndProject = (items: SummaryItem[]): GroupedSummaryItem[] => {
     const map = new Map<string, GroupedSummaryItem>();
     for (const item of items) {
-      const key = `${item.cabName}:::${item.projectName}`;
+      const key = `${item.capName}:::${item.projectName}`;
       const existing = map.get(key);
       if (existing) {
         if (!existing.tasks.includes(item.taskName)) {
@@ -91,7 +91,7 @@ export default function SummaryStatusPanel({ projectId }: { projectId?: string }
         }
       } else {
         map.set(key, {
-          cabName: item.cabName,
+          capName: item.capName,
           projectName: item.projectName,
           tasks: [item.taskName],
         });
@@ -100,19 +100,19 @@ export default function SummaryStatusPanel({ projectId }: { projectId?: string }
     return Array.from(map.values());
   };
 
-  const groupedCritical = groupByCabAndProject(data.critical);
-  const groupedWarning = groupByCabAndProject(data.warning);
+  const groupedCritical = groupByCapAndProject(data.critical);
+  const groupedWarning = groupByCapAndProject(data.warning);
 
-  const dispatchOpen = (cabName: string, projectName: string) => {
+  const dispatchOpen = (capName: string, projectName: string) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(
       new CustomEvent('summary-project-open', {
-        detail: { cabName, projectName },
+        detail: { capName, projectName },
       })
     );
   };
 
-  const dispatchHover = (detail: { cabName: string; projectName: string } | null) => {
+  const dispatchHover = (detail: { capName: string; projectName: string } | null) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent('summary-project-hover', { detail }));
   };
@@ -157,18 +157,18 @@ export default function SummaryStatusPanel({ projectId }: { projectId?: string }
                     hover:bg-red-500/5 hover:border-red-500/80 hover:shadow-sm
                     focus:outline-none focus:ring-1 focus:ring-red-500/40 focus:ring-offset-1 focus:ring-offset-[var(--color-surface)]
                     transition-colors duration-150"
-                  onDoubleClick={() => dispatchOpen(item.cabName, item.projectName)}
+                  onDoubleClick={() => dispatchOpen(item.capName, item.projectName)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      dispatchOpen(item.cabName, item.projectName);
+                      dispatchOpen(item.capName, item.projectName);
                     }
                   }}
-                  onMouseEnter={() => dispatchHover({ cabName: item.cabName, projectName: item.projectName })}
+                  onMouseEnter={() => dispatchHover({ capName: item.capName, projectName: item.projectName })}
                   onMouseLeave={() => dispatchHover(null)}
                 >
                   <span className="font-medium text-[var(--color-text)] group-hover:text-red-600 dark:group-hover:text-red-400">
-                    {item.cabName}
+                    {item.capName}
                   </span>
                   <span className="block text-[var(--color-text-muted)]">
                     {item.projectName}
@@ -201,18 +201,18 @@ export default function SummaryStatusPanel({ projectId }: { projectId?: string }
                     hover:bg-amber-500/5 hover:border-amber-500/80 hover:shadow-sm
                     focus:outline-none focus:ring-1 focus:ring-amber-500/40 focus:ring-offset-1 focus:ring-offset-[var(--color-surface)]
                     transition-colors duration-150"
-                  onDoubleClick={() => dispatchOpen(item.cabName, item.projectName)}
+                  onDoubleClick={() => dispatchOpen(item.capName, item.projectName)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      dispatchOpen(item.cabName, item.projectName);
+                      dispatchOpen(item.capName, item.projectName);
                     }
                   }}
-                  onMouseEnter={() => dispatchHover({ cabName: item.cabName, projectName: item.projectName })}
+                  onMouseEnter={() => dispatchHover({ capName: item.capName, projectName: item.projectName })}
                   onMouseLeave={() => dispatchHover(null)}
                 >
                   <span className="font-medium text-[var(--color-text)] group-hover:text-amber-600 dark:group-hover:text-amber-400">
-                    {item.cabName}
+                    {item.capName}
                   </span>
                   <span className="block text-[var(--color-text-muted)]">
                     {item.projectName}

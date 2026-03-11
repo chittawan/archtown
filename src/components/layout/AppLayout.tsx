@@ -4,7 +4,7 @@ import { LayoutDashboard, Sun, Moon, Users, FolderKanban, Layers, PanelRightOpen
 import SummaryStatusPanel from './SummaryStatusPanel';
 
 const navItems = [
-  { path: '/cability', label: 'Capability', icon: Layers },
+  { path: '/capability', label: 'Capability', icon: Layers },
   { path: '/project', label: 'Project', icon: FolderKanban },
   { path: '/teams', label: 'Teams', icon: Users },
 ];
@@ -118,14 +118,14 @@ export default function AppLayout() {
                 </p>
               </div>
               <div className="p-4">
-                {location.pathname === '/cability' ? (
+                {location.pathname === '/capability' ? (
                   <SummaryStatusPanel />
                 ) : projectIdFromUrl ? (
                   <SummaryStatusPanel projectId={projectIdFromUrl} />
                 ) : (
                   <p className="text-sm text-[var(--color-text-muted)]">
                     {isProjectPage
-                      ? 'เปิดโปรเจกต์ (จาก Capability หรือใส่ ?id= ใน URL) เพื่อดูสรุป Critical / Warning ของโปรเจกต์นี้'
+                      ? 'เปิดโปรเจกต์เพื่อดูสรุป Critical / Warning ของโปรเจกต์นี้'
                       : 'เปิดหน้าหลัก Capability เพื่อดูสรุป Critical / Warning'}
                   </p>
                 )}

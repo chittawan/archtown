@@ -97,7 +97,7 @@ export function yamlToProject(yamlStr: string): ProjectData {
   return { id, projectName, description, teams };
 }
 
-/** Serialize project data to YAML; id ใช้เชื่อมกับ cability */
+/** Serialize project data to YAML; id ใช้เชื่อมกับ capability */
 export function projectToYaml(data: ProjectData): string {
   const root: ProjectYamlRoot = {
     ...(data.id && { id: data.id }),

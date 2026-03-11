@@ -1,5 +1,5 @@
 /**
- * One-time migration: read all .md files in data/projects, data/teams, data/cability
+ * One-time migration: read all .md files in data/projects, data/teams, data/capability
  * and write equivalent .yaml files. Does not delete .md files.
  * Run: npx tsx scripts/migrate-md-to-yaml.ts
  */
@@ -11,16 +11,16 @@ import { importFromMarkdown } from '../src/lib/projectMarkdown';
 import { projectToYaml } from '../src/lib/projectYaml';
 import { markdownToOrgTeam } from '../src/lib/teamMarkdown';
 import { orgTeamToYaml } from '../src/lib/teamYaml';
-import { markdownToCab, orderMarkdownToCabIds } from '../src/lib/cabilityMarkdown';
-import { cabToYaml, cabOrderToYaml } from '../src/lib/cabilityYaml';
+import { markdownToCap, orderMarkdownToCapIds } from '../src/lib/capabilityMarkdown';
+import { capToYaml, capOrderToYaml } from '../src/lib/capabilityYaml';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DATA_PROJECTS_DIR = path.join(ROOT, 'data', 'projects');
 const DATA_TEAMS_DIR = path.join(ROOT, 'data', 'teams');
-const DATA_CABILITY_DIR = path.join(ROOT, 'data', 'cability');
-const CABILITY_ORDER_FILE_MD = '_order.md';
-const CABILITY_ORDER_FILE_YAML = '_order.yaml';
+const DATA_CAPABILITY_DIR = path.join(ROOT, 'data', 'capability');
+const CAPABILITY_ORDER_FILE_MD = '_order.md';
+const CAPABILITY_ORDER_FILE_YAML = '_order.yaml';
 
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) {
@@ -58,26 +58,26 @@ function migrateTeams() {
   }
 }
 
-function migrateCability() {
-  ensureDir(DATA_CABILITY_DIR);
-  const orderMdPath = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_MD);
+function migrateCapability() {
+  ensureDir(DATA_CAPABILITY_DIR);
+  const orderMdPath = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
   if (fs.existsSync(orderMdPath)) {
     const md = fs.readFileSync(orderMdPath, 'utf-8');
-    const cabOrder = orderMarkdownToCabIds(md);
-    const yamlStr = cabOrderToYaml(cabOrder);
-    fs.writeFileSync(path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML), yamlStr, 'utf-8');
-    console.log('Cability order -> _order.yaml');
+    const capOrder = orderMarkdownToCapIds(md);
+    const yamlStr = capOrderToYaml(capOrder);
+    fs.writeFileSync(path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML), yamlStr, 'utf-8');
+    console.log('Capability order -> _order.yaml');
   }
-  const files = fs.readdirSync(DATA_CABILITY_DIR).filter((f) => f.endsWith('.md') && f !== CABILITY_ORDER_FILE_MD);
+  const files = fs.readdirSync(DATA_CAPABILITY_DIR).filter((f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD);
   for (const f of files) {
     const id = f.slice(0, -3);
-    const mdPath = path.join(DATA_CABILITY_DIR, f);
-    const yamlPath = path.join(DATA_CABILITY_DIR, `${id}.yaml`);
+    const mdPath = path.join(DATA_CAPABILITY_DIR, f);
+    const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
     const md = fs.readFileSync(mdPath, 'utf-8');
-    const cab = markdownToCab(id, md);
-    const yamlStr = cabToYaml(cab);
+    const cap = markdownToCap(id, md);
+    const yamlStr = capToYaml(cap);
     fs.writeFileSync(yamlPath, yamlStr, 'utf-8');
-    console.log('Cab:', id, '->', `${id}.yaml`);
+    console.log('Cap:', id, '->', `${id}.yaml`);
   }
 }
 
@@ -86,5 +86,5 @@ migrateProjects();
 console.log('');
 migrateTeams();
 console.log('');
-migrateCability();
+migrateCapability();
 console.log('\nDone. .md files were left in place; you can remove them after verifying.');

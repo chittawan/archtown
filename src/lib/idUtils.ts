@@ -1,6 +1,6 @@
 /**
  * ID format: ตัวเล็กทั้งหมด เชื่อมด้วย _
- * ใช้กับ cab, project, team เพื่อให้เชื่อม data/cability กับ data/projects ง่าย
+ * ใช้กับ cap, project, team เพื่อให้เชื่อม data/capability กับ data/projects ง่าย
  */
 
 /**

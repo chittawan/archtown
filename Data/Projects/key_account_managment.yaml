@@ -5,8 +5,8 @@ teams:
     topics:
       - title: SalesTeams App
         subTopics:
-          - title: เข้าระบบแล้วช้ามาก ENV UAT
-            status: GREEN
+          - title: เข้าระบบ Techserv Mobile -> SalesTeasm แล้วช้ามาก ENV UAT
+            status: YELLOW
             details:
               - text: นัดตรวจสอบว่าทำไมถึงช้า หาสาเหตุและวิธีการแก้ไข
                 done: false

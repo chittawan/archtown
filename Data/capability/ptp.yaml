@@ -5,6 +5,3 @@ projects:
   - id: sap_odata
     name: SAP OData
     cols: 12
-  - id: ทดสอบ
-    name: ทดสอบ
-    cols: 12

@@ -1,14 +1,14 @@
 /**
- * Cability (Cab + order) as YAML. Used by server to read/write data/cability/*.yaml.
+ * Capability (Cap + order) as YAML. Used by server to read/write data/capability/*.yaml.
  */
 import yaml from 'js-yaml';
-import type { Cab, ProjectInCab, ProjectStatus } from './cabilityMarkdown';
+import type { Cap, ProjectInCap, ProjectStatus } from './capabilityMarkdown';
 
 const COLS = [12, 6, 4, 3] as const;
 type Cols = (typeof COLS)[number];
 
 function safeId(s: string): string {
-  return s.replace(/[^a-zA-Z0-9-_]/g, '') || 'cab';
+  return s.replace(/[^a-zA-Z0-9-_]/g, '') || 'cap';
 }
 
 function isCols(n: unknown): n is Cols {
@@ -19,31 +19,31 @@ function isStatus(s: unknown): s is ProjectStatus {
   return s === 'RED' || s === 'YELLOW' || s === 'GREEN';
 }
 
-interface ProjectInCabYaml {
+interface ProjectInCapYaml {
   id: string;
   name: string;
   status?: string;
   cols?: number;
 }
 
-interface CabYamlRoot {
+interface CapYamlRoot {
   id?: string;
   name: string;
   cols?: number;
-  projects?: ProjectInCabYaml[];
+  projects?: ProjectInCapYaml[];
 }
 
-/** Parse YAML string into Cab; id มาจาก filename แต่ถ้ามีใน YAML จะใช้เป็นหลัก */
-export function yamlToCab(id: string, yamlStr: string): Cab {
-  const raw = yaml.load(yamlStr) as CabYamlRoot | null;
+/** Parse YAML string into Cap; id มาจาก filename แต่ถ้ามีใน YAML จะใช้เป็นหลัก */
+export function yamlToCap(id: string, yamlStr: string): Cap {
+  const raw = yaml.load(yamlStr) as CapYamlRoot | null;
   if (!raw || typeof raw !== 'object') {
-    return { id: safeId(id), name: 'Cab', projects: [] };
+    return { id: safeId(id), name: 'Cap', projects: [] };
   }
-  const cabId =
+  const capId =
     typeof raw.id === 'string' && raw.id.trim() ? safeId(raw.id.trim()) : safeId(id);
-  const name = typeof raw.name === 'string' ? raw.name.trim() : 'Cab';
+  const name = typeof raw.name === 'string' ? raw.name.trim() : 'Cap';
   const cols = isCols(raw.cols) ? raw.cols : undefined;
-  const projects: ProjectInCab[] = [];
+  const projects: ProjectInCap[] = [];
   const list = Array.isArray(raw.projects) ? raw.projects : [];
   for (const p of list) {
     const projectId = typeof p.id === 'string' ? p.id.trim() : '';
@@ -53,18 +53,18 @@ export function yamlToCab(id: string, yamlStr: string): Cab {
     const projCols = isCols(p.cols) ? p.cols : undefined;
     projects.push({ id: projectId, name: projectName, status, cols: projCols });
   }
-  return { id: cabId, name, cols, projects };
+  return { id: capId, name, cols, projects };
 }
 
-/** Serialize Cab to YAML */
-export function cabToYaml(cab: Cab): string {
-  const root: CabYamlRoot = {
-    id: cab.id,
-    name: cab.name || 'Cab',
-    cols: cab.cols,
+/** Serialize Cap to YAML */
+export function capToYaml(cap: Cap): string {
+  const root: CapYamlRoot = {
+    id: cap.id,
+    name: cap.name || 'Cap',
+    cols: cap.cols,
     projects:
-      cab.projects.length > 0
-        ? cab.projects.map((p) => ({
+      cap.projects.length > 0
+        ? cap.projects.map((p) => ({
             id: p.id,
             name: p.name,
             ...(p.status && { status: p.status }),
@@ -75,15 +75,15 @@ export function cabToYaml(cab: Cab): string {
   return yaml.dump(root, { lineWidth: -1, noRefs: true });
 }
 
-/** Parse _order.yaml (array of cab ids) */
-export function yamlToCabOrder(yamlStr: string): string[] {
+/** Parse _order.yaml (array of cap ids) */
+export function yamlToCapOrder(yamlStr: string): string[] {
   const raw = yaml.load(yamlStr);
   if (!Array.isArray(raw)) return [];
   return raw.map((x) => String(x).trim()).filter(Boolean);
 }
 
-/** Serialize cab order to YAML */
-export function cabOrderToYaml(cabOrder: string[]): string {
-  const list = cabOrder.filter(Boolean);
+/** Serialize cap order to YAML */
+export function capOrderToYaml(capOrder: string[]): string {
+  const list = capOrder.filter(Boolean);
   return yaml.dump(list, { lineWidth: -1, noRefs: true });
 }

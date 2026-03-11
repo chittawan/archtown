@@ -27,7 +27,7 @@ export default function LandingPage() {
 
         <div className="mt-12">
           <Link
-            to="/cability"
+            to="/capability"
             className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-hover)] transition-colors shadow-[var(--shadow-card)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)]"
           >
             เข้าระบบ

@@ -1,28 +1,8 @@
 id: strategic_management
 name: Strategic Management
+description: คุยเรื่องของทิศทางใกล้ กลาง ไกล technology และ architectureการสินทรัพย์สำหรับธุรกิจ
 teams:
-  - name: Infra (Network)
+  - name: Solution Architect
     topics:
-      - title: Network & Connectivity
-        subTopics:
-          - title: Network Topology & Firewall
-            status: GREEN
-            details: []
-          - title: VPN & Load Balancer
-            status: GREEN
-            details: []
-      - title: Server / Cloud Resource & Cost
-        subTopics:
-          - title: Cloud Spending vs Budget
-            status: YELLOW
-            details: []
-          - title: Resource Utilization
-            status: GREEN
-            details: []
-  - name: Platform Core
-    topics:
-      - title: Traffic & Performance
-        subTopics:
-          - title: Request Volume & Latency
-            status: YELLOW
-            details: []
+      - title: kafka confluent
+        subTopics: []

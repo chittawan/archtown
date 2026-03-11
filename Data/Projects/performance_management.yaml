@@ -56,10 +56,3 @@ teams:
         subTopics: []
       - title: Security & Vulnerability
         subTopics: []
-  - name: ตัวอย่างทีม
-    topics:
-      - title: Test Delete
-        subTopics:
-          - title: test
-            status: YELLOW
-            details: []

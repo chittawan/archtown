@@ -3,17 +3,17 @@ import { GripVertical, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { ProjectInCab, ProjectStatus } from '../../lib/cabilityMarkdown';
+import type { ProjectInCap, ProjectStatus } from '../../lib/capabilityMarkdown';
 
 const REMOVE_HOLD_MS = 1000;
 
 export const PROJECT_PREFIX = 'project::';
 
-export function projectDragId(cabId: string, projectId: string): string {
-  return `${PROJECT_PREFIX}${cabId}::${projectId}`;
+export function projectDragId(capId: string, projectId: string): string {
+  return `${PROJECT_PREFIX}${capId}::${projectId}`;
 }
 
-function cabWidthClass(cols?: 12 | 6 | 4 | 3): string {
+function capWidthClass(cols?: 12 | 6 | 4 | 3): string {
   const value = cols && [12, 6, 4, 3].includes(cols) ? cols : 4;
   switch (value) {
     case 12:
@@ -46,9 +46,9 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 };
 
 export interface SortableProjectCardProps {
-  cabId: string;
-  cabName: string;
-  project: ProjectInCab;
+  capId: string;
+  capName: string;
+  project: ProjectInCap;
   displayStatus: ProjectStatus | null;
   description?: string | null;
   onRemove: () => void;
@@ -57,8 +57,8 @@ export interface SortableProjectCardProps {
 }
 
 export function SortableProjectCard({
-  cabId,
-  cabName,
+  capId,
+  capName,
   project,
   displayStatus,
   description,
@@ -66,7 +66,7 @@ export function SortableProjectCard({
   onDoubleClick,
   onChangeCols,
 }: SortableProjectCardProps) {
-  const id = projectDragId(cabId, project.id);
+  const id = projectDragId(capId, project.id);
   const {
     attributes,
     listeners,
@@ -76,7 +76,7 @@ export function SortableProjectCard({
     isDragging,
   } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const projectWidthClass = cabWidthClass(project.cols);
+  const projectWidthClass = capWidthClass(project.cols);
   const accentClass = displayStatus ? STATUS_ACCENT[displayStatus] : 'border-l-[var(--color-border)]';
   const descriptionText =
     typeof description === 'string' && description.trim() ? description.trim() : '';
@@ -126,7 +126,7 @@ export function SortableProjectCard({
     function handleHover(event: Event) {
       const custom = event as CustomEvent<
         | {
-            cabName: string;
+            capName: string;
             projectName: string;
           }
         | null
@@ -138,7 +138,7 @@ export function SortableProjectCard({
       }
       const matches =
         detail.projectName === project.name &&
-        detail.cabName === cabName;
+        detail.capName === capName;
       setHighlightedFromSummary(matches);
     }
 
@@ -150,7 +150,7 @@ export function SortableProjectCard({
         window.removeEventListener('summary-project-hover', handleHover as EventListener);
       }
     };
-  }, [cabName, project.name]);
+  }, [capName, project.name]);
 
   return (
     <motion.div
@@ -213,11 +213,11 @@ export function SortableProjectCard({
               <div
                 className="absolute inset-0 flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
               >
-                <label className="sr-only" htmlFor={`project-cols-${cabId}-${project.id}`}>
+                <label className="sr-only" htmlFor={`project-cols-${capId}-${project.id}`}>
                   ความกว้างการ์ด
                 </label>
                 <select
-                  id={`project-cols-${cabId}-${project.id}`}
+                  id={`project-cols-${capId}-${project.id}`}
                   value={project.cols ?? 4}
                   onChange={(e) => {
                     e.stopPropagation();

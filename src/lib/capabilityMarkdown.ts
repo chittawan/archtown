@@ -1,48 +1,48 @@
 /**
- * Cab = กล่องใหญ่ (domain), Projects = โปรเจกต์ย่อยภายใน
- * เก็บที่ data/cability/ เป็นไฟล์ .md
+ * Cap = กล่องใหญ่ (domain), Projects = โปรเจกต์ย่อยภายใน
+ * เก็บที่ data/capability/ เป็นไฟล์ .md
  */
 
 export type ProjectStatus = 'RED' | 'YELLOW' | 'GREEN';
 
-export interface ProjectInCab {
+export interface ProjectInCap {
   id: string;
   name: string;
   status?: ProjectStatus;
-  /** ความกว้างของ Project card ภายใน Cab */
+  /** ความกว้างของ Project card ภายใน Cap */
   cols?: 12 | 6 | 4 | 3;
 }
 
-export interface Cab {
+export interface Cap {
   id: string;
   name: string;
-  /** ความกว้างของ Cab บนหน้าจอ (จำนวน columns ที่กิน) */
+  /** ความกว้างของ Cap บนหน้าจอ (จำนวน columns ที่กิน) */
   cols?: 12 | 6 | 4 | 3;
-  projects: ProjectInCab[];
+  projects: ProjectInCap[];
 }
 
-export interface CabilityLayout {
-  cabOrder: string[];
-  cabs: Record<string, Cab>;
+export interface CapabilityLayout {
+  capOrder: string[];
+  caps: Record<string, Cap>;
 }
 
 const PROJECTS_HEADER = '## Projects';
 
 function safeId(s: string): string {
-  return s.replace(/[^a-zA-Z0-9-_]/g, '') || 'cab';
+  return s.replace(/[^a-zA-Z0-9-_]/g, '') || 'cap';
 }
 
-/** แปลง Cab เป็น markdown (ใช้ชื่อไฟล์ = cab.id) */
-export function cabToMarkdown(cab: Cab): string {
+/** แปลง Cap เป็น markdown (ใช้ชื่อไฟล์ = cap.id) */
+export function capToMarkdown(cap: Cap): string {
   const lines: string[] = [];
-  lines.push(`# ${(cab.name || '').trim() || 'Cab'}`);
-  if (cab.cols && [12, 6, 4, 3].includes(cab.cols)) {
-    lines.push(`Cols: ${cab.cols}`);
+  lines.push(`# ${(cap.name || '').trim() || 'Cap'}`);
+  if (cap.cols && [12, 6, 4, 3].includes(cap.cols)) {
+    lines.push(`Cols: ${cap.cols}`);
   }
   lines.push('');
-  if (cab.projects.length > 0) {
+  if (cap.projects.length > 0) {
     lines.push(PROJECTS_HEADER);
-    for (const p of cab.projects) {
+    for (const p of cap.projects) {
       const parts: string[] = [p.id, p.name];
       if (p.status) parts.push(p.status);
       if (p.cols && [12, 6, 4, 3].includes(p.cols)) {
@@ -56,12 +56,12 @@ export function cabToMarkdown(cab: Cab): string {
   return lines.join('\n').trimEnd();
 }
 
-/** อ่าน markdown เป็น Cab (id มาจากชื่อไฟล์) */
-export function markdownToCab(id: string, md: string): Cab {
+/** อ่าน markdown เป็น Cap (id มาจากชื่อไฟล์) */
+export function markdownToCap(id: string, md: string): Cap {
   const lines = md.split(/\r?\n/).map((l) => l.trimEnd());
-  let name = 'Cab';
+  let name = 'Cap';
   let cols: 12 | 6 | 4 | 3 | undefined;
-  const projects: ProjectInCab[] = [];
+  const projects: ProjectInCap[] = [];
   let inProjects = false;
 
   for (let i = 0; i < lines.length; i++) {
@@ -111,15 +111,15 @@ export function markdownToCab(id: string, md: string): Cab {
   return { id: safeId(id), name, cols, projects };
 }
 
-/** อ่าน _order.md เป็นรายการ id ของ Cab (ตามลำดับ) */
-export function orderMarkdownToCabIds(md: string): string[] {
+/** อ่าน _order.md เป็นรายการ id ของ Cap (ตามลำดับ) */
+export function orderMarkdownToCapIds(md: string): string[] {
   return md
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#'));
 }
 
-/** แปลง cabOrder เป็น _order.md */
-export function cabIdsToOrderMarkdown(cabOrder: string[]): string {
-  return cabOrder.filter(Boolean).join('\n');
+/** แปลง capOrder เป็น _order.md */
+export function capIdsToOrderMarkdown(capOrder: string[]): string {
+  return capOrder.filter(Boolean).join('\n');
 }

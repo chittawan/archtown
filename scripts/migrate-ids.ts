@@ -1,7 +1,7 @@
 /**
  * One-time migration: ตั้ง id ให้เป็นตัวเล็กทั้งหมด เชื่อมด้วย _
  * - data/projects: เพิ่ม id ใน YAML, เปลี่ยนชื่อไฟล์เป็น id.yaml
- * - data/cability: เปลี่ยน cab id และ project id เป็น lowercase_underscore, เปลี่ยนชื่อไฟล์
+ * - data/capability: เปลี่ยน cap id และ project id เป็น lowercase_underscore, เปลี่ยนชื่อไฟล์
  * - data/teams: เปลี่ยนชื่อไฟล์เป็น id.yaml และอัปเดต parent/child refs
  * Run: npx tsx scripts/migrate-ids.ts
  */
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 import { nameToId, sanitizeId, ensureUniqueId } from '../src/lib/idUtils';
 import { yamlToProject, projectToYaml } from '../src/lib/projectYaml';
 import { importFromMarkdown } from '../src/lib/projectMarkdown';
-import { yamlToCab, cabToYaml, yamlToCabOrder, cabOrderToYaml } from '../src/lib/cabilityYaml';
+import { yamlToCap, capToYaml, yamlToCapOrder, capOrderToYaml } from '../src/lib/capabilityYaml';
 import { yamlToOrgTeam, orgTeamToYaml } from '../src/lib/teamYaml';
 import type { ProjectData } from '../src/lib/projectYaml';
 
@@ -20,8 +20,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DATA_PROJECTS_DIR = path.join(ROOT, 'data', 'projects');
 const DATA_TEAMS_DIR = path.join(ROOT, 'data', 'teams');
-const DATA_CABILITY_DIR = path.join(ROOT, 'data', 'cability');
-const CABILITY_ORDER_FILE_YAML = '_order.yaml';
+const DATA_CAPABILITY_DIR = path.join(ROOT, 'data', 'capability');
+const CAPABILITY_ORDER_FILE_YAML = '_order.yaml';
 
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -60,50 +60,50 @@ function migrateProjects() {
   }
 }
 
-function migrateCability() {
-  ensureDir(DATA_CABILITY_DIR);
-  const orderPath = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
+function migrateCapability() {
+  ensureDir(DATA_CAPABILITY_DIR);
+  const orderPath = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
   if (!fs.existsSync(orderPath)) {
-    console.log('No _order.yaml in cability, skip');
+    console.log('No _order.yaml in capability, skip');
     return;
   }
-  const cabOrder: string[] = yamlToCabOrder(fs.readFileSync(orderPath, 'utf-8'));
+  const capOrder: string[] = yamlToCapOrder(fs.readFileSync(orderPath, 'utf-8'));
   const newOrder: string[] = [];
   const renames: { old: string; new: string }[] = [];
 
-  for (const oldCabId of cabOrder) {
-    const yamlPath = path.join(DATA_CABILITY_DIR, `${oldCabId}.yaml`);
-    const mdPath = path.join(DATA_CABILITY_DIR, `${oldCabId}.md`);
+  for (const oldCapId of capOrder) {
+    const yamlPath = path.join(DATA_CAPABILITY_DIR, `${oldCapId}.yaml`);
+    const mdPath = path.join(DATA_CAPABILITY_DIR, `${oldCapId}.md`);
     if (!fs.existsSync(yamlPath) && !fs.existsSync(mdPath)) {
-      newOrder.push(sanitizeId(nameToId(oldCabId)) || oldCabId);
+      newOrder.push(sanitizeId(nameToId(oldCapId)) || oldCapId);
       continue;
     }
     const content = fs.readFileSync(
       fs.existsSync(yamlPath) ? yamlPath : mdPath,
       'utf-8'
     );
-    const cab = yamlToCab(oldCabId, content);
-    const newCabId = sanitizeId(nameToId(cab.name)) || sanitizeId(oldCabId) || 'cab';
-    const newProjects = cab.projects.map((p) => ({
+    const cap = yamlToCap(oldCapId, content);
+    const newCapId = sanitizeId(nameToId(cap.name)) || sanitizeId(oldCapId) || 'cap';
+    const newProjects = cap.projects.map((p) => ({
       ...p,
       id: sanitizeId(nameToId(p.name)) || sanitizeId(p.id) || p.id,
       name: p.name,
     }));
-    const newCab = { ...cab, id: newCabId, name: cab.name, projects: newProjects };
-    const toWrite = cabToYaml(newCab);
-    const newPath = path.join(DATA_CABILITY_DIR, `${newCabId}.yaml`);
+    const newCap = { ...cap, id: newCapId, name: cap.name, projects: newProjects };
+    const toWrite = capToYaml(newCap);
+    const newPath = path.join(DATA_CAPABILITY_DIR, `${newCapId}.yaml`);
     fs.writeFileSync(newPath, toWrite, 'utf-8');
-    newOrder.push(newCabId);
-    if (newCabId !== oldCabId) {
-      renames.push({ old: oldCabId, new: newCabId });
+    newOrder.push(newCapId);
+    if (newCapId !== oldCapId) {
+      renames.push({ old: oldCapId, new: newCapId });
       const oldPath = fs.existsSync(yamlPath) ? yamlPath : mdPath;
       fs.unlinkSync(oldPath);
-      console.log('Cab:', oldCabId, '->', newCabId);
+      console.log('Cap:', oldCapId, '->', newCapId);
     }
   }
 
-  fs.writeFileSync(orderPath, cabOrderToYaml(newOrder), 'utf-8');
-  console.log('Cability _order updated');
+  fs.writeFileSync(orderPath, capOrderToYaml(newOrder), 'utf-8');
+  console.log('Capability _order updated');
 }
 
 function migrateTeams() {
@@ -151,8 +151,8 @@ function migrateTeams() {
 function main() {
   console.log('Migrate ids to lowercase_underscore...\n--- Projects ---');
   migrateProjects();
-  console.log('\n--- Cability ---');
-  migrateCability();
+  console.log('\n--- Capability ---');
+  migrateCapability();
   console.log('\n--- Teams ---');
   migrateTeams();
   console.log('\nDone.');

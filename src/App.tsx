@@ -3,7 +3,7 @@ import AppLayout from './components/layout/AppLayout';
 import LandingPage from './pages/home/landing';
 import ProjectManagePage from './pages/project/manage';
 import LoginPage from './pages/home/login';
-import CapabilityManagePage from './pages/cability/manage';
+import CapabilityManagePage from './pages/capability/manage';
 import TeamsManagePage from './pages/teams/manage';
 
 export default function App() {
@@ -15,7 +15,7 @@ export default function App() {
           <Route path="/project" element={<ProjectManagePage />} />
           <Route path="/teams" element={<TeamsManagePage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/cability" element={<CapabilityManagePage />} />
+          <Route path="/capability" element={<CapabilityManagePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

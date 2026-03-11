@@ -10,28 +10,28 @@ import { importFromMarkdown } from '../src/lib/projectMarkdown';
 import { yamlToProject, projectToYaml } from '../src/lib/projectYaml';
 import { markdownToOrgTeam } from '../src/lib/teamMarkdown';
 import { yamlToOrgTeam, orgTeamToYaml } from '../src/lib/teamYaml';
-import { markdownToCab, orderMarkdownToCabIds } from '../src/lib/cabilityMarkdown';
+import { markdownToCap, orderMarkdownToCapIds } from '../src/lib/capabilityMarkdown';
 import {
-  yamlToCab,
-  cabToYaml,
-  yamlToCabOrder,
-  cabOrderToYaml,
-} from '../src/lib/cabilityYaml';
+  yamlToCap,
+  capToYaml,
+  yamlToCapOrder,
+  capOrderToYaml,
+} from '../src/lib/capabilityYaml';
 import { nameToId, sanitizeId } from '../src/lib/idUtils';
 
 const DATA_ROOT = path.join(process.cwd(), 'data');
 const DATA_PROJECTS_DIR = path.join(DATA_ROOT, 'projects');
 const DATA_TEAMS_DIR = path.join(DATA_ROOT, 'teams');
-const DATA_CABILITY_DIR = path.join(DATA_ROOT, 'cability');
-const CABILITY_ORDER_FILE_MD = '_order.md';
-const CABILITY_ORDER_FILE_YAML = '_order.yaml';
+const DATA_CAPABILITY_DIR = path.join(DATA_ROOT, 'capability');
+const CAPABILITY_ORDER_FILE_MD = '_order.md';
+const CAPABILITY_ORDER_FILE_YAML = '_order.yaml';
 
 function safeTeamId(id: string): string {
   return sanitizeId(id) || 'team';
 }
 
-function safeCabId(id: string): string {
-  return sanitizeId(id) || 'cab';
+function safeCapId(id: string): string {
+  return sanitizeId(id) || 'cap';
 }
 
 function toCamelCase(s: string): string {
@@ -54,10 +54,10 @@ function normalizeForMatch(s: string): string {
 }
 
 /**
- * Resolve project id (from cability) to project file path in data/projects.
+ * Resolve project id (from capability) to project file path in data/projects.
  * 1) Exact id match (.yaml / .md)
  * 2) Case-insensitive filename stem match
- * So cability and data/projects stay in sync for status lookup.
+ * So capability and data/projects stay in sync for status lookup.
  */
 function resolveProjectPath(projId: string): { path: string; ext: 'yaml' | 'md' } | null {
   const exactYaml = path.join(DATA_PROJECTS_DIR, `${projId}.yaml`);
@@ -82,7 +82,7 @@ function resolveProjectPath(projId: string): { path: string; ext: 'yaml' | 'md' 
 
 /**
  * Build map: normalized project name -> { path, ext } from data/projects.
- * Used to match cability project by name when id does not match filename.
+ * Used to match capability project by name when id does not match filename.
  */
 function buildProjectNameToPath(): Map<string, { path: string; ext: 'yaml' | 'md' }> {
   const map = new Map<string, { path: string; ext: 'yaml' | 'md' }>();
@@ -216,7 +216,7 @@ app.post('/api/save-project', (req, res) => {
     const { projectName, data, markdown } = req.body || {};
     const name = (projectName || 'project').trim();
     fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
-    let payload: { id?: string; projectName: string; teams: unknown[] };
+    let payload: { id?: string; projectName: string; description?: string; teams: unknown[] };
     if (
       data != null &&
       typeof data === 'object' &&
@@ -225,6 +225,7 @@ app.post('/api/save-project', (req, res) => {
       payload = {
         id: typeof data.id === 'string' ? data.id.trim() : undefined,
         projectName: data.projectName ?? name,
+        description: typeof data.description === 'string' ? data.description.trim() || undefined : undefined,
         teams: data.teams,
       };
     } else if (typeof markdown === 'string') {
@@ -236,9 +237,9 @@ app.post('/api/save-project', (req, res) => {
     const fileId =
       sanitizeId(payload.id || '') || sanitizeId(nameToId(name)) || 'project';
     const toWrite = projectToYaml({
-      ...payload,
       id: fileId,
       projectName: payload.projectName,
+      description: payload.description,
       teams: payload.teams as import('../src/types').Team[],
     });
     const filePath = path.join(DATA_PROJECTS_DIR, `${fileId}.yaml`);
@@ -305,19 +306,19 @@ app.post('/api/teams/save', (req, res) => {
   }
 });
 
-// --- Cability API ---
-app.get('/api/cability', (_req, res) => {
+// --- Capability API ---
+app.get('/api/capability', (_req, res) => {
   try {
-    fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
-    const orderPathYaml = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
-    const orderPathMd = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_MD);
-    let cabOrder: string[] = [];
+    fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
+    const orderPathYaml = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
+    const orderPathMd = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
+    let capOrder: string[] = [];
     if (fs.existsSync(orderPathYaml)) {
-      cabOrder = yamlToCabOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
+      capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
     } else if (fs.existsSync(orderPathMd)) {
-      cabOrder = orderMarkdownToCabIds(fs.readFileSync(orderPathMd, 'utf-8'));
+      capOrder = orderMarkdownToCapIds(fs.readFileSync(orderPathMd, 'utf-8'));
     }
-    const cabs: Record<
+    const caps: Record<
       string,
       {
         id: string;
@@ -331,65 +332,65 @@ app.get('/api/cability', (_req, res) => {
         }>;
       }
     > = {};
-    const files = fs.readdirSync(DATA_CABILITY_DIR);
-    const cabFilesYaml = files.filter(
-      (f) => f.endsWith('.yaml') && f !== CABILITY_ORDER_FILE_YAML
+    const files = fs.readdirSync(DATA_CAPABILITY_DIR);
+    const capFilesYaml = files.filter(
+      (f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML
     );
-    const cabFilesMd = files.filter(
-      (f) => f.endsWith('.md') && f !== CABILITY_ORDER_FILE_MD
+    const capFilesMd = files.filter(
+      (f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD
     );
-    const seen = new Set(cabOrder);
-    for (const f of cabFilesYaml) {
+    const seen = new Set(capOrder);
+    for (const f of capFilesYaml) {
       const id = f.slice(0, -5);
       if (!seen.has(id)) {
         seen.add(id);
-        cabOrder.push(id);
+        capOrder.push(id);
       }
     }
-    for (const f of cabFilesMd) {
+    for (const f of capFilesMd) {
       const id = f.slice(0, -3);
       if (!seen.has(id)) {
         seen.add(id);
-        cabOrder.push(id);
+        capOrder.push(id);
       }
     }
-    for (const id of cabOrder) {
-      const yamlPath = path.join(DATA_CABILITY_DIR, `${id}.yaml`);
-      const mdPath = path.join(DATA_CABILITY_DIR, `${id}.md`);
+    for (const id of capOrder) {
+      const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
+      const mdPath = path.join(DATA_CAPABILITY_DIR, `${id}.md`);
       if (fs.existsSync(yamlPath)) {
-        cabs[id] = yamlToCab(id, fs.readFileSync(yamlPath, 'utf-8'));
+        caps[id] = yamlToCap(id, fs.readFileSync(yamlPath, 'utf-8'));
       } else if (fs.existsSync(mdPath)) {
-        cabs[id] = markdownToCab(id, fs.readFileSync(mdPath, 'utf-8'));
+        caps[id] = markdownToCap(id, fs.readFileSync(mdPath, 'utf-8'));
       } else {
-        cabs[id] = {
-          id: safeCabId(id),
+        caps[id] = {
+          id: safeCapId(id),
           name: id,
           cols: 4,
           projects: [],
         };
       }
     }
-    res.json({ layout: { cabOrder, cabs } });
+    res.json({ layout: { capOrder, caps } });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
 
-/** Summary of Critical/Warning tasks per Cap (Cab) and Project for right panel. Optional projectId = filter to one project. */
-app.get('/api/cability/summary', (req, res) => {
+/** Summary of Critical/Warning tasks per Cap and Project for right panel. Optional projectId = filter to one project. */
+app.get('/api/capability/summary', (req, res) => {
   try {
     const projectId = typeof req.query?.projectId === 'string' ? req.query.projectId.trim() : undefined;
-    fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
+    fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
     fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
-    const orderPathYaml = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML);
-    const orderPathMd = path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_MD);
-    let cabOrder: string[] = [];
+    const orderPathYaml = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
+    const orderPathMd = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
+    let capOrder: string[] = [];
     if (fs.existsSync(orderPathYaml)) {
-      cabOrder = yamlToCabOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
+      capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
     } else if (fs.existsSync(orderPathMd)) {
-      cabOrder = orderMarkdownToCabIds(fs.readFileSync(orderPathMd, 'utf-8'));
+      capOrder = orderMarkdownToCapIds(fs.readFileSync(orderPathMd, 'utf-8'));
     }
-    const cabs: Record<
+    const caps: Record<
       string,
       {
         id: string;
@@ -397,60 +398,60 @@ app.get('/api/cability/summary', (req, res) => {
         projects: Array<{ id: string; name: string }>;
       }
     > = {};
-    const files = fs.readdirSync(DATA_CABILITY_DIR);
-    const cabFilesYaml = files.filter(
-      (f) => f.endsWith('.yaml') && f !== CABILITY_ORDER_FILE_YAML
+    const files = fs.readdirSync(DATA_CAPABILITY_DIR);
+    const capFilesYaml = files.filter(
+      (f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML
     );
-    const cabFilesMd = files.filter(
-      (f) => f.endsWith('.md') && f !== CABILITY_ORDER_FILE_MD
+    const capFilesMd = files.filter(
+      (f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD
     );
-    const seen = new Set(cabOrder);
-    for (const f of cabFilesYaml) {
+    const seen = new Set(capOrder);
+    for (const f of capFilesYaml) {
       const id = f.slice(0, -5);
       if (!seen.has(id)) {
         seen.add(id);
-        cabOrder.push(id);
+        capOrder.push(id);
       }
     }
-    for (const f of cabFilesMd) {
+    for (const f of capFilesMd) {
       const id = f.slice(0, -3);
       if (!seen.has(id)) {
         seen.add(id);
-        cabOrder.push(id);
+        capOrder.push(id);
       }
     }
-    for (const id of cabOrder) {
-      const yamlPath = path.join(DATA_CABILITY_DIR, `${id}.yaml`);
-      const mdPath = path.join(DATA_CABILITY_DIR, `${id}.md`);
+    for (const id of capOrder) {
+      const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
+      const mdPath = path.join(DATA_CAPABILITY_DIR, `${id}.md`);
       if (fs.existsSync(yamlPath)) {
-        const cab = yamlToCab(id, fs.readFileSync(yamlPath, 'utf-8'));
-        cabs[id] = {
-          id: cab.id,
-          name: cab.name,
-          projects: cab.projects.map((p) => ({ id: p.id, name: p.name })),
+        const cap = yamlToCap(id, fs.readFileSync(yamlPath, 'utf-8'));
+        caps[id] = {
+          id: cap.id,
+          name: cap.name,
+          projects: cap.projects.map((p) => ({ id: p.id, name: p.name })),
         };
       } else if (fs.existsSync(mdPath)) {
-        const cab = markdownToCab(id, fs.readFileSync(mdPath, 'utf-8'));
-        cabs[id] = {
-          id: cab.id,
-          name: cab.name,
-          projects: cab.projects.map((p) => ({ id: p.id, name: p.name })),
+        const cap = markdownToCap(id, fs.readFileSync(mdPath, 'utf-8'));
+        caps[id] = {
+          id: cap.id,
+          name: cap.name,
+          projects: cap.projects.map((p) => ({ id: p.id, name: p.name })),
         };
       } else {
-        cabs[id] = { id: safeCabId(id), name: id, projects: [] };
+        caps[id] = { id: safeCapId(id), name: id, projects: [] };
       }
     }
 
-    const critical: Array<{ cabName: string; projectName: string; taskName: string }> = [];
-    const warning: Array<{ cabName: string; projectName: string; taskName: string }> = [];
+    const critical: Array<{ capName: string; projectName: string; taskName: string }> = [];
+    const warning: Array<{ capName: string; projectName: string; taskName: string }> = [];
 
     const projectByName = buildProjectNameToPath();
 
-    for (const cabId of cabOrder) {
-      const cab = cabs[cabId];
-      if (!cab) continue;
-      const cabName = cab.name || cabId;
-      for (const proj of cab.projects) {
+    for (const capId of capOrder) {
+      const cap = caps[capId];
+      if (!cap) continue;
+      const capName = cap.name || capId;
+      for (const proj of cap.projects) {
         if (projectId && proj.id !== projectId) continue;
         const projectName = proj.name || proj.id;
         let resolved = resolveProjectPath(proj.id);
@@ -480,9 +481,9 @@ app.get('/api/cability/summary', (req, res) => {
               const title = typeof sub?.title === 'string' ? sub.title.trim() : '';
               if (!title) continue;
               if (status === 'RED') {
-                critical.push({ cabName, projectName, taskName: title });
+                critical.push({ capName, projectName, taskName: title });
               } else if (status === 'YELLOW') {
-                warning.push({ cabName, projectName, taskName: title });
+                warning.push({ capName, projectName, taskName: title });
               }
             }
           }
@@ -496,31 +497,31 @@ app.get('/api/cability/summary', (req, res) => {
   }
 });
 
-app.post('/api/cability/save', (req, res) => {
+app.post('/api/capability/save', (req, res) => {
   try {
     const { layout } = req.body || {};
     if (
       !layout ||
-      !Array.isArray(layout.cabOrder) ||
-      typeof layout.cabs !== 'object'
+      !Array.isArray(layout.capOrder) ||
+      typeof layout.caps !== 'object'
     ) {
       return res
         .status(400)
         .json({ ok: false, error: 'Invalid layout' });
     }
-    fs.mkdirSync(DATA_CABILITY_DIR, { recursive: true });
+    fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
     fs.writeFileSync(
-      path.join(DATA_CABILITY_DIR, CABILITY_ORDER_FILE_YAML),
-      cabOrderToYaml(layout.cabOrder),
+      path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML),
+      capOrderToYaml(layout.capOrder),
       'utf-8'
     );
-    for (const id of layout.cabOrder) {
-      const cab = layout.cabs[id];
-      if (cab) {
-        const safeId = safeCabId(id);
+    for (const id of layout.capOrder) {
+      const cap = layout.caps[id];
+      if (cap) {
+        const safeId = safeCapId(id);
         fs.writeFileSync(
-          path.join(DATA_CABILITY_DIR, `${safeId}.yaml`),
-          cabToYaml(cab),
+          path.join(DATA_CAPABILITY_DIR, `${safeId}.yaml`),
+          capToYaml(cap),
           'utf-8'
         );
       }

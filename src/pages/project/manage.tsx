@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, Download, Upload, FileText } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Trash2, Users, FolderPlus, FilePlus, GripVertical, Check, Circle, Download, Upload, FileText, FolderKanban, Save } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -19,6 +19,89 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SummaryView } from '../../components/project/SummaryView';
 import { exportToMarkdown, importFromMarkdown } from '../../lib/projectMarkdown';
 import { nameToId, ensureUniqueId } from '../../lib/idUtils';
+
+const REMOVE_HOLD_MS = 1000;
+
+/** ปุ่มลบแบบกดค้าง 1 วินาที (แนวทางเดียวกับ capability/ProjectCard) */
+function LongPressDeleteButton({
+  onDelete,
+  title,
+  className = '',
+  iconClassName = 'w-4 h-4',
+  ariaLabel,
+}: {
+  onDelete: () => void;
+  title: string;
+  className?: string;
+  iconClassName?: string;
+  ariaLabel?: string;
+}) {
+  const [progress, setProgress] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef(0);
+  const rafRef = useRef<number>(0);
+
+  const clear = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    setProgress(0);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    clear();
+    startRef.current = Date.now();
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+      setProgress(0);
+      onDelete();
+    }, REMOVE_HOLD_MS);
+    const tick = () => {
+      const elapsed = Date.now() - startRef.current;
+      const p = Math.min(100, (elapsed / REMOVE_HOLD_MS) * 100);
+      setProgress(p);
+      if (p < 100 && timerRef.current != null) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  return (
+    <button
+      type="button"
+      onPointerDown={onPointerDown}
+      onPointerUp={clear}
+      onPointerLeave={clear}
+      onPointerCancel={clear}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      className={`relative p-1.5 rounded-md text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 overflow-hidden transition-colors ${className}`}
+      title={`${title} — กดค้าง 1 วินาที`}
+      aria-label={ariaLabel ?? `กดค้าง 1 วินาทีเพื่อ${title}`}
+    >
+      {progress > 0 && (
+        <span
+          className="absolute inset-0 bg-red-500/30 rounded-md ease-linear"
+          style={{ width: `${progress}%`, transition: 'none' }}
+        />
+      )}
+      <span className="relative z-10 block">
+        <Trash2 className={iconClassName} />
+      </span>
+    </button>
+  );
+}
 
 const INITIAL_DATA: Team[] = [
 ];
@@ -47,6 +130,7 @@ export default function ProjectManagePage() {
     if (typeof window === 'undefined') return 'Performance Management';
     return localStorage.getItem('projectName') ?? 'Performance Management';
   });
+  const [projectDescription, setProjectDescription] = useState('');
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
   const [projectNameInput, setProjectNameInput] = useState(projectName);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
@@ -89,16 +173,17 @@ export default function ProjectManagePage() {
         if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : 'Failed to load');
         return res.json();
       })
-      .then((data: { id?: string; data?: { projectName: string; teams: Team[] } }) => {
+      .then((data: { id?: string; data?: { projectName: string; description?: string; teams: Team[] } }) => {
         const payload = data?.data;
         if (!payload) {
           setProjectLoadState('idle');
           return;
         }
         if (data.id) setProjectId(data.id);
-        const { projectName: name, teams: nextTeams } = payload;
+        const { projectName: name, description: desc, teams: nextTeams } = payload;
         setProjectName(name || '');
         setProjectNameInput(name || '');
+        setProjectDescription(desc ?? '');
         setTeams(nextTeams);
         if (nextTeams.length > 0) {
           setExpandedTopics(new Set(nextTeams.flatMap((t) => t.topics.map((top) => top.id))));
@@ -322,16 +407,21 @@ export default function ProjectManagePage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const skipSaveAfterLoadRef = useRef(true);
 
-  /** Auto-save หลังโหลดแล้ว เมื่อ teams หรือ projectName เปลี่ยน (debounce ~700ms ให้รู้สึกไวขึ้น) */
+  /** Auto-save หลังโหลดแล้ว เมื่อ teams / projectName / projectDescription เปลี่ยน (debounce 700ms)
+   * ทำงานเมื่อ: (1) โหลดจาก URL แล้ว (loaded) หรือ (2) ยังไม่โหลดแต่มีชื่อโปรเจกต์/ทีมแล้ว (idle) */
   useEffect(() => {
-    if (projectLoadState !== 'loaded') return;
-    if (skipSaveAfterLoadRef.current) {
+    const hasContent = projectName.trim() || teams.length > 0;
+    const canSave =
+      projectLoadState === 'loaded' ||
+      (projectLoadState === 'idle' && hasContent);
+    if (!canSave) return;
+    if (projectLoadState === 'loaded' && skipSaveAfterLoadRef.current) {
       skipSaveAfterLoadRef.current = false;
       return;
     }
     const t = setTimeout(() => saveProjectToData(), 700);
     return () => clearTimeout(t);
-  }, [teams, projectName, projectLoadState]);
+  }, [teams, projectName, projectDescription, projectLoadState]);
 
   const downloadAsMarkdown = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -345,7 +435,7 @@ export default function ProjectManagePage() {
   const saveProjectToData = async () => {
     const name = (projectName || 'project').trim();
     const fileId = projectId || nameToId(name) || 'project';
-    const data = { id: fileId, projectName: name, teams };
+    const data = { id: fileId, projectName: name, description: projectDescription.trim() || undefined, teams };
     setSaveStatus('saving');
     try {
       const res = await fetch('/api/save-project', {
@@ -359,6 +449,10 @@ export default function ProjectManagePage() {
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
         const savedId = resData.id || fileId;
+        if (projectLoadState === 'idle') {
+          skipSaveAfterLoadRef.current = false;
+          setProjectLoadState('loaded');
+        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: savedId } }));
         }
@@ -927,7 +1021,7 @@ export default function ProjectManagePage() {
         className={`flex flex-col ${isDragging ? 'opacity-60 z-20' : ''}`}
       >
         <div
-          className={`px-6 py-4 flex items-center justify-between hover:bg-[var(--color-overlay)] transition-colors cursor-pointer ${isExpanded ? 'bg-[var(--color-overlay)]' : ''}`}
+          className={`group/topic px-6 py-4 flex items-center justify-between hover:bg-[var(--color-overlay)] transition-colors cursor-pointer ${isExpanded ? 'bg-[var(--color-overlay)]' : ''}`}
           onClick={onToggle}
         >
           <div className="flex items-center flex-1 min-w-0">
@@ -976,7 +1070,7 @@ export default function ProjectManagePage() {
           <div className="flex items-center space-x-4 flex-shrink-0">
             <StatusBadge status={topicStatus} label="Summary" />
             <div
-              className="flex items-center space-x-2"
+              className="flex items-center space-x-2 opacity-0 group-hover/topic:opacity-100 transition-opacity"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -986,13 +1080,10 @@ export default function ProjectManagePage() {
                 <FilePlus className="w-3.5 h-3.5 mr-1" />
                 เพิ่มหัวข้อย่อย
               </button>
-              <button
-                onClick={() => onDeleteTopic()}
-                className="p-1.5 text-[var(--color-text-subtle)] hover:text-rose-600 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 rounded-md transition-colors"
+              <LongPressDeleteButton
+                onDelete={onDeleteTopic}
                 title="ลบหัวข้อใหญ่"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              />
             </div>
           </div>
         </div>
@@ -1028,7 +1119,7 @@ export default function ProjectManagePage() {
     editTitleValue: string;
     onEditTitleChange: (v: string) => void;
     onStartEditTitle: () => void;
-    onSaveEditTitle: () => void;
+    onSaveEditTitle: (finalTitle?: string) => void;
     onCancelEditTitle: () => void;
     onAddDetail: () => void;
     onUpdateDetail: (index: number, value: string) => void;
@@ -1046,6 +1137,15 @@ export default function ProjectManagePage() {
     const style = { transform: CSS.Transform.toString(transform), transition };
     const details = subTopic.details ?? [];
     const [draftDetailText, setDraftDetailText] = useState<Record<number, string>>({});
+    // Local state for title while editing so parent doesn't re-render on every keystroke (avoids cursor jumping)
+    const [localTitle, setLocalTitle] = useState(editTitleValue);
+    useEffect(() => {
+      if (isEditingTitle) setLocalTitle(editTitleValue);
+    }, [isEditingTitle, editTitleValue]);
+    const handleSaveEditTitle = () => {
+      onEditTitleChange(localTitle);
+      onSaveEditTitle(localTitle);
+    };
     const getDetailDisplayValue = (index: number, item: { text: string }) =>
       draftDetailText[index] !== undefined ? draftDetailText[index] : item.text;
     const flushDetailDraft = (index: number) => {
@@ -1079,11 +1179,11 @@ export default function ProjectManagePage() {
             {isEditingTitle ? (
               <input
                 type="text"
-                value={editTitleValue}
-                onChange={(e) => onEditTitleChange(e.target.value)}
-                onBlur={() => onSaveEditTitle()}
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                onBlur={() => handleSaveEditTitle()}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') onSaveEditTitle();
+                  if (e.key === 'Enter') handleSaveEditTitle();
                   if (e.key === 'Escape') onCancelEditTitle();
                 }}
                 className="text-sm font-medium text-[var(--color-text)] bg-[var(--color-page)] border border-[var(--color-border-strong)] rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
@@ -1123,13 +1223,10 @@ export default function ProjectManagePage() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={onDelete}
-              className="p-1.5 text-[var(--color-text-subtle)] hover:text-rose-600 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 rounded-md transition-colors"
+            <LongPressDeleteButton
+              onDelete={onDelete}
               title="ลบหัวข้อย่อย"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            />
           </div>
         </div>
         <div className="border-t border-[var(--color-border)] bg-[var(--color-page)]/50">
@@ -1191,14 +1288,12 @@ export default function ProjectManagePage() {
                       placeholder={`Task ${index + 1}`}
                       className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${item.done ? 'line-through text-[var(--color-text-subtle)]' : 'text-[var(--color-text)]'}`}
                     />
-                    <button
-                      type="button"
-                      onClick={() => onRemoveDetail(index)}
-                      className="p-1 text-[var(--color-text-subtle)] hover:text-rose-600 hover:bg-rose-500/10 rounded"
+                    <LongPressDeleteButton
+                      onDelete={() => onRemoveDetail(index)}
                       title="ลบรายการ"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      className="p-1"
+                      iconClassName="w-3.5 h-3.5"
+                    />
                   </div>
                 ))}
                 <button
@@ -1253,7 +1348,7 @@ export default function ProjectManagePage() {
     editSubTopicTitle: string;
     onEditSubTopicTitleChange: (v: string) => void;
     onStartEditSubTopicTitle: (topicId: string, subTopicId: string) => void;
-    onSaveEditSubTopicTitle: () => void;
+    onSaveEditSubTopicTitle: (finalTitle?: string) => void;
     onCancelEditSubTopicTitle: () => void;
     onAddDetail: (topicId: string, subTopicId: string) => void;
     onUpdateDetail: (
@@ -1337,9 +1432,6 @@ export default function ProjectManagePage() {
     );
   }
 
-  const btnSecondary =
-    'inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-lg text-sm font-medium transition-colors flex-shrink-0';
-
   return (
     <div className="max-w-6xl mx-auto">
       {projectLoadState === 'loading' && (
@@ -1348,56 +1440,70 @@ export default function ProjectManagePage() {
       {projectLoadState === 'error' && projectIdFromUrl && (
         <div className="mb-4 text-sm text-amber-600 dark:text-amber-400">โหลดข้อมูลจาก data/projects ไม่ได้ — แก้ไขหรือสร้างโปรเจกต์ได้ตามปกติ</div>
       )}
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        {/* ซ้าย: ชื่อโปรเจกต์ */}
-        <div className="min-w-0 flex-shrink-0">
-          {isEditingProjectName ? (
-            <input
-              type="text"
-              value={projectNameInput}
-              onChange={(e) => setProjectNameInput(e.target.value)}
-              onBlur={() => {
-                if (projectNameInput.trim())
-                  setProjectName(projectNameInput.trim());
-                setIsEditingProjectName(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  if (projectNameInput.trim())
-                    setProjectName(projectNameInput.trim());
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] flex items-center gap-2">
+            <FolderKanban className="w-7 h-7 text-[var(--color-primary)] shrink-0" />
+            {isEditingProjectName ? (
+              <input
+                type="text"
+                value={projectNameInput}
+                onChange={(e) => setProjectNameInput(e.target.value)}
+                onBlur={() => {
+                  if (projectNameInput.trim()) setProjectName(projectNameInput.trim());
                   setIsEditingProjectName(false);
-                }
-                if (e.key === 'Escape') {
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (projectNameInput.trim()) setProjectName(projectNameInput.trim());
+                    setIsEditingProjectName(false);
+                  }
+                  if (e.key === 'Escape') {
+                    setProjectNameInput(projectName);
+                    setIsEditingProjectName(false);
+                  }
+                }}
+                placeholder="ชื่อโปรเจกต์"
+                className="flex-1 min-w-0 bg-transparent border-b border-[var(--color-border)] focus:outline-none focus:border-[var(--color-primary)] text-[var(--color-text)] py-0.5"
+                autoFocus
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
                   setProjectNameInput(projectName);
-                  setIsEditingProjectName(false);
-                }
-              }}
-              className="text-xl font-semibold text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded-lg px-3 py-2 w-full max-w-md focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              placeholder="ชื่อโปรเจกต์"
-              autoFocus
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setProjectNameInput(projectName);
-                setIsEditingProjectName(true);
-              }}
-              className="text-xl font-semibold text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors text-left"
-            >
-              {projectName || 'คลิกเพื่อเพิ่มชื่อโปรเจกต์'}
-            </button>
-          )}
+                  setIsEditingProjectName(true);
+                }}
+                className="text-left hover:text-[var(--color-primary)] transition-colors truncate max-w-full"
+              >
+                {projectName || 'คลิกเพื่อเพิ่มชื่อโปรเจกต์'}
+              </button>
+            )}
+          </h1>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            ลากวางเพื่อจัดเรียง · Import/Export · Summary View พิมพ์ PDF ได้
+          </p>
         </div>
 
-        {/* ขวา: กลุ่มปุ่มเรียงตามการใช้งาน */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {/* กลุ่ม data: Import → Export (auto-save ทำงานอัตโนมัติ) */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
+        {/* ขวา: Save status + ปุ่ม */}
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          {saveStatus === 'saving' && (
+            <span className="text-sm text-[var(--color-text-muted)] flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              กำลังบันทึก...
+            </span>
+          )}
+          {saveStatus === 'ok' && (
+            <span className="text-sm text-[var(--color-primary)] flex items-center gap-1.5">
+              <Save className="w-4 h-4" />
+              บันทึกแล้ว
+            </span>
+          )}
+          <div className="flex items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-1.5 py-1">
             <button
               type="button"
               onClick={() => importFileInputRef.current?.click()}
-              className={btnSecondary}
+              className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-0 rounded-lg text-sm font-medium transition-colors"
               title="Import จากไฟล์ Markdown"
             >
               <Upload className="w-4 h-4 sm:mr-1.5" />
@@ -1405,24 +1511,12 @@ export default function ProjectManagePage() {
             </button>
             <button
               onClick={exportProject}
-              className={btnSecondary}
+              className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-0 rounded-lg text-sm font-medium transition-colors"
               title="Export เป็นไฟล์ Markdown"
             >
               <Download className="w-4 h-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Export</span>
             </button>
-            {saveStatus === 'saving' && (
-              <span className="inline-flex items-center px-2 text-xs text-[var(--color-text-muted)]">
-                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                <span className="ml-1.5 hidden sm:inline">Saving...</span>
-              </span>
-            )}
-            {saveStatus === 'ok' && (
-              <span className="inline-flex items-center px-2 text-xs text-emerald-600 dark:text-emerald-400">
-                <Check className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="ml-1 hidden sm:inline">Saved</span>
-              </span>
-            )}
           </div>
           <input
             ref={importFileInputRef}
@@ -1431,31 +1525,37 @@ export default function ProjectManagePage() {
             className="hidden"
             onChange={importProject}
           />
-
           <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
-
-          {/* กลุ่ม View: Summary View */}
           <button
             type="button"
             onClick={() => setIsSummaryViewOpen(true)}
-            className={btnSecondary}
+            className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-xl text-sm font-medium transition-colors"
             title="Summary View สำหรับผู้บริหาร — พิมพ์เป็น PDF ได้"
           >
             <FileText className="w-4 h-4 mr-1.5" />
             Summary View
           </button>
-
           <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
-
-          {/* CTA หลัก: เพิ่มทีม */}
           <button
             onClick={() => setIsTeamModalOpen(true)}
-            className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex-shrink-0"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-card)]"
           >
-            <Users className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4" />
             เพิ่มทีม (Add Team)
           </button>
         </div>
+      </div>
+
+      {/* คำอธิบายโปรเจกต์ — แนว Notion */}
+      <div className="mb-6">
+        <textarea
+          id="projectDescription"
+          value={projectDescription}
+          onChange={(e) => setProjectDescription(e.target.value)}
+          placeholder="เพิ่มคำอธิบายโปรเจกต์ (Description)..."
+          rows={2}
+          className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 focus:border-[var(--color-primary)] resize-y min-h-[3.5rem] text-sm transition-colors"
+        />
       </div>
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-3 items-center text-sm shadow-[var(--shadow-card)]">
@@ -1564,7 +1664,7 @@ export default function ProjectManagePage() {
       </div>
 
       {teams.length === 0 ? (
-        <div className="text-center py-12 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] border-dashed">
+        <div className="text-center py-12 bg-[var(--color-surface)] rounded-2xl border-2 border-dashed border-[var(--color-border)]">
           <Users className="mx-auto h-12 w-12 text-[var(--color-text-subtle)]" />
           <h3 className="mt-2 text-sm font-semibold text-[var(--color-text)]">
             ยังไม่มีทีม
@@ -1575,9 +1675,9 @@ export default function ProjectManagePage() {
           <div className="mt-6">
             <button
               onClick={() => setIsTeamModalOpen(true)}
-              className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-card)]"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4" />
               สร้างทีมแรก
             </button>
           </div>
@@ -1610,7 +1710,7 @@ export default function ProjectManagePage() {
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd(team.id)}
             >
-              <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden shadow-[var(--shadow-card)]">
+              <div className="group/team bg-[var(--color-surface)] rounded-2xl border-2 border-[var(--color-border)] overflow-hidden shadow-[var(--shadow-card)] transition-all">
                 <div className="bg-[var(--color-overlay)] px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
                   <button
                     type="button"
@@ -1620,29 +1720,27 @@ export default function ProjectManagePage() {
                       setEditingTeamId(team.id);
                       setIsTeamModalOpen(true);
                     }}
-                    className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded px-1 -mx-1 transition-colors text-left"
+                    className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded-lg px-1 -mx-1 py-0.5 transition-colors text-left"
                   >
                     <Users className="w-5 h-5 mr-2 text-[var(--color-text-muted)] flex-shrink-0" />
                     {team.name}
                   </button>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center gap-2 opacity-0 group-hover/team:opacity-100 transition-opacity">
                     <button
                       onClick={() => {
                         setSelectedTeamId(team.id);
                         setIsTopicModalOpen(true);
                       }}
-                      className="inline-flex items-center px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border-strong)] hover:bg-[var(--color-primary-muted)] text-[var(--color-text)] text-sm font-medium rounded-lg transition-colors"
+                      className="inline-flex items-center px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border-strong)] hover:bg-[var(--color-primary-muted)] text-[var(--color-text)] text-sm font-medium rounded-xl transition-colors"
                     >
                       <FolderPlus className="w-4 h-4 mr-1.5" />
                       เพิ่มหัวข้อใหญ่
                     </button>
-                    <button
-                      onClick={() => deleteTeam(team.id)}
-                      className="p-1.5 text-[var(--color-text-subtle)] hover:text-rose-600 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 rounded-lg transition-colors"
+                    <LongPressDeleteButton
+                      onDelete={() => deleteTeam(team.id)}
                       title="ลบทีม"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      className="rounded-lg"
+                    />
                   </div>
                 </div>
                 <div className="divide-y divide-[var(--color-border)]">
@@ -1730,13 +1828,13 @@ export default function ProjectManagePage() {
                                   });
                                 }
                               }}
-                              onSaveEditSubTopicTitle={() => {
+                              onSaveEditSubTopicTitle={(finalTitle) => {
                                 if (editingSubTopic) {
                                   updateSubTopicTitle(
                                     editingSubTopic.teamId,
                                     editingSubTopic.topicId,
                                     editingSubTopic.subTopicId,
-                                    editSubTopicTitle
+                                    finalTitle ?? editSubTopicTitle
                                   );
                                   setEditingSubTopic(null);
                                 }
