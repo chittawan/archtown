@@ -10,7 +10,6 @@ import { importFromMarkdown } from '../src/lib/projectMarkdown';
 import { yamlToProject, projectToYaml } from '../src/lib/projectYaml';
 import { markdownToOrgTeam } from '../src/lib/teamMarkdown';
 import { yamlToOrgTeam, orgTeamToYaml } from '../src/lib/teamYaml';
-import { markdownToCap, orderMarkdownToCapIds } from '../src/lib/capabilityMarkdown';
 import {
   yamlToCap,
   capToYaml,
@@ -23,7 +22,6 @@ const DATA_ROOT = path.join(process.cwd(), 'data');
 const DATA_PROJECTS_DIR = path.join(DATA_ROOT, 'projects');
 const DATA_TEAMS_DIR = path.join(DATA_ROOT, 'teams');
 const DATA_CAPABILITY_DIR = path.join(DATA_ROOT, 'capability');
-const CAPABILITY_ORDER_FILE_MD = '_order.md';
 const CAPABILITY_ORDER_FILE_YAML = '_order.yaml';
 
 function safeTeamId(id: string): string {
@@ -311,12 +309,9 @@ app.get('/api/capability', (_req, res) => {
   try {
     fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
     const orderPathYaml = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
-    const orderPathMd = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
     let capOrder: string[] = [];
     if (fs.existsSync(orderPathYaml)) {
       capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
-    } else if (fs.existsSync(orderPathMd)) {
-      capOrder = orderMarkdownToCapIds(fs.readFileSync(orderPathMd, 'utf-8'));
     }
     const caps: Record<
       string,
@@ -336,9 +331,6 @@ app.get('/api/capability', (_req, res) => {
     const capFilesYaml = files.filter(
       (f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML
     );
-    const capFilesMd = files.filter(
-      (f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD
-    );
     const seen = new Set(capOrder);
     for (const f of capFilesYaml) {
       const id = f.slice(0, -5);
@@ -347,20 +339,10 @@ app.get('/api/capability', (_req, res) => {
         capOrder.push(id);
       }
     }
-    for (const f of capFilesMd) {
-      const id = f.slice(0, -3);
-      if (!seen.has(id)) {
-        seen.add(id);
-        capOrder.push(id);
-      }
-    }
     for (const id of capOrder) {
       const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
-      const mdPath = path.join(DATA_CAPABILITY_DIR, `${id}.md`);
       if (fs.existsSync(yamlPath)) {
         caps[id] = yamlToCap(id, fs.readFileSync(yamlPath, 'utf-8'));
-      } else if (fs.existsSync(mdPath)) {
-        caps[id] = markdownToCap(id, fs.readFileSync(mdPath, 'utf-8'));
       } else {
         caps[id] = {
           id: safeCapId(id),
@@ -383,12 +365,9 @@ app.get('/api/capability/summary', (req, res) => {
     fs.mkdirSync(DATA_CAPABILITY_DIR, { recursive: true });
     fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
     const orderPathYaml = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_YAML);
-    const orderPathMd = path.join(DATA_CAPABILITY_DIR, CAPABILITY_ORDER_FILE_MD);
     let capOrder: string[] = [];
     if (fs.existsSync(orderPathYaml)) {
       capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
-    } else if (fs.existsSync(orderPathMd)) {
-      capOrder = orderMarkdownToCapIds(fs.readFileSync(orderPathMd, 'utf-8'));
     }
     const caps: Record<
       string,
@@ -402,9 +381,6 @@ app.get('/api/capability/summary', (req, res) => {
     const capFilesYaml = files.filter(
       (f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML
     );
-    const capFilesMd = files.filter(
-      (f) => f.endsWith('.md') && f !== CAPABILITY_ORDER_FILE_MD
-    );
     const seen = new Set(capOrder);
     for (const f of capFilesYaml) {
       const id = f.slice(0, -5);
@@ -413,25 +389,10 @@ app.get('/api/capability/summary', (req, res) => {
         capOrder.push(id);
       }
     }
-    for (const f of capFilesMd) {
-      const id = f.slice(0, -3);
-      if (!seen.has(id)) {
-        seen.add(id);
-        capOrder.push(id);
-      }
-    }
     for (const id of capOrder) {
       const yamlPath = path.join(DATA_CAPABILITY_DIR, `${id}.yaml`);
-      const mdPath = path.join(DATA_CAPABILITY_DIR, `${id}.md`);
       if (fs.existsSync(yamlPath)) {
         const cap = yamlToCap(id, fs.readFileSync(yamlPath, 'utf-8'));
-        caps[id] = {
-          id: cap.id,
-          name: cap.name,
-          projects: cap.projects.map((p) => ({ id: p.id, name: p.name })),
-        };
-      } else if (fs.existsSync(mdPath)) {
-        const cap = markdownToCap(id, fs.readFileSync(mdPath, 'utf-8'));
         caps[id] = {
           id: cap.id,
           name: cap.name,

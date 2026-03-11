@@ -4,14 +4,6 @@ description: คุยเรื่องของทิศทางใกล้ 
 teams:
   - name: Solution Architect
     topics:
-      - title: kafka confluent
-        subTopics:
-          - title: Kafka PoC Areas
-            status: YELLOW
-            details:
-              - text: รวบรวมข้อมูลเพื่อนำเสนอ ข้อดี ข้อเสียการใช้งานระหว่าง kafka Strimzi กับ kafka confluent
-                done: false
-                dueDate: '2026-03-27'
       - title: APIM Gravitee
         subTopics:
           - title: 'State: Installation Prod'
@@ -19,7 +11,18 @@ teams:
             details:
               - text: ประสานงาน Load test performance - with sap
                 done: false
-              - text: เก็บผล Recovery Time
+              - text: เก็บผล Recovery Time 123
+                done: false
+              - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
+                done: false
+      - title: APIM Gravitee
+        subTopics:
+          - title: 'State: Installation Prod'
+            status: YELLOW
+            details:
+              - text: ประสานงาน Load test performance - with sap
+                done: false
+              - text: เก็บผล Recovery Tim
                 done: false
               - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
                 done: false
