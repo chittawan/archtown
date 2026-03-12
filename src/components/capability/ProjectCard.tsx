@@ -146,6 +146,7 @@ export function SortableProjectCard({
   return (
     <motion.div
       ref={setNodeRef}
+      data-sortable-id={id}
       style={style}
       className={`group ${projectWidthClass} min-w-0`}
       layout={!isDragging}

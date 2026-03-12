@@ -12,11 +12,14 @@ import {
 import {
   DndContext,
   DragEndEvent,
+  DragStartEvent,
   PointerSensor,
+  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  pointerWithin,
+  closestCorners,
   useDroppable,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -52,12 +55,72 @@ async function fetchProjectList(): Promise<ProjectSummary[]> {
 
 const CAP_PREFIX = 'cap::';
 
+/** Composite collision: pointer within first (stable for variable-size items), then closest corners when pointer is in gaps. */
+function pointerWithinThenClosestCorners(args: Parameters<typeof pointerWithin>[0]) {
+  const within = pointerWithin(args);
+  if (within.length > 0) return within;
+  return closestCorners(args);
+}
+
 function parseProjectDragId(id: string): { capId: string; projectId: string } | null {
   if (!id.startsWith(PROJECT_PREFIX)) return null;
   const rest = id.slice(PROJECT_PREFIX.length);
   const i = rest.indexOf('::');
   if (i === -1) return null;
   return { capId: rest.slice(0, i), projectId: rest.slice(i + 2) };
+}
+
+/**
+ * Compute insert index from pointer (X,Y) and project card rects (Chrome bookmarks style).
+ * Uses both axes so mixed col2/4/6/12 grids resolve the correct item and before/after.
+ */
+function getInsertIndexFromPointer(
+  targetCapId: string,
+  projectIds: string[],
+  activeProjectId: string,
+  pointerX: number,
+  pointerY: number
+): number {
+  const entries: { id: string; top: number; left: number; bottom: number; right: number }[] = [];
+  for (const projectId of projectIds) {
+    if (projectId === activeProjectId) continue;
+    const el = document.querySelector(
+      `[data-sortable-id="${PROJECT_PREFIX}${targetCapId}::${projectId}"]`
+    );
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    entries.push({
+      id: projectId,
+      top: rect.top,
+      left: rect.left,
+      bottom: rect.bottom,
+      right: rect.right,
+    });
+  }
+  if (entries.length === 0) return 0;
+  entries.sort((a, b) => (a.top !== b.top ? a.top - b.top : a.left - b.left));
+
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const inY = pointerY >= e.top && pointerY <= e.bottom;
+    const inX = pointerX >= e.left && pointerX <= e.right;
+    if (inY && inX) {
+      const midY = e.top + (e.bottom - e.top) / 2;
+      const midX = e.left + (e.right - e.left) / 2;
+      if (pointerY < midY) return i;
+      if (pointerY > midY) return i + 1;
+      return pointerX < midX ? i : i + 1;
+    }
+  }
+
+  const ROW_TOLERANCE = 2;
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const rowAhead = e.top > pointerY + ROW_TOLERANCE;
+    const sameRowAhead = Math.abs(e.top - pointerY) <= ROW_TOLERANCE && e.left > pointerX;
+    if (rowAhead || sameRowAhead) return i;
+  }
+  return entries.length;
 }
 
 async function fetchLayout(): Promise<CapabilityLayout> {
@@ -134,6 +197,9 @@ export default function CapabilityManagePage() {
   const savedScrollYRef = useRef<number | null>(null);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  /** Last pointer position during drag — used for pointer-based insert index (variable-size items). */
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerCleanupRef = useRef<(() => void) | null>(null);
 
   const projectSummaryById = useMemo(() => {
     const map = new Map<string, ProjectSummary>();
@@ -163,8 +229,27 @@ export default function CapabilityManagePage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   );
+
+  const handleDragStart = useCallback((_event: DragStartEvent) => {
+    lastPointerRef.current = null;
+    const onPointerMove = (e: PointerEvent) => {
+      lastPointerRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    pointerCleanupRef.current = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      pointerCleanupRef.current = null;
+    };
+  }, []);
+
+  const clearPointerTracking = useCallback(() => {
+    pointerCleanupRef.current?.();
+    pointerCleanupRef.current = null;
+    lastPointerRef.current = null;
+  }, []);
 
   const loadLayout = useCallback(async () => {
     setLoading(true);
@@ -310,6 +395,9 @@ export default function CapabilityManagePage() {
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
+      const pointer = lastPointerRef.current;
+      clearPointerTracking();
+
       if (!over) return;
       const overId = String(over.id);
 
@@ -356,16 +444,30 @@ export default function CapabilityManagePage() {
           if (!targetCap) return;
           const sourceProjects = sourceCap.projects.filter((p) => p.id !== projectId);
           const targetProjects = [...targetCap.projects];
+          const targetProjectIds = targetProjects.map((p) => p.id);
           const overIndex = targetProjects.findIndex((p) => p.id === overProject.projectId);
-          const insertIndex = overIndex >= 0 ? overIndex : targetProjects.length;
+          const fallbackInsertIndex = overIndex >= 0 ? overIndex : targetProjects.length;
+          const insertIndex =
+            pointer != null && typeof pointer.x === 'number' && typeof pointer.y === 'number'
+              ? getInsertIndexFromPointer(
+                  targetCapId,
+                  targetProjectIds,
+                  projectId,
+                  pointer.x,
+                  pointer.y
+                )
+              : fallbackInsertIndex;
           if (sourceCapId === targetCapId) {
             const from = sourceCap.projects.findIndex((p) => p.id === projectId);
             if (from === -1) return;
-            const reordered = arrayMove(
-              sourceCap.projects.map((p) => p.id),
-              from,
-              insertIndex > from ? insertIndex - 1 : insertIndex
-            );
+            const ids = sourceCap.projects.map((p) => p.id);
+            const toIndex =
+              pointer != null
+                ? insertIndex
+                : insertIndex > from
+                  ? insertIndex - 1
+                  : insertIndex;
+            const reordered = arrayMove(ids, from, toIndex);
             const ordered = reordered
               .map((id) => sourceCap.projects.find((p) => p.id === id))
               .filter(Boolean) as ProjectInCap[];
@@ -415,7 +517,7 @@ export default function CapabilityManagePage() {
         }));
       }
     },
-    [layout, updateLayout]
+    [layout, updateLayout, clearPointerTracking]
   );
 
   const handleAddCap = (e: React.FormEvent) => {
@@ -786,7 +888,8 @@ export default function CapabilityManagePage() {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={pointerWithinThenClosestCorners}
+          onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
           <SortableContext

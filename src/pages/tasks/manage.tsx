@@ -113,6 +113,21 @@ function formatThaiDate(iso?: string): string {
   });
 }
 
+function formatRelativeThaiDay(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  if (diffDays === 0) return 'วันนี้';
+  if (diffDays > 0) return `อีก ${diffDays} วัน`;
+  return `${Math.abs(diffDays)} วันที่แล้ว`;
+}
+
 const SAVE_DEBOUNCE_MS = 700;
 
 export default function TasksOverviewPage() {
@@ -691,6 +706,7 @@ function TaskColumn({
         ) : (
           tasks.map((task) => {
             const dueLabel = formatThaiDate(task.dueDate);
+            const relativeLabel = formatRelativeThaiDay(task.dueDate);
             const bucket = getDueBucket(task.dueDate);
             const accent =
               bucket === 'overdue'
@@ -771,7 +787,12 @@ function TaskColumn({
                     className="text-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
                   />
                   {dueLabel && (
-                    <span className={`text-[10px] ${accent}`}>{dueLabel}</span>
+                    <span
+                      className={`text-[10px] ${accent}`}
+                      title={dueLabel}
+                    >
+                      {relativeLabel || dueLabel}
+                    </span>
                   )}
                 </div>
               </article>
