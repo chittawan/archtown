@@ -36,6 +36,9 @@ import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../compon
 import { SaveStatusIndicator, type SaveStatusIndicatorRef } from '../../components/capability/SaveStatusIndicator';
 import { AddCapModal } from './AddCapModal';
 import { AddProjectModal } from './AddProjectModal';
+import GridLayout, { useContainerWidth, type LayoutItem } from 'react-grid-layout';
+
+const CAP_ROW_HEIGHT = 10;
 
 const SortableProjectCardAny = SortableProjectCard as any;
 
@@ -141,14 +144,14 @@ async function saveLayout(layout: CapabilityLayout): Promise<boolean> {
   return !!data.ok;
 }
 
-function capWidthClass(cols?: 12 | 6 | 4 | 3): string {
+function capColsToGridWidth(cols?: 12 | 6 | 4 | 3): number {
   const value = cols && [12, 6, 4, 3].includes(cols) ? cols : 4;
   switch (value) {
-    case 12: return 'col-span-12';
-    case 6: return 'col-span-12 sm:col-span-6';
-    case 4: return 'col-span-12 sm:col-span-4';
-    case 3: return 'col-span-12 sm:col-span-3';
-    default: return 'col-span-12';
+    case 12: return 12;
+    case 6: return 6;
+    case 4: return 4;
+    case 3: return 3;
+    default: return 4;
   }
 }
 
@@ -195,11 +198,58 @@ export default function CapabilityManagePage() {
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [projectSelectOpen, setProjectSelectOpen] = useState(false);
   const savedScrollYRef = useRef<number | null>(null);
+  const [capGridLayout, setCapGridLayout] = useState<LayoutItem[]>([]);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   /** Last pointer position during drag — used for pointer-based insert index (variable-size items). */
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const pointerCleanupRef = useRef<(() => void) | null>(null);
+
+  const {
+    width: capGridWidth,
+    containerRef: capGridContainerRef,
+    mounted: capGridMounted,
+  } = useContainerWidth({ initialWidth: 1024 });
+
+  const isCapGridReady =
+    capGridMounted && capGridLayout.length === layout.capOrder.length && layout.capOrder.length > 0;
+
+  useEffect(() => {
+    const totalCols = 12;
+    setCapGridLayout((prev) => {
+      const items: LayoutItem[] = [];
+      let x = 0;
+      let y = 0;
+
+      for (const capId of layout.capOrder) {
+        const cap = layout.caps[capId];
+        if (!cap) continue;
+        const w = capColsToGridWidth(cap.cols);
+        //const existing = prev.find((item) => item.i === capId);
+        const baseRows =
+          typeof cap.rows === 'number' && cap.rows > 0 ? Math.floor(cap.rows) : 5;
+        const defaultRows = Math.max(baseRows, 5);
+        const h = defaultRows;
+        console.log(h);
+
+        if (x + w > totalCols) {
+          x = 0;
+          y += h;
+        }
+
+        items.push({
+          i: capId,
+          x,
+          y,
+          w,
+          h,
+        });
+        x += w;
+      }
+
+      return items;
+    });
+  }, [layout.capOrder, layout.caps]);
 
   const projectSummaryById = useMemo(() => {
     const map = new Map<string, ProjectSummary>();
@@ -357,6 +407,61 @@ export default function CapabilityManagePage() {
       persistLayout(next);
     },
     [persistLayout]
+  );
+
+  const handleCapGridLayoutChange = useCallback(
+    (newLayout: readonly LayoutItem[]) => {
+      const sortedIds = [...newLayout]
+        .slice(0)
+        .sort((a, b) => (a.y !== b.y ? a.y - b.y : a.x - b.x))
+        .map((item) => item.i);
+
+      updateLayout((current) => {
+        const existingOrder = current.capOrder;
+        const nextOrder = sortedIds.filter((id) => existingOrder.includes(id));
+        if (nextOrder.length === 0) return current;
+
+        const byId = new Map<string, LayoutItem>();
+        for (const item of newLayout) {
+          byId.set(String(item.i), item as LayoutItem);
+        }
+
+        let capsChanged = false;
+        const nextCaps: typeof current.caps = {};
+        for (const id of existingOrder) {
+          const cap = current.caps[id];
+          if (!cap) continue;
+          const layoutItem = byId.get(id);
+          const rawRows =
+            layoutItem && typeof layoutItem.h === 'number' && layoutItem.h > 0
+              ? layoutItem.h
+              : cap.rows;
+          const nextRows =
+            typeof rawRows === 'number' && rawRows > 0
+              ? Math.max(Math.floor(rawRows), 5)
+              : cap.rows;
+          if (nextRows !== cap.rows) {
+            capsChanged = true;
+            nextCaps[id] = { ...cap, rows: nextRows };
+          } else {
+            nextCaps[id] = cap;
+          }
+        }
+
+        const orderChanged =
+          nextOrder.length !== existingOrder.length ||
+          nextOrder.some((id, idx) => id !== existingOrder[idx]);
+
+        if (!orderChanged && !capsChanged) return current;
+
+        return {
+          ...current,
+          capOrder: orderChanged ? nextOrder : existingOrder,
+          caps: capsChanged ? nextCaps : current.caps,
+        };
+      });
+    },
+    [updateLayout]
   );
 
   const handleCapColsChange = useCallback((capId: string, value: 12 | 6 | 4 | 3) => {
@@ -653,7 +758,7 @@ export default function CapabilityManagePage() {
     };
   }, [handleDoubleClickProject]);
 
-  function SortableCapCard({
+  function CapCard({
     capId,
     cap,
     editingCapId: editingCapIdProp,
@@ -666,41 +771,27 @@ export default function CapabilityManagePage() {
   }) {
     if (!cap) return null;
     const isEditing = editingCapIdProp === capId;
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({ id: `sortable-cap-${capId}` as any });
     const { setNodeRef: setDropRef, isOver } = useDroppable({
       id: `${CAP_PREFIX}${capId}`,
     });
     const sortableProjectIds = cap.projects.map((p) => projectDragId(capId, p.id));
-    const style = { transform: CSS.Transform.toString(transform), transition };
-    const cols = cap.cols;
 
     return (
       <div
-        ref={setNodeRef}
-        style={style}
-        className={`flex flex-col min-w-[220px] ${capWidthClass(cols)}`}
+        ref={setDropRef}
+        className="flex flex-col min-w-[220px] h-full"
       >
         <div
-          ref={setDropRef}
-          className={`group/cap rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden transition-all ${
-            isDragging ? 'opacity-90 shadow-xl ring-2 ring-[var(--color-primary)]' : ''
-          } ${isOver ? 'ring-2 ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/30' : ''}`}
+          className={`group/cap rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden h-full ${
+            isOver ? 'ring-2 ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/30' : ''
+          }`}
         >
           <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-overlay)]">
             <button
               type="button"
-              className="p-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text)] touch-none cursor-grab active:cursor-grabbing"
+              className="cap-drag-handle p-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text)] touch-none cursor-grab active:cursor-grabbing"
               aria-label="ลากเพื่อเรียงลำดับกลุ่ม"
             title="ลากเพื่อเรียงลำดับกลุ่ม"
-              {...attributes}
-              {...listeners}
             >
               <GripVertical className="w-4 h-4" />
             </button>
@@ -784,18 +875,9 @@ export default function CapabilityManagePage() {
               )}
             </div>
           </div>
-          <div className="p-3 min-h-0">
+          <div className="p-3 min-h-[100px] flex-1">
             <SortableContext items={sortableProjectIds} strategy={rectSortingStrategy}>
-              <motion.div
-                layout
-                className="grid grid-cols-12 gap-2"
-                transition={{
-                  layout: {
-                    duration: 0.4,
-                    ease: [0.32, 0.72, 0, 1],
-                  },
-                }}
-              >
+              <div className="grid grid-cols-12 gap-2">
                 {cap.projects.map((project) => {
                   const summary = projectSummaryById.get(project.id);
                   const displayStatus = summary?.summaryStatus ?? project.status ?? null;
@@ -817,7 +899,7 @@ export default function CapabilityManagePage() {
                     </React.Fragment>
                   );
                 })}
-              </motion.div>
+              </div>
             </SortableContext>
             {cap.projects.length === 0 && (
               <p className="text-sm text-[var(--color-text-muted)] italic py-2 text-center">
@@ -892,36 +974,49 @@ export default function CapabilityManagePage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext
-            items={layout.capOrder.map((id) => `sortable-cap-${id}`)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="grid grid-cols-12 gap-6">
-              {layout.capOrder.map((capId) => {
-                const cap = layout.caps[capId];
-                if (!cap) return null;
-                const isEditingThisCap = editingCapId === capId;
-                const scopedEditingCapId = isEditingThisCap ? editingCapId : null;
-                const scopedCapNameInput = isEditingThisCap ? capNameInput : '';
+          <div ref={capGridContainerRef} className="min-h-[400px]">
+            {isCapGridReady && (
+              <GridLayout
+                width={capGridWidth}
+                layout={capGridLayout}
+                onLayoutChange={(newLayout: readonly LayoutItem[]) => {
+                  setCapGridLayout(newLayout.map((item) => ({ ...item })));
+                }}
+                onDragStop={(newLayout: readonly LayoutItem[]) => {
+                  handleCapGridLayoutChange(newLayout);
+                }}
+                onResizeStop={(newLayout: readonly LayoutItem[]) => {
+                  handleCapGridLayoutChange(newLayout);
+                }}
+                gridConfig={{ cols: 12, rowHeight: CAP_ROW_HEIGHT, margin: [24, 24], containerPadding: [0, 0] }}
+              >
+                {layout.capOrder.map((capId) => {
+                  const cap = layout.caps[capId];
+                  if (!cap) return null;
+                  const isEditingThisCap = editingCapId === capId;
+                  const scopedEditingCapId = isEditingThisCap ? editingCapId : null;
+                  const scopedCapNameInput = isEditingThisCap ? capNameInput : '';
                 return (
-                  <MemoizedCapCard
-                    key={capId}
-                    capId={capId}
-                    cap={cap}
-                    editingCapId={scopedEditingCapId}
-                    capNameInput={scopedCapNameInput}
-                  >
-                    <SortableCapCard
-                      capId={capId}
-                      cap={cap}
-                      editingCapId={scopedEditingCapId}
-                      capNameInput={scopedCapNameInput}
-                    />
-                  </MemoizedCapCard>
-                );
-              })}
-            </div>
-          </SortableContext>
+                  <div key={capId} className="h-full">
+                      <MemoizedCapCard
+                        capId={capId}
+                        cap={cap}
+                        editingCapId={scopedEditingCapId}
+                        capNameInput={scopedCapNameInput}
+                      >
+                        <CapCard
+                          capId={capId}
+                          cap={cap}
+                          editingCapId={scopedEditingCapId}
+                          capNameInput={scopedCapNameInput}
+                        />
+                      </MemoizedCapCard>
+                    </div>
+                  );
+                })}
+              </GridLayout>
+            )}
+          </div>
         </DndContext>
       )}
 

@@ -1,6 +1,7 @@
 id: ftd
 name: FTD
 cols: 4
+rows: 12
 projects:
   - id: weight_management
     name: weight management

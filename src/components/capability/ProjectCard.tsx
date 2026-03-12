@@ -149,13 +149,7 @@ export function SortableProjectCard({
       data-sortable-id={id}
       style={style}
       className={`group ${projectWidthClass} min-w-0`}
-      layout={!isDragging}
-      transition={{
-        layout: {
-          duration: 0.4,
-          ease: [0.32, 0.72, 0, 1],
-        },
-      }}
+      layout={false}
     >
         <div
           onDoubleClick={onDoubleClick}

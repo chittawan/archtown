@@ -17,6 +17,8 @@ export interface Cap {
   id: string;
   name: string;
   cols?: 12 | 6 | 4 | 3;
+  /** จำนวนแถวของ grid layout สำหรับ Cap นี้ (optional) */
+  rows?: number;
   projects: ProjectInCap[];
 }
 
@@ -51,6 +53,8 @@ interface CapYamlRoot {
   id?: string;
   name: string;
   cols?: number;
+  /** จำนวนแถวของ grid layout สำหรับ Cap นี้ (optional) */
+  rows?: number;
   projects?: ProjectInCapYaml[];
 }
 
@@ -64,6 +68,10 @@ export function yamlToCap(id: string, yamlStr: string): Cap {
     typeof raw.id === 'string' && raw.id.trim() ? safeId(raw.id.trim()) : safeId(id);
   const name = typeof raw.name === 'string' ? raw.name.trim() : 'Cap';
   const cols = isCols(raw.cols) ? raw.cols : undefined;
+  const rows =
+    typeof raw.rows === 'number' && Number.isFinite(raw.rows) && raw.rows > 0
+      ? Math.floor(raw.rows)
+      : undefined;
   const projects: ProjectInCap[] = [];
   const list = Array.isArray(raw.projects) ? raw.projects : [];
   for (const p of list) {
@@ -74,7 +82,7 @@ export function yamlToCap(id: string, yamlStr: string): Cap {
     const projCols = isCols(p.cols) ? p.cols : undefined;
     projects.push({ id: projectId, name: projectName, status, cols: projCols });
   }
-  return { id: capId, name, cols, projects };
+  return { id: capId, name, cols, rows, projects };
 }
 
 /** Serialize Cap to YAML */
@@ -83,6 +91,7 @@ export function capToYaml(cap: Cap): string {
     id: cap.id,
     name: cap.name || 'Cap',
     cols: cap.cols,
+    rows: cap.rows,
     projects:
       cap.projects.length > 0
         ? cap.projects.map((p) => ({

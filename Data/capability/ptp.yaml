@@ -1,6 +1,7 @@
 id: ptp
 name: PTP
 cols: 4
+rows: 12
 projects:
   - id: sap_odata
     name: SAP OData

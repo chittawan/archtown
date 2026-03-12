@@ -1,6 +1,7 @@
 id: otc
 name: OTC
 cols: 4
+rows: 12
 projects:
   - id: salesteams_platform
     name: salesteams platform

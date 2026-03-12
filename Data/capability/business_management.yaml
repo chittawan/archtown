@@ -1,6 +1,7 @@
 id: business_management
 name: Business Management
 cols: 12
+rows: 5
 projects:
   - id: strategic_management
     name: Strategic Management
