@@ -11,7 +11,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "migrate:md-to-yaml": "tsx scripts/migrate-md-to-yaml.ts",
-    "migrate:ids": "tsx scripts/migrate-ids.ts"
+    "migrate:ids": "tsx scripts/migrate-ids.ts",
+    "generate:favicon": "node scripts/generate-favicon.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -43,7 +44,9 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.14",
+    "to-ico": "^1.1.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

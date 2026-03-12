@@ -7,7 +7,7 @@ teams:
       - title: Network & Connectivity
         subTopics:
           - title: Network Topology & Firewall
-            status: YELLOW
+            status: GREEN
             details: []
           - title: VPN & Load Balancer
             status: GREEN
@@ -17,7 +17,7 @@ teams:
       - title: Server / Resource Cost
         subTopics:
           - title: Cloud Spending vs Budget
-            status: YELLOW
+            status: GREEN
             details: []
           - title: Resource Utilization
             status: GREEN
@@ -29,7 +29,7 @@ teams:
       - title: Traffic & Performance
         subTopics:
           - title: Request Volume & Latency
-            status: RED
+            status: GREEN
             details: []
       - title: CI/CD Pipeline
         subTopics: []

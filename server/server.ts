@@ -6,15 +6,15 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 
-import { yamlToProject, projectToYaml } from '@/src/lib/projectYaml';
-import { yamlToOrgTeam, orgTeamToYaml } from '@/src/lib/teamYaml';
+import { yamlToProject, projectToYaml } from '../src/lib/projectYaml';
+import { yamlToOrgTeam, orgTeamToYaml } from '../src/lib/teamYaml';
 import {
   yamlToCap,
   capToYaml,
   yamlToCapOrder,
   capOrderToYaml,
-} from '@/src/lib/capabilityYaml';
-import { nameToId, sanitizeId } from '@/src/lib/idUtils';
+} from '../src/lib/capabilityYaml';
+import { nameToId, sanitizeId } from '../src/lib/idUtils';
 
 const DATA_ROOT = path.join(process.cwd(), 'data');
 const DATA_PROJECTS_DIR = path.join(DATA_ROOT, 'projects');
