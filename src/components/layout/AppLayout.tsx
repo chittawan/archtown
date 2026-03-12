@@ -114,10 +114,17 @@ export default function AppLayout() {
           <Outlet />
         </main>
         {rightPanelOpen && (
-          <aside
-            className="hidden lg:flex flex-col w-[320px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden"
-            aria-label="Summary status"
-          >
+          <>
+            {/* Backdrop on small screens: tap to close panel */}
+            <div
+              className="fixed inset-0 top-16 bg-black/20 z-20 lg:hidden"
+              aria-hidden
+              onClick={() => setRightPanelOpen(false)}
+            />
+            <aside
+              className="flex flex-col w-[320px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden fixed lg:relative inset-y-0 right-0 top-16 lg:top-auto z-30 lg:z-auto"
+              aria-label="Summary status"
+            >
             <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto flex flex-col">
               <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-overlay)] shrink-0">
                 <div className="flex rounded-lg p-0.5 bg-[var(--color-page)] border border-[var(--color-border)]">
@@ -175,6 +182,7 @@ export default function AppLayout() {
               </div>
             </div>
           </aside>
+          </>
         )}
       </div>
     </div>

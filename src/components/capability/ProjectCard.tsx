@@ -156,12 +156,12 @@ export function SortableProjectCard({
         },
       }}
     >
-      <div
-        onDoubleClick={onDoubleClick}
-        className={`
+        <div
+          onDoubleClick={onDoubleClick}
+          className={`
           relative rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]
-          shadow-none hover:bg-[var(--color-overlay)] hover:shadow-sm transition-all duration-150 cursor-pointer select-none
-          overflow-hidden border-l-2 ${accentClass}
+          shadow-none hover:bg-[var(--color-overlay)] hover:shadow-sm transition-all duration-150 ease-out cursor-pointer select-none
+          overflow-visible border-l-2 ${accentClass}
           ${
             isDragging
               ? 'shadow-md ring-2 ring-[var(--color-primary)]/25 opacity-95 z-10 scale-[1.01]'
@@ -175,9 +175,9 @@ export function SortableProjectCard({
         `}
         title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
       >
-        {/* ปุ่มลอยมุมขวาบน — โชว์ตอน hover */}
+        {/* ปุ่มลอยมุมขวาบน — โชว์ตอน hover, ชิดขวาเท่ากับเนื้อหาการ์ด */}
         <div
-          className="absolute top-2 right-2 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
+          className="absolute -top-[38px] right-0 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-[opacity,background-color,box-shadow] duration-150 ease-out rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] group-hover:bg-[var(--color-overlay)] group-hover:shadow-sm px-1.5 py-1"
           onClick={(e) => e.stopPropagation()}
         >
           <label className="sr-only" htmlFor={`project-cols-${capId}-${project.id}`}>
@@ -193,7 +193,7 @@ export function SortableProjectCard({
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             title="ปรับความกว้างการ์ด"
-            className="h-7 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-overlay)] text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)] appearance-none cursor-pointer shadow-sm"
+            className="h-7 pl-2 pr-7 rounded-md border border-[var(--color-border)] bg-[var(--color-page)] hover:bg-[var(--color-overlay)] text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)] appearance-none cursor-pointer"
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
               backgroundRepeat: 'no-repeat',
@@ -214,7 +214,7 @@ export function SortableProjectCard({
             onPointerCancel={clearRemoveHold}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
-            className="relative shrink-0 p-1.5 rounded-md text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/5 transition-colors overflow-hidden"
+            className="relative shrink-0 p-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/5 hover:border-red-500/40 transition-colors overflow-hidden"
             title="กดค้าง 1 วินาทีเพื่อเอาออกจากกลุ่มนี้"
             aria-label="กดค้าง 1 วินาทีเพื่อเอาโปรเจกต์ออกจากกลุ่ม"
           >
