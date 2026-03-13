@@ -37,11 +37,16 @@ async function fetchProject(projectId: string): Promise<ProjectData | null> {
   };
 }
 
+function isDetailDone(d: SubTopicDetail): boolean {
+  return d.status === 'done' || !!d.done;
+}
+
 function buildTodoGroups(teams: Team[]): TodoGroup[] {
   const groups: TodoGroup[] = [];
   teams.forEach((team, teamIdx) => {
     team.topics.forEach((topic, topicIdx) => {
       topic.subTopics.forEach((sub, subTopicIdx) => {
+        if ((sub.subTopicType ?? 'todos') !== 'todos') return;
         const details = sub.details ?? [];
         if (details.length === 0) return;
         const headerLabel = `${team.name} → ${topic.title} → ${sub.title}`;
@@ -55,7 +60,7 @@ function buildTodoGroups(teams: Team[]): TodoGroup[] {
           details: details.map((d, detailIdx) => ({
             detailIdx,
             text: d.text,
-            done: d.done,
+            done: isDetailDone(d),
             dueDate: d.dueDate,
           })),
         });
@@ -280,7 +285,6 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
     (n, g) => n + g.details.filter((d) => d.done).length,
     0
   );
-
   if (totalItems === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -360,7 +364,7 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
                           group.topicIdx,
                           group.subTopicIdx,
                           d.detailIdx,
-                          { done: !d.done }
+                          { status: d.done ? 'todo' : 'done' }
                         )
                       }
                       className="shrink-0 mt-1.5 p-0.5 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-primary)]"

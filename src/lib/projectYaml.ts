@@ -3,12 +3,22 @@
  * IDs are generated on load so YAML can omit them for brevity.
  */
 import yaml from 'js-yaml';
-import type { Team, Topic, SubTopic, SubTopicDetail, Status } from '../types';
+import type { Team, Topic, SubTopic, SubTopicDetail, Status, SubTopicType, TodoItemStatus } from '../types';
 
 const STATUSES: Status[] = ['GREEN', 'YELLOW', 'RED'];
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+const TODO_ITEM_STATUSES: TodoItemStatus[] = ['todo', 'doing', 'done'];
+
+function ensureTodoItemStatus(s: unknown): TodoItemStatus {
+  return TODO_ITEM_STATUSES.includes(s as TodoItemStatus) ? (s as TodoItemStatus) : 'todo';
+}
+
+function ensureSubTopicType(s: unknown): SubTopicType {
+  return s === 'status' ? 'status' : 'todos';
 }
 
 /** YAML-friendly shape (no ids); ids are added when parsing */
@@ -19,7 +29,8 @@ interface ProjectYamlTeam {
     subTopics: Array<{
       title: string;
       status: Status;
-      details?: Array<{ text: string; done: boolean; dueDate?: string }>;
+      subTopicType?: SubTopicType;
+      details?: Array<{ text: string; status?: TodoItemStatus; done?: boolean; dueDate?: string }>;
     }>;
   }>;
 }
@@ -67,6 +78,7 @@ export function yamlToProject(yamlStr: string): ProjectData {
       for (const sub of subList) {
         const subTitle = typeof sub.title === 'string' ? sub.title : 'SubTopic';
         const status = ensureStatus(sub.status);
+        const subTopicType = ensureSubTopicType((sub as { subTopicType?: SubTopicType }).subTopicType);
         const details: SubTopicDetail[] = [];
         const detailList = Array.isArray(sub.details) ? sub.details : [];
         for (const d of detailList) {
@@ -75,9 +87,13 @@ export function yamlToProject(yamlStr: string): ProjectData {
             (d as { dueDate: string }).dueDate.trim()
               ? (d as { dueDate: string }).dueDate.trim()
               : undefined;
+          const hasStatus = typeof (d as { status?: TodoItemStatus }).status === 'string';
+          const legacyDone = Boolean((d as { done?: boolean }).done);
           details.push({
             text: typeof d?.text === 'string' ? d.text : '',
-            done: Boolean(d?.done),
+            ...(hasStatus
+              ? { status: ensureTodoItemStatus((d as { status: TodoItemStatus }).status) }
+              : { status: (legacyDone ? 'done' : 'todo') as TodoItemStatus }),
             ...(dueDate && { dueDate }),
           });
         }
@@ -85,6 +101,7 @@ export function yamlToProject(yamlStr: string): ProjectData {
           id: genId('sub'),
           title: subTitle,
           status,
+          subTopicType,
           details,
         });
       }
@@ -116,11 +133,15 @@ export function projectToYaml(data: ProjectData): string {
         subTopics: top.subTopics.map((sub) => ({
           title: sub.title,
           status: sub.status,
-          details: (sub.details ?? []).map((d) => ({
-            text: d.text,
-            done: d.done,
-            ...(d.dueDate && { dueDate: d.dueDate }),
-          })),
+          ...(sub.subTopicType && sub.subTopicType !== 'todos' && { subTopicType: sub.subTopicType }),
+          details: (sub.details ?? []).map((d) => {
+            const status = d.status ?? (d.done ? 'done' : 'todo');
+            return {
+              text: d.text,
+              status,
+              ...(d.dueDate && { dueDate: d.dueDate }),
+            };
+          }),
         })),
       })),
     })),

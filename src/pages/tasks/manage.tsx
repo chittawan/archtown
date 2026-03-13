@@ -65,9 +65,11 @@ function buildFlatTasks(projects: ProjectsById): FlatTask[] {
     project.teams.forEach((team, teamIdx) => {
       team.topics.forEach((topic, topicIdx) => {
         topic.subTopics.forEach((subTopic, subIdx) => {
+          if ((subTopic.subTopicType ?? 'todos') !== 'todos') return;
           (subTopic.details ?? []).forEach((detail, detailIdx) => {
             const text = detail.text?.trim() ?? '';
             if (!text) return;
+            const done = detail.status === 'done' || !!detail.done;
             items.push({
               id: `${project.id}::${teamIdx}::${topicIdx}::${subIdx}::${detailIdx}`,
               projectId: project.id,
@@ -77,7 +79,7 @@ function buildFlatTasks(projects: ProjectsById): FlatTask[] {
               subTopicTitle: subTopic.title,
               detailIdx,
               text,
-              done: detail.done,
+              done,
               dueDate: detail.dueDate,
             });
           });
@@ -729,7 +731,7 @@ function TaskColumn({
                     type="button"
                     onClick={() =>
                       onUpdate(task, {
-                        done: !task.done,
+                        status: task.done ? 'todo' : 'done',
                       })
                     }
                     className="mt-0.5 p-0.5 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] shrink-0"

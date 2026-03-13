@@ -14,7 +14,7 @@ import {
 import { arrayMove } from '@dnd-kit/sortable';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Team, Topic, SubTopic, Status } from '../../types';
+import { Team, Topic, SubTopic, Status, SubTopicType, TodoItemStatus } from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { LongPressDeleteButton } from '../../components/ui/LongPressDeleteButton';
 import { SortableTopicRow } from '../../components/project/SortableTopicRow';
@@ -611,7 +611,7 @@ export default function ProjectManagePage() {
     updateTeams((prev) =>
       updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => [
         ...details,
-        { text: '', done: false },
+        { text: '', status: 'todo' as TodoItemStatus },
       ])
     );
   };
@@ -674,10 +674,55 @@ export default function ProjectManagePage() {
     updateTeams((prev) =>
       updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
         const next = [...details];
-        if (next[index])
-          next[index] = { ...next[index], done: !next[index].done };
+        if (next[index]) {
+          const s = next[index].status ?? (next[index].done ? 'done' : 'todo');
+          next[index] = { ...next[index], status: s === 'done' ? 'todo' : 'done', done: undefined };
+        }
         return next;
       })
+    );
+  };
+
+  const updateSubTopicDetailStatus = (
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    index: number,
+    itemStatus: TodoItemStatus
+  ) => {
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
+        const next = [...details];
+        if (next[index]) next[index] = { ...next[index], status: itemStatus, done: undefined };
+        return next;
+      })
+    );
+  };
+
+  const updateSubTopicType = (
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    subTopicType: SubTopicType
+  ) => {
+    updateTeams((prev) =>
+      prev.map((t) =>
+        t.id !== teamId
+          ? t
+          : {
+              ...t,
+              topics: t.topics.map((topic) =>
+                topic.id !== topicId
+                  ? topic
+                  : {
+                      ...topic,
+                      subTopics: topic.subTopics.map((s) =>
+                        s.id !== subTopicId ? s : { ...s, subTopicType }
+                      ),
+                    }
+              ),
+            }
+      )
     );
   };
 
@@ -1248,6 +1293,18 @@ export default function ProjectManagePage() {
                                   subTopicId,
                                   index
                                 )
+                              }
+                              onUpdateDetailStatus={(topicId, subTopicId, index, status) =>
+                                updateSubTopicDetailStatus(
+                                  team.id,
+                                  topicId,
+                                  subTopicId,
+                                  index,
+                                  status
+                                )
+                              }
+                              onSubTopicTypeChange={(topicId, subTopicId, subTopicType) =>
+                                updateSubTopicType(team.id, topicId, subTopicId, subTopicType)
                               }
                             />
                           </div>

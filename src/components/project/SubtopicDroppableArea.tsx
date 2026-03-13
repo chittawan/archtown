@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import type { Status, Topic } from '../../types';
+import type { Status, Topic, SubTopicType, TodoItemStatus } from '../../types';
 import { SortableSubTopicCard } from './SortableSubTopicCard';
 
 type EditingSubTopicState = {
@@ -30,8 +30,10 @@ type SubtopicDroppableAreaProps = {
     index: number,
     dueDate: string | undefined
   ) => void;
+  onUpdateDetailStatus: (topicId: string, subTopicId: string, index: number, status: TodoItemStatus) => void;
   onRemoveDetail: (topicId: string, subTopicId: string, index: number) => void;
   onToggleDetailDone: (topicId: string, subTopicId: string, index: number) => void;
+  onSubTopicTypeChange: (topicId: string, subTopicId: string, type: SubTopicType) => void;
   openTodoSectionIds: Set<string>;
   onTodoSectionToggle: (subTopicId: string) => void;
 };
@@ -51,8 +53,10 @@ export function SubtopicDroppableArea({
   onAddDetail,
   onUpdateDetail,
   onUpdateDetailDueDate,
+  onUpdateDetailStatus,
   onRemoveDetail,
   onToggleDetailDone,
+  onSubTopicTypeChange,
   openTodoSectionIds,
   onTodoSectionToggle,
 }: SubtopicDroppableAreaProps) {
@@ -83,6 +87,8 @@ export function SubtopicDroppableArea({
                 teamId={teamId}
                 topicId={topic.id}
                 subTopic={subTopic}
+                subTopicType={subTopic.subTopicType ?? 'todos'}
+                onSubTopicTypeChange={(t) => onSubTopicTypeChange(topic.id, subTopic.id, t)}
                 isTodoSectionOpen={openTodoSectionIds.has(subTopic.id)}
                 onTodoSectionToggle={() => onTodoSectionToggle(subTopic.id)}
                 onUpdateStatus={(status) =>
@@ -107,6 +113,9 @@ export function SubtopicDroppableArea({
                 }
                 onUpdateDetailDueDate={(index, dueDate) =>
                   onUpdateDetailDueDate(topic.id, subTopic.id, index, dueDate)
+                }
+                onUpdateDetailStatus={(index, status) =>
+                  onUpdateDetailStatus(topic.id, subTopic.id, index, status)
                 }
                 onRemoveDetail={(index) =>
                   onRemoveDetail(topic.id, subTopic.id, index)
