@@ -214,6 +214,22 @@ export default function CapabilityManagePage() {
   const isCapGridReady =
     capGridMounted && capGridLayout.length === layout.capOrder.length && layout.capOrder.length > 0;
 
+  /** วัดความกว้าง container จริงด้วย ResizeObserver — แก้ layout ไม่เต็มความกว้าง (1024) ตอนโหลดครั้งแรก */
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  useEffect(() => {
+    const el = capGridContainerRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.getBoundingClientRect().width;
+      if (typeof w === 'number' && w > 0) setMeasuredWidth(w);
+    };
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    update();
+    return () => ro.disconnect();
+  }, [capGridMounted]);
+  const gridWidth = measuredWidth > 0 ? measuredWidth : capGridWidth;
+
   useEffect(() => {
     const totalCols = 12;
     setCapGridLayout((prev) => {
@@ -989,10 +1005,10 @@ export default function CapabilityManagePage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div ref={capGridContainerRef} className="min-h-[400px]">
-            {isCapGridReady && (
+          <div ref={capGridContainerRef} className="w-full min-h-[400px]">
+            {isCapGridReady && measuredWidth > 0 && (
               <GridLayout
-                width={capGridWidth}
+                width={gridWidth}
                 layout={capGridLayout}
                 dragConfig={{ handle: '.cap-drag-handle' }}
                 onLayoutChange={(newLayout: readonly LayoutItem[]) => {
