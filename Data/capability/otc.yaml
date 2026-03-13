@@ -4,14 +4,10 @@ cols: 4
 rows: 12
 projects:
   - id: salesteams_platform
-    name: salesteams platform
     cols: 12
   - id: key_account_managment
-    name: Key Account Managment
     cols: 12
   - id: product_and_price
-    name: Product And Price
     cols: 12
   - id: one_customer
-    name: One Customer
     cols: 12

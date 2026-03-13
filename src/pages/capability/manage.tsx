@@ -259,6 +259,15 @@ export default function CapabilityManagePage() {
     return map;
   }, [projectList]);
 
+  const projectSummaryByIdRef = useRef(projectSummaryById);
+  projectSummaryByIdRef.current = projectSummaryById;
+
+  const getProjectDisplayName = useCallback(
+    (project: ProjectInCap) =>
+      projectSummaryById.get(project.id)?.name ?? project.name ?? project.id,
+    [projectSummaryById]
+  );
+
   const filteredProjectList = useMemo(() => {
     const q = projectSearchQuery.trim().toLowerCase();
     if (!q) return projectList;
@@ -671,20 +680,18 @@ export default function CapabilityManagePage() {
     const cap = layout.caps[capId];
     if (!cap) return;
     let id: string;
-    let name: string;
     if (addProjectMode === 'select' && selectedProjectId) {
       const existing = projectList.find((p) => p.id === selectedProjectId);
       if (!existing) return;
       id = existing.id;
-      name = existing.name;
     } else {
-      name = newProjectName.trim();
+      const name = newProjectName.trim();
       if (!name) return;
       id = nameToId(name);
     }
     const existingIds = cap.projects.map((p) => p.id);
     if (existingIds.includes(id)) return;
-    const project: ProjectInCap = { id, name, cols: 4 };
+    const project: ProjectInCap = { id, cols: 4 };
     const next = {
       ...layout,
       caps: {
@@ -717,7 +724,9 @@ export default function CapabilityManagePage() {
   const handleDoubleClickProject = useCallback(
     (project: ProjectInCap) => {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('projectName', project.name);
+        const displayName =
+          projectSummaryByIdRef.current.get(project.id)?.name ?? project.name ?? project.id;
+        localStorage.setItem('projectName', displayName);
         localStorage.setItem('projectId', project.id);
       }
       navigate(`/project?id=${encodeURIComponent(project.id)}`);
@@ -738,11 +747,15 @@ export default function CapabilityManagePage() {
       if (!detail) return;
 
       const layout = layoutRef.current;
+      const summaryMap = projectSummaryByIdRef.current;
       const cap = Object.values<Cap>(layout.caps).find(
         (c) => c.name === detail.capName
       );
       if (!cap) return;
-      const project = cap.projects.find((p) => p.name === detail.projectName);
+      const project = cap.projects.find(
+        (p) =>
+          (summaryMap.get(p.id)?.name ?? p.name ?? p.id) === detail.projectName
+      );
       if (!project) return;
 
       handleDoubleClickProject(project);
@@ -882,12 +895,14 @@ export default function CapabilityManagePage() {
                   const summary = projectSummaryById.get(project.id);
                   const displayStatus = summary?.summaryStatus ?? project.status ?? null;
                   const description = summary?.description ?? null;
+                  const displayName = getProjectDisplayName(project);
                   return (
                     <React.Fragment key={`${capId}-${project.id}`}>
                       <SortableProjectCardAny
                         capId={capId}
                         capName={cap.name}
                         project={project}
+                        displayName={displayName}
                         displayStatus={displayStatus}
                         description={description}
                         onRemove={() => handleRemoveProject(capId, project.id)}

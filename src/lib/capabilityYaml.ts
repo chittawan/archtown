@@ -8,7 +8,8 @@ export type ProjectStatus = 'RED' | 'YELLOW' | 'GREEN';
 
 export interface ProjectInCap {
   id: string;
-  name: string;
+  /** ไม่เก็บใน YAML — ใช้ id เชื่อมกับ data/projects เพื่อดึง name */
+  name?: string;
   status?: ProjectStatus;
   cols?: 12 | 6 | 4 | 3;
 }
@@ -44,7 +45,7 @@ function isStatus(s: unknown): s is ProjectStatus {
 
 interface ProjectInCapYaml {
   id: string;
-  name: string;
+  name?: string;
   status?: string;
   cols?: number;
 }
@@ -80,7 +81,7 @@ export function yamlToCap(id: string, yamlStr: string): Cap {
     const projectName = typeof p.name === 'string' ? p.name.trim() : projectId;
     const status = isStatus(p.status) ? p.status : undefined;
     const projCols = isCols(p.cols) ? p.cols : undefined;
-    projects.push({ id: projectId, name: projectName, status, cols: projCols });
+    projects.push({ id: projectId, name: projectName || undefined, status, cols: projCols });
   }
   return { id: capId, name, cols, rows, projects };
 }
@@ -96,7 +97,6 @@ export function capToYaml(cap: Cap): string {
       cap.projects.length > 0
         ? cap.projects.map((p) => ({
             id: p.id,
-            name: p.name,
             ...(p.status && { status: p.status }),
             ...(p.cols != null && { cols: p.cols }),
           }))

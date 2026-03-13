@@ -40,6 +40,8 @@ export interface SortableProjectCardProps {
   capId: string;
   capName: string;
   project: ProjectInCap;
+  /** ชื่อโปรเจกต์จาก data/projects (เชื่อมด้วย project.id) */
+  displayName: string;
   displayStatus: ProjectStatus | null;
   description?: string | null;
   onRemove: () => void;
@@ -51,6 +53,7 @@ export function SortableProjectCard({
   capId,
   capName,
   project,
+  displayName,
   displayStatus,
   description,
   onRemove,
@@ -128,7 +131,7 @@ export function SortableProjectCard({
         return;
       }
       const matches =
-        detail.projectName === project.name &&
+        detail.projectName === displayName &&
         detail.capName === capName;
       setHighlightedFromSummary(matches);
     }
@@ -141,7 +144,7 @@ export function SortableProjectCard({
         window.removeEventListener('summary-project-hover', handleHover as EventListener);
       }
     };
-  }, [capName, project.name]);
+  }, [capName, displayName]);
 
   return (
     <motion.div
@@ -240,7 +243,7 @@ export function SortableProjectCard({
             <div className="flex-1 min-w-0 flex items-center">
               <div className="flex flex-col min-w-0 py-0.5">
                 <p className="text-sm font-medium text-[var(--color-text)] line-clamp-2 break-words leading-snug">
-                  {project.name}
+                  {displayName}
                 </p>
                 {descriptionText && (
                   <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]/90 line-clamp-2 break-words">
