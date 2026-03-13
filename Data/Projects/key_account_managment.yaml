@@ -12,5 +12,6 @@ teams:
                 status: done
               - text: การ Render หน้า UI ช้าเกิดจาก การ Set การ Render มีความซับซ้อน
                 status: todo
+                dueDate: '2026-03-18'
               - text: 'map โหลด api ทุกครั้งที่มีการ toutch ขยับแผนทึ่ :: หา solution - poc แล้วมานำมาดูใหม่'
                 status: todo

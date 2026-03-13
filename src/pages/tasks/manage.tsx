@@ -158,6 +158,10 @@ export default function TasksOverviewPage() {
   const [calendarViewMode, setCalendarViewMode] = useState<'calendar' | 'timeline'>('timeline');
   const [savingProjects, setSavingProjects] = useState<Set<string>>(new Set());
   const saveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const projectsRef = useRef<ProjectsById>({});
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,20 +341,17 @@ export default function TasksOverviewPage() {
       });
   }, []);
 
-  const scheduleSave = useCallback(
-    (projectId: string) => {
-      const timers = saveTimersRef.current;
-      const existing = timers.get(projectId);
-      if (existing) clearTimeout(existing);
-      const timeout = setTimeout(() => {
-        timers.delete(projectId);
-        const project = projects[projectId];
-        if (project) saveProject(project);
-      }, SAVE_DEBOUNCE_MS);
-      timers.set(projectId, timeout);
-    },
-    [projects, saveProject]
-  );
+  const scheduleSave = useCallback((projectId: string) => {
+    const timers = saveTimersRef.current;
+    const existing = timers.get(projectId);
+    if (existing) clearTimeout(existing);
+    const timeout = setTimeout(() => {
+      timers.delete(projectId);
+      const project = projectsRef.current[projectId];
+      if (project) saveProject(project);
+    }, SAVE_DEBOUNCE_MS);
+    timers.set(projectId, timeout);
+  }, [saveProject]);
 
   const updateTaskDetail = useCallback(
     (task: FlatTask, patch: Partial<SubTopicDetail>) => {
