@@ -269,12 +269,21 @@ export default function TasksOverviewPage() {
       id,
       title: projectNames.get(id) ?? id,
     }));
-    const now = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 28);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+    const start = focusTodayOnly ? todayStart : (() => {
+      const s = new Date(todayStart);
+      s.setDate(s.getDate() - 7);
+      return s;
+    })();
+    const end = focusTodayOnly ? todayEnd : (() => {
+      const e = new Date(todayStart);
+      e.setDate(e.getDate() + 28);
+      return e;
+    })();
     const items = tasksWithDue.map((task) => {
       if (!task.dueDate) return null;
       const d = new Date(task.dueDate);
@@ -302,10 +311,10 @@ export default function TasksOverviewPage() {
     return {
       timelineGroups: groups,
       timelineItems: items,
-      defaultTimeStart: start.getTime() - 7 * dayMs,
+      defaultTimeStart: start.getTime(),
       defaultTimeEnd: end.getTime(),
     };
-  }, [tasksWithDue]);
+  }, [tasksWithDue, focusTodayOnly]);
 
   const saveProject = useCallback((project: ProjectData) => {
     setSavingProjects((prev) => new Set(prev).add(project.id));
@@ -548,6 +557,7 @@ export default function TasksOverviewPage() {
                 </div>
               ) : (
                 <TimelineView
+                  timelineKey={focusTodayOnly ? 'today' : 'range'}
                   timelineGroups={timelineGroups}
                   timelineItems={timelineItems}
                   defaultTimeStart={defaultTimeStart}
@@ -613,6 +623,7 @@ export default function TasksOverviewPage() {
 }
 
 type TimelineViewProps = {
+  timelineKey: string;
   timelineGroups: { id: string; title: string }[];
   timelineItems: { id: string; group: string; title: string; start_time: number; end_time: number; className?: string; itemProps?: { title: string } }[];
   defaultTimeStart: number;
@@ -635,6 +646,7 @@ const TIMELINE_KEYS = {
 };
 
 function TimelineView({
+  timelineKey,
   timelineGroups,
   timelineItems,
   defaultTimeStart,
@@ -661,6 +673,7 @@ function TimelineView({
   return (
     <div className="tasks-timeline-wrapper h-[360px] min-w-0">
       <Timeline
+        key={timelineKey}
         groups={timelineGroups}
         items={timelineItems}
         keys={TIMELINE_KEYS}
