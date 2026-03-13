@@ -301,7 +301,7 @@ export function SortableSubTopicCard({
                       </button>
                       <span
                         className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                          itemStatus === 'done' ? 'text-[var(--color-emerald-500)] dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-[var(--color-blue-400)] dark:!text-blue-100' : 'text-[var(--color-emerald-50)] dark:!text-slate-100'
+                          itemStatus === 'done' ? 'text-[var(--color-emerald-500)] dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-[var(--color-blue-400)] dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
                         }`}
                       >
                         {index + 1}.
@@ -397,7 +397,7 @@ export function SortableSubTopicCard({
                         >
                           <span
                             className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                              itemStatus === 'done' ? 'text-[var(--color-emerald-500)] dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-[var(--color-blue-400)] dark:!text-blue-100' : 'text-[var(--color-emerald-50)] dark:!text-slate-100'
+                              itemStatus === 'done' ? 'text-[var(--color-emerald-500)] dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-[var(--color-blue-400)] dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
                             }`}
                           >
                             {index + 1}.

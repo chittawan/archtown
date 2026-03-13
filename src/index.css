@@ -49,6 +49,9 @@
     color: var(--color-text);
     transition: background-color 0.2s ease, color 0.2s ease;
   }
+  svg {
+    color: var(--color-text);
+  }
 }
 
 @media print {
