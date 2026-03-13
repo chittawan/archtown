@@ -112,10 +112,10 @@
   border-radius: 50%;
 }
 
-.tasks-calendar-wrapper .tasks-calendar-dot--overdue { background: #f43f5e; }
-.tasks-calendar-wrapper .tasks-calendar-dot--near { background: #f59e0b; }
-.tasks-calendar-wrapper .tasks-calendar-dot--mid { background: #0ea5e9; }
-.tasks-calendar-wrapper .tasks-calendar-dot--far { background: #10b981; }
+/* Project status colors (RED / YELLOW / GREEN from subTopics) */
+.tasks-calendar-wrapper .tasks-calendar-dot--red { background: #dc2626; }
+.tasks-calendar-wrapper .tasks-calendar-dot--yellow { background: #ca8a04; }
+.tasks-calendar-wrapper .tasks-calendar-dot--green { background: #16a34a; }
 
 .tasks-calendar-wrapper .tasks-calendar-more {
   font-size: 9px;

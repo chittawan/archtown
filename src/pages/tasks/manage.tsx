@@ -520,15 +520,13 @@ export default function TasksOverviewPage() {
                       const dayTasks = tasksByDate.get(key) ?? [];
                       if (dayTasks.length === 0) return null;
                       const dots = dayTasks.slice(0, 6).map((task) => {
-                        const bucket = getDueBucket(task.dueDate);
+                        const status = task.projectStatus;
                         const dotClass =
-                          bucket === 'overdue'
-                            ? 'tasks-calendar-dot--overdue'
-                            : bucket === 'near'
-                            ? 'tasks-calendar-dot--near'
-                            : bucket === 'mid'
-                            ? 'tasks-calendar-dot--mid'
-                            : 'tasks-calendar-dot--far';
+                          status === 'RED'
+                            ? 'tasks-calendar-dot--red'
+                            : status === 'YELLOW'
+                            ? 'tasks-calendar-dot--yellow'
+                            : 'tasks-calendar-dot--green';
                         return (
                           <span
                             key={task.id}
@@ -744,6 +742,13 @@ function TaskColumn({
                 ? 'text-emerald-600 dark:text-emerald-300'
                 : 'text-[var(--color-text-muted)]';
 
+            const statusPill =
+              task.projectStatus === 'RED'
+                ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
+                : task.projectStatus === 'YELLOW'
+                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300';
+
             return (
               <article
                 key={task.id}
@@ -778,7 +783,7 @@ function TaskColumn({
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pillBg}`}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusPill}`}
                       >
                         {task.projectName}
                       </span>
