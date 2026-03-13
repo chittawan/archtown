@@ -11,18 +11,19 @@ teams:
             details:
               - text: ประสานงาน Load test performance - with sap
                 status: done
-              - text: 'เก็บผล Recovery '
+              - text: ฟหกฟหกฟหก
+                status: doing
+              - text: ฟหกฟหกฟหกฟหกหฟก
                 status: todo
-                dueDate: '2026-03-13'
-              - text: พบความผิดปกติ Latency no api-key ช้ากว่า Latency api-key
-                status: todo
-                dueDate: '2026-03-13'
+                dueDate: '2026-03-12'
           - title: (2) Governance & Policy
             status: GREEN
             details: []
           - title: (3) Best Practices & Optimization
             status: GREEN
-            details: []
+            details:
+              - text: ''
+                status: todo
           - title: (4) Continuous Improvement
             status: GREEN
             details: []
@@ -35,3 +36,5 @@ teams:
               - text: ทำแผนและนัดคุยกับทาง K.Amy - Kafka วันที่ 27/03/2028
                 status: todo
                 dueDate: '2026-03-11'
+              - text: ''
+                status: todo

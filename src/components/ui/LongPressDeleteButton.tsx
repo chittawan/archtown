@@ -68,7 +68,7 @@ export function LongPressDeleteButton({
       onPointerCancel={clear}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
-      className={`relative p-1.5 rounded-md text-[var(--color-text-subtle)] hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 overflow-hidden transition-colors ${className}`}
+      className={`relative p-1.5 rounded-md border border-transparent text-[var(--color-emerald-950)] dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200 hover:text-red-500 hover:bg-red-500/10 dark:hover:text-red-400 dark:hover:bg-red-500/20 dark:hover:border-red-500/40 overflow-hidden transition-colors ${className}`}
       title={`${title} — กดค้าง 1 วินาที`}
       aria-label={ariaLabel ?? `กดค้าง 1 วินาทีเพื่อ${title}`}
     >
