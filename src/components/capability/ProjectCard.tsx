@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { GripVertical, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useSortable } from '@dnd-kit/sortable';
@@ -76,9 +77,11 @@ export function SortableProjectCard({
     typeof description === 'string' && description.trim() ? description.trim() : '';
   const [highlightedFromSummary, setHighlightedFromSummary] = useState(false);
   const [removeHoldProgress, setRemoveHoldProgress] = useState(0);
+  const [titleTooltip, setTitleTooltip] = useState<{ x: number; y: number } | null>(null);
   const removeHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const removeHoldStartRef = useRef(0);
   const removeHoldRafRef = useRef<number>(0);
+  const titleRef = useRef<HTMLParagraphElement>(null);
 
   const clearRemoveHold = () => {
     if (removeHoldTimerRef.current) {
@@ -242,7 +245,19 @@ export function SortableProjectCard({
             </button>
             <div className="flex-1 min-w-0 flex items-center">
               <div className="flex flex-col min-w-0 py-0.5">
-                <p className="text-sm font-medium text-[var(--color-text)] line-clamp-2 break-words leading-snug">
+                <p
+                  ref={titleRef}
+                  className="text-sm font-medium text-[var(--color-text)] leading-snug truncate"
+                  onMouseEnter={() => {
+                    const el = titleRef.current;
+                    if (!el) return;
+                    // โชว์ tooltip เฉพาะเมื่อข้อความถูกตัด (มี ...)
+                    if (el.scrollWidth <= el.clientWidth) return;
+                    const r = el.getBoundingClientRect();
+                    setTitleTooltip({ x: r.left + r.width / 2, y: r.top });
+                  }}
+                  onMouseLeave={() => setTitleTooltip(null)}
+                >
                   {displayName}
                 </p>
                 {descriptionText && (
@@ -263,6 +278,22 @@ export function SortableProjectCard({
           </div>
         </div>
       </div>
+      {/* Tooltip ชื่อเต็ม — portal ไป body เพื่อให้ fixed อยู่ relative viewport (ไม่ถูก transform ของ grid/sortable บิด) */}
+      {titleTooltip &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="fixed z-[9999] px-2.5 py-1.5 rounded-md bg-[var(--color-text)] text-[var(--color-page)] text-xs font-medium whitespace-nowrap shadow-lg pointer-events-none"
+            style={{
+              left: titleTooltip.x,
+              top: titleTooltip.y - 6,
+              transform: 'translate(-50%, -100%)',
+            }}
+          >
+            {displayName}
+          </div>,
+          document.body
+        )}
     </motion.div>
   );
 }

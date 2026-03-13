@@ -12,7 +12,7 @@ teams:
               - text: ประสานงาน Load test performance - with sap
                 status: done
               - text: ฟหกฟหกฟหก
-                status: doing
+                status: todo
               - text: ฟหกฟหกฟหกฟหกหฟก
                 status: todo
                 dueDate: '2026-03-12'

@@ -1,6 +1,6 @@
 id: performance_management
-name: Performance Management
-description: ให้ระบบมีเสถียรภาพ รองรับการใช้งานได้ตามความต้องการของธุรกิจ โดยพิจารณาจากตัวชี้วัดสำคัญ เช่น Resource Utilization, System Performance, Scalability และ Availability
+name: Performance Management [ Target 31/03/2026 ]
+description: การดำเนินการจะอาศัยการ สื่อสารข้ามทีม (Cross-team Communication) และการติดตามข้อมูลด้าน Performance อย่างต่อเนื่อง เพื่อให้สามารถดำเนินการปรับปรุงหรือแก้ไขได้อย่างเหมาะสมก่อนที่จะส่งผลกระทบต่อระบบในภาพรวม
 teams:
   - name: Infra
     topics:
@@ -13,7 +13,7 @@ teams:
             status: GREEN
             details:
               - text: LoadBalance
-                done: false
+                status: todo
       - title: Server / Resource Cost
         subTopics:
           - title: Cloud Spending vs Budget
