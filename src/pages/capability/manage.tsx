@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Layers,
@@ -214,9 +214,18 @@ export default function CapabilityManagePage() {
   const isCapGridReady =
     capGridMounted && capGridLayout.length === layout.capOrder.length && layout.capOrder.length > 0;
 
-  /** วัดความกว้าง container จริงด้วย ResizeObserver — แก้ layout ไม่เต็มความกว้าง (1024) ตอนโหลดครั้งแรก */
+  /** วัดความกว้าง container จริง — แก้ layout ไม่เต็มความกว้าง (1024) ตอนโหลดครั้งแรก */
   const [measuredWidth, setMeasuredWidth] = useState(0);
-  useEffect(() => {
+  const [containerReady, setContainerReady] = useState(false);
+  const setContainerRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      (capGridContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+      setContainerReady(!!el);
+    },
+    []
+  );
+  useLayoutEffect(() => {
+    if (!containerReady) return;
     const el = capGridContainerRef.current;
     if (!el) return;
     const update = () => {
@@ -227,7 +236,7 @@ export default function CapabilityManagePage() {
     ro.observe(el);
     update();
     return () => ro.disconnect();
-  }, [capGridMounted]);
+  }, [containerReady]);
   const gridWidth = measuredWidth > 0 ? measuredWidth : capGridWidth;
 
   useEffect(() => {
@@ -1005,7 +1014,7 @@ export default function CapabilityManagePage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div ref={capGridContainerRef} className="w-full min-h-[400px]">
+          <div ref={setContainerRef} className="w-full min-h-[400px]">
             {isCapGridReady && measuredWidth > 0 && (
               <GridLayout
                 width={gridWidth}
