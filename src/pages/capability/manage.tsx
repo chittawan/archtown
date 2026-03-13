@@ -994,6 +994,7 @@ export default function CapabilityManagePage() {
               <GridLayout
                 width={capGridWidth}
                 layout={capGridLayout}
+                dragConfig={{ handle: '.cap-drag-handle' }}
                 onLayoutChange={(newLayout: readonly LayoutItem[]) => {
                   setCapGridLayout(newLayout.map((item) => ({ ...item })));
                 }}

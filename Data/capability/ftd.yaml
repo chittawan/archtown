@@ -4,11 +4,8 @@ cols: 4
 rows: 12
 projects:
   - id: weight_management
-    name: weight management
     cols: 12
   - id: tke_log
-    name: TKE Log
     cols: 12
   - id: billing_service
-    name: Billing Service
     cols: 12

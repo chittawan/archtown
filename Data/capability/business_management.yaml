@@ -4,11 +4,8 @@ cols: 12
 rows: 5
 projects:
   - id: strategic_management
-    name: Strategic Management
     cols: 4
   - id: performance_management
-    name: Performance Management
     cols: 4
   - id: risk_management
-    name: Risk Management
     cols: 4
