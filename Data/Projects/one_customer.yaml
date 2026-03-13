@@ -9,4 +9,4 @@ teams:
             status: YELLOW
             details:
               - text: update การใช้งาน resource แนะนำให้แยก namesapce
-                done: false
+                status: todo

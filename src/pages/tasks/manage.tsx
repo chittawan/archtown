@@ -7,7 +7,7 @@ import 'react-calendar/dist/Calendar.css';
 import 'react-calendar-timeline/style.css';
 import './TasksCalendar.css';
 import './TasksTimeline.css';
-import type { Team, SubTopicDetail } from '../../types';
+import type { Team, SubTopicDetail, Status } from '../../types';
 
 type ProjectData = {
   id: string;
@@ -20,6 +20,7 @@ type FlatTask = {
   id: string;
   projectId: string;
   projectName: string;
+  projectStatus: Status;
   teamName: string;
   topicTitle: string;
   subTopicTitle: string;
@@ -42,6 +43,20 @@ async function fetchProjectsIndex(): Promise<{ id: string; name: string }[]> {
     id: String(p.id ?? ''),
     name: String(p.name ?? p.projectName ?? p.id ?? ''),
   }));
+}
+
+/** สรุปสถานะโปรเจกต์จาก subTopics (RED หนักสุด > YELLOW > GREEN) */
+function getProjectSummaryStatus(project: ProjectData): Status {
+  let summary: Status = 'GREEN';
+  for (const team of project.teams) {
+    for (const topic of team.topics) {
+      for (const sub of topic.subTopics) {
+        if (sub.status === 'RED') return 'RED';
+        if (sub.status === 'YELLOW') summary = 'YELLOW';
+      }
+    }
+  }
+  return summary;
 }
 
 async function fetchProject(id: string): Promise<ProjectData | null> {
@@ -74,6 +89,7 @@ function buildFlatTasks(projects: ProjectsById): FlatTask[] {
               id: `${project.id}::${teamIdx}::${topicIdx}::${subIdx}::${detailIdx}`,
               projectId: project.id,
               projectName: project.projectName,
+              projectStatus: getProjectSummaryStatus(project),
               teamName: team.name,
               topicTitle: topic.title,
               subTopicTitle: subTopic.title,
@@ -269,7 +285,13 @@ export default function TasksOverviewPage() {
         title: task.text,
         start_time: startMs,
         end_time: endMs,
-        className: getDueBucket(task.dueDate) === 'overdue' ? 'rct-item-overdue' : getDueBucket(task.dueDate) === 'near' ? 'rct-item-near' : undefined,
+        className: (() => {
+          const s = task.projectStatus;
+          if (s === 'RED') return 'rct-item-red';
+          if (s === 'YELLOW') return 'rct-item-yellow';
+          if (s === 'GREEN') return 'rct-item-green';
+          return undefined;
+        })(),
         itemProps: { title: fullLabel },
       };
     }).filter(Boolean) as { id: string; group: string; title: string; start_time: number; end_time: number; className?: string; itemProps?: { title: string } }[];
