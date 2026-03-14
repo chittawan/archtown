@@ -30,6 +30,12 @@ type SubtopicDroppableAreaProps = {
     index: number,
     dueDate: string | undefined
   ) => void;
+  onUpdateDetailDescription: (
+    topicId: string,
+    subTopicId: string,
+    index: number,
+    description: string | undefined
+  ) => void;
   onUpdateDetailStatus: (topicId: string, subTopicId: string, index: number, status: TodoItemStatus) => void;
   onRemoveDetail: (topicId: string, subTopicId: string, index: number) => void;
   onToggleDetailDone: (topicId: string, subTopicId: string, index: number) => void;
@@ -53,6 +59,7 @@ export function SubtopicDroppableArea({
   onAddDetail,
   onUpdateDetail,
   onUpdateDetailDueDate,
+  onUpdateDetailDescription,
   onUpdateDetailStatus,
   onRemoveDetail,
   onToggleDetailDone,
@@ -113,6 +120,9 @@ export function SubtopicDroppableArea({
                 }
                 onUpdateDetailDueDate={(index, dueDate) =>
                   onUpdateDetailDueDate(topic.id, subTopic.id, index, dueDate)
+                }
+                onUpdateDetailDescription={(index, description) =>
+                  onUpdateDetailDescription(topic.id, subTopic.id, index, description)
                 }
                 onUpdateDetailStatus={(index, status) =>
                   onUpdateDetailStatus(topic.id, subTopic.id, index, status)

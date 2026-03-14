@@ -6,8 +6,8 @@ import TodoPanel from './TodoPanel.tsx';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
-  { path: '/teams', label: 'Teams', icon: Users },
   { path: '/tasks', label: 'Tasks', icon: ListTodo },
+  { path: '/teams', label: 'Teams', icon: Users },
 ];
 
 const RIGHT_PANEL_STORAGE_KEY = 'archtown-right-panel-open';

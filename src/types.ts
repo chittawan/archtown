@@ -6,6 +6,8 @@ export type TodoItemStatus = 'todo' | 'doing' | 'done';
 /** Task ย่อยตาม Detail — รองรับทั้ง status (todo/doing/done) และ done (backward compat) */
 export interface SubTopicDetail {
   text: string;
+  /** Note / คำอธิบายเพิ่มเติมของ task นี้ */
+  description?: string;
   /** Type Todos: สถานะรายการ — ถ้าไม่มีใช้ done เพื่อ backward compat */
   status?: TodoItemStatus;
   /** @deprecated ใช้ status === 'done' แทน — ยังรองรับตอนโหลด YAML เก่า */

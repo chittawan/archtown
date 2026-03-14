@@ -30,7 +30,7 @@ interface ProjectYamlTeam {
       title: string;
       status: Status;
       subTopicType?: SubTopicType;
-      details?: Array<{ text: string; status?: TodoItemStatus; done?: boolean; dueDate?: string }>;
+      details?: Array<{ text: string; description?: string; status?: TodoItemStatus; done?: boolean; dueDate?: string }>;
     }>;
   }>;
 }
@@ -89,8 +89,13 @@ export function yamlToProject(yamlStr: string): ProjectData {
               : undefined;
           const hasStatus = typeof (d as { status?: TodoItemStatus }).status === 'string';
           const legacyDone = Boolean((d as { done?: boolean }).done);
+          const description =
+            typeof (d as { description?: string })?.description === 'string'
+              ? (d as { description: string }).description.trim() || undefined
+              : undefined;
           details.push({
             text: typeof d?.text === 'string' ? d.text : '',
+            ...(description && { description }),
             ...(hasStatus
               ? { status: ensureTodoItemStatus((d as { status: TodoItemStatus }).status) }
               : { status: (legacyDone ? 'done' : 'todo') as TodoItemStatus }),
@@ -138,6 +143,7 @@ export function projectToYaml(data: ProjectData): string {
             const status = d.status ?? (d.done ? 'done' : 'todo');
             return {
               text: d.text,
+              ...(d.description && { description: d.description }),
               status,
               ...(d.dueDate && { dueDate: d.dueDate }),
             };

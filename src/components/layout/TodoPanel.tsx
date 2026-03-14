@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Circle, ListTodo, ExternalLink } from 'lucide-react';
+import { Check, Circle, ListTodo, ExternalLink, FileText } from 'lucide-react';
 import type { Team, SubTopicDetail } from '../../types';
 
 interface ProjectData {
@@ -20,7 +20,7 @@ interface TodoGroup {
   teamIdx: number;
   topicIdx: number;
   subTopicIdx: number;
-  details: { detailIdx: number; text: string; done: boolean; dueDate?: string }[];
+  details: { detailIdx: number; text: string; description?: string; done: boolean; dueDate?: string }[];
 }
 
 async function fetchProject(projectId: string): Promise<ProjectData | null> {
@@ -60,6 +60,7 @@ function buildTodoGroups(teams: Team[]): TodoGroup[] {
           details: details.map((d, detailIdx) => ({
             detailIdx,
             text: d.text,
+            description: d.description,
             done: isDetailDone(d),
             dueDate: d.dueDate,
           })),
@@ -231,6 +232,8 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
   const [draftDetailText, setDraftDetailText] = useState<Record<string, string>>(
     {}
   );
+  /** Notion-style: เปิด Note แค่เมื่อกดปุ่ม (key = draftKey ของ detail นั้น) */
+  const [openNoteKey, setOpenNoteKey] = useState<string | null>(null);
 
   const flushTaskDraft = (
     draftKey: string,
@@ -434,6 +437,46 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
                           </span>
                         )}
                       </div>
+                      {/* Note/Memo แบบ Notion: มีข้อความแล้วแสดง, ไม่มีต้องกดปุ่ม */}
+                      {(d.description != null && d.description !== '') || openNoteKey === draftKey ? (
+                        <textarea
+                          rows={2}
+                          value={d.description ?? ''}
+                          onChange={(e) =>
+                            updateDetail(
+                              group.teamIdx,
+                              group.topicIdx,
+                              group.subTopicIdx,
+                              d.detailIdx,
+                              { description: e.target.value || undefined }
+                            )
+                          }
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            updateDetail(
+                              group.teamIdx,
+                              group.topicIdx,
+                              group.subTopicIdx,
+                              d.detailIdx,
+                              { description: v || undefined }
+                            );
+                            if (!v) setOpenNoteKey(null);
+                          }}
+                          placeholder="Memo / Note..."
+                          className="w-full text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-[var(--color-text-muted)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] resize-y min-h-[52px] mt-0.5"
+                          title="Note"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setOpenNoteKey(draftKey)}
+                          className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] mt-0.5"
+                          title="เพิ่ม memo / note"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          เพิ่ม Note
+                        </button>
+                      )}
                     </div>
                   </li>
                 );

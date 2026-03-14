@@ -652,6 +652,26 @@ export default function ProjectManagePage() {
     );
   };
 
+  const updateSubTopicDetailDescription = (
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    index: number,
+    description: string | undefined
+  ) => {
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
+        const next = [...details];
+        if (next[index])
+          next[index] = {
+            ...next[index],
+            description: description && description.trim() ? description.trim() : undefined,
+          };
+        return next;
+      })
+    );
+  };
+
   const removeSubTopicDetail = (
     teamId: string,
     topicId: string,
@@ -1276,6 +1296,15 @@ export default function ProjectManagePage() {
                                   subTopicId,
                                   index,
                                   dueDate
+                                )
+                              }
+                              onUpdateDetailDescription={(topicId, subTopicId, index, description) =>
+                                updateSubTopicDetailDescription(
+                                  team.id,
+                                  topicId,
+                                  subTopicId,
+                                  index,
+                                  description
                                 )
                               }
                               onRemoveDetail={(topicId, subTopicId, index) =>
