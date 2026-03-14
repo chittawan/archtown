@@ -82,6 +82,10 @@ export default function ProjectManagePage() {
   const expandHoldRafRef = useRef<number>(0);
   const expandDidLongPressRef = useRef(false);
   const [isSummaryViewOpen, setIsSummaryViewOpen] = useState(false);
+  /** Shortcuts chord: Cmd+K แล้วตามด้วย D = คลายทั้งหมด, K = หุบทั้งหมด */
+  const cmdKChordRef = useRef(false);
+  const expandAllTopicsWithTodosRef = useRef<() => void>(() => {});
+  const collapseAllTopicsWithTodosRef = useRef<() => void>(() => {});
 
   const updateTeams = (updater: (state: Team[]) => Team[]) => {
     dispatchTeams({ type: 'update', updater });
@@ -191,6 +195,41 @@ export default function ProjectManagePage() {
     );
     setOpenTodoSectionIds(new Set(allSubTopicIds));
   };
+
+  expandAllTopicsWithTodosRef.current = expandAllTopicsWithTodos;
+  collapseAllTopicsWithTodosRef.current = collapseAllTopicsWithTodos;
+
+  /** Shortcuts: ⌘K แล้ว D = คลายทั้งหมด, C = หุบทั้งหมด (Windows/Linux ใช้ Ctrl) */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdKChordRef.current) {
+        if (e.key === 'c') {
+          collapseAllTopicsWithTodosRef.current();
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        if (e.key === 'd') {
+          expandAllTopicsWithTodosRef.current();
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        cmdKChordRef.current = false;
+        return;
+      }
+
+      if (mod && e.key === 'k') {
+        cmdKChordRef.current = true;
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
 
   function getFilteredTeams(teamsData: Team[], selected: Set<Status>): Team[] {
     if (selected.size === 0) return teamsData;
@@ -1078,7 +1117,7 @@ export default function ProjectManagePage() {
             onClick={collapseAllTopics}
             onDoubleClick={collapseAllTopicsWithTodos}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] rounded-lg border border-[var(--color-border)] transition-colors"
-            title="คลิก: หุบหัวข้อใหญ่ทั้งหมด | Double-click: หุบหัวข้อใหญ่ + หุบ Todo ทั้งหมด"
+            title="คลิก: หุบหัวข้อใหญ่ทั้งหมด | Double-click: หุบหัวข้อใหญ่ + หุบ Todo ทั้งหมด | Shortcut: ⌘K แล้วกด C"
           >
             <ChevronRight className="w-4 h-4" />
             หุบทั้งหมด
@@ -1091,7 +1130,7 @@ export default function ProjectManagePage() {
             onPointerUp={handleExpandAllPointerUp}
             onPointerLeave={handleExpandAllPointerUp}
             className="relative inline-flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] rounded-lg border border-[var(--color-border)] transition-colors overflow-hidden"
-            title="คลิก: คลายหัวข้อใหญ่ทั้งหมด | Double-click: คลายหัวข้อใหญ่ + เปิด Todo ทั้งหมด | กดค้าง 1 วินาที: แสดงเฉพาะ RED + คลาย Todo"
+            title="คลิก: คลายหัวข้อใหญ่ทั้งหมด | Double-click: คลายหัวข้อใหญ่ + เปิด Todo ทั้งหมด | กดค้าง 1 วินาที: แสดงเฉพาะ RED + คลาย Todo | Shortcut: ⌘K แล้วกด D | หุบ: ⌘K แล้วกด C"
           >
             <span
               className="absolute inset-y-0 left-0 bg-[var(--color-primary)] opacity-25 rounded-lg ease-linear"
