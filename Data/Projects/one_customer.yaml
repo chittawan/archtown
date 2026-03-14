@@ -1,5 +1,5 @@
 id: one_customer
-name: One Customer
+name: OneCustomer
 teams:
   - name: OTC
     topics:

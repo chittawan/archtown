@@ -10,4 +10,4 @@ teams:
             status: YELLOW
             details:
               - text: ตรวจสอบและแจ้งรายงานกับไปทาง Vendor พร้อมให้ตรวจสอบ project อื่นๆเพื่อไม่ให้เกิดขึ้นในอนาคต
-                done: false
+                status: todo

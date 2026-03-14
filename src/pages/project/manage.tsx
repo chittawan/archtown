@@ -82,8 +82,6 @@ export default function ProjectManagePage() {
   const expandHoldRafRef = useRef<number>(0);
   const expandDidLongPressRef = useRef(false);
   const [isSummaryViewOpen, setIsSummaryViewOpen] = useState(false);
-  /** Shortcuts chord: Cmd+K แล้วตามด้วย D = คลายทั้งหมด, K = หุบทั้งหมด */
-  const cmdKChordRef = useRef(false);
   const expandAllTopicsWithTodosRef = useRef<() => void>(() => {});
   const collapseAllTopicsWithTodosRef = useRef<() => void>(() => {});
 
@@ -97,6 +95,11 @@ export default function ProjectManagePage() {
 
   useEffect(() => {
     setProjectId(projectIdFromUrl);
+  }, [projectIdFromUrl]);
+
+  /** เมื่อ id ใน URL เปลี่ยน (เช่น จาก Component Search) ให้ reset state เพื่อโหลดโปรเจกต์ใหม่ */
+  useEffect(() => {
+    if (projectIdFromUrl) setProjectLoadState('idle');
   }, [projectIdFromUrl]);
 
   // Sync จาก TodoPanel (แผงขวา) → อัปเดต teams บนหน้า Project ให้ตรงกันแบบ realtime
@@ -199,36 +202,16 @@ export default function ProjectManagePage() {
   expandAllTopicsWithTodosRef.current = expandAllTopicsWithTodos;
   collapseAllTopicsWithTodosRef.current = collapseAllTopicsWithTodos;
 
-  /** Shortcuts: ⌘K แล้ว D = คลายทั้งหมด, C = หุบทั้งหมด (Windows/Linux ใช้ Ctrl) */
+  /** Shortcuts: ⌘K แล้ว D = คลายทั้งหมด, C = หุบทั้งหมด (handled by AppLayout, listen for custom events) */
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
-      const mod = isMac ? e.metaKey : e.ctrlKey;
-
-      if (cmdKChordRef.current) {
-        if (e.key === 'c') {
-          collapseAllTopicsWithTodosRef.current();
-          cmdKChordRef.current = false;
-          e.preventDefault();
-          return;
-        }
-        if (e.key === 'd') {
-          expandAllTopicsWithTodosRef.current();
-          cmdKChordRef.current = false;
-          e.preventDefault();
-          return;
-        }
-        cmdKChordRef.current = false;
-        return;
-      }
-
-      if (mod && e.key === 'k') {
-        cmdKChordRef.current = true;
-        e.preventDefault();
-      }
+    const onCmdKC = () => collapseAllTopicsWithTodosRef.current();
+    const onCmdKD = () => expandAllTopicsWithTodosRef.current();
+    window.addEventListener('archtown-cmdk-c', onCmdKC);
+    window.addEventListener('archtown-cmdk-d', onCmdKD);
+    return () => {
+      window.removeEventListener('archtown-cmdk-c', onCmdKC);
+      window.removeEventListener('archtown-cmdk-d', onCmdKD);
     };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
   function getFilteredTeams(teamsData: Team[], selected: Set<Status>): Team[] {

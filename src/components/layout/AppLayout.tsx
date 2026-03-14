@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Outlet, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3 } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
+import { ComponentSearchModal } from './ComponentSearchModal.tsx';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
@@ -15,6 +16,7 @@ type RightPanelTab = 'summary' | 'todo';
 
 export default function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isProjectPage = location.pathname === '/project';
   const projectIdFromUrl = isProjectPage ? searchParams.get('id') : null;
@@ -30,6 +32,64 @@ export default function AppLayout() {
     if (typeof window === 'undefined') return false;
     return document.documentElement.classList.contains('dark');
   });
+  const [componentSearchOpen, setComponentSearchOpen] = useState(false);
+  const cmdKChordRef = useRef(false);
+
+  /** Shortcut: ⌘K then S = Component Search; 1/2/3 = ไปหน้า capability/tasks/teams; C/D = project collapse/expand */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdKChordRef.current) {
+        if (e.key === 's' || e.key === 'S') {
+          setComponentSearchOpen(true);
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        if (e.key === '1') {
+          navigate('/capability');
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        if (e.key === '2') {
+          navigate('/tasks');
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        if (e.key === '3') {
+          navigate('/teams');
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        if (e.key === 'c') {
+          window.dispatchEvent(new CustomEvent('archtown-cmdk-c'));
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        if (e.key === 'd') {
+          window.dispatchEvent(new CustomEvent('archtown-cmdk-d'));
+          cmdKChordRef.current = false;
+          e.preventDefault();
+          return;
+        }
+        cmdKChordRef.current = false;
+        return;
+      }
+
+      if (mod && e.key === 'k') {
+        cmdKChordRef.current = true;
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [navigate]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -185,6 +245,10 @@ export default function AppLayout() {
           </>
         )}
       </div>
+      <ComponentSearchModal
+        open={componentSearchOpen}
+        onClose={() => setComponentSearchOpen(false)}
+      />
     </div>
   );
 }
