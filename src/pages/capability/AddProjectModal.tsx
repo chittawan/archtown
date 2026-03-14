@@ -1,5 +1,6 @@
 import React from 'react';
 import { FolderKanban, Search, ChevronDown } from 'lucide-react';
+import { nameToId, sanitizeId } from '../../lib/idUtils';
 import type { ProjectSummary } from './manage';
 
 type AddProjectModalProps = {
@@ -17,6 +18,8 @@ type AddProjectModalProps = {
   projectSelectOpen: boolean;
   setProjectSelectOpen: (open: boolean) => void;
   selectedProjectLabel: string;
+  addProjectError: string | null;
+  onClearAddProjectError?: () => void;
   onSubmit: (e: React.FormEvent) => void;
   onClose: () => void;
 };
@@ -36,6 +39,8 @@ export function AddProjectModal({
   projectSelectOpen,
   setProjectSelectOpen,
   selectedProjectLabel,
+  addProjectError,
+  onClearAddProjectError,
   onSubmit,
   onClose,
 }: AddProjectModalProps) {
@@ -176,18 +181,46 @@ export function AddProjectModal({
               </div>
             </div>
           ) : (
-            <div className="mb-4">
-              <label className="block text-sm text-[var(--color-text-muted)] mb-1">
-                ชื่อโปรเจกต์ (จะสร้างเมื่อเข้าไปบันทึกครั้งแรก)
-              </label>
-              <input
-                type="text"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="เช่น Performance Management"
-                className="w-full px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              />
+            <>
+              {addProjectError && (
+                <p className="mb-3 text-sm text-red-600 dark:text-red-400" role="alert">
+                  {addProjectError}
+                </p>
+              )}
+              <div className="mb-4 space-y-3">
+              <div>
+                <label className="block text-sm text-[var(--color-text-muted)] mb-1">
+                  ชื่อโปรเจกต์
+                </label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => {
+                    setNewProjectName(e.target.value);
+                    onClearAddProjectError?.();
+                  }}
+                  placeholder="เช่น Performance Management"
+                  className="w-full px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[var(--color-text-muted)] mb-1">
+                  Project ID (ใช้เป็นชื่อไฟล์ใน data/projects)
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    newProjectName.trim()
+                      ? sanitizeId(nameToId(newProjectName.trim())) || 'project'
+                      : '—'
+                  }
+                  className="w-full px-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] text-[var(--color-text-subtle)] cursor-default"
+                  aria-readonly="true"
+                />
+              </div>
             </div>
+            </>
           )}
           <div className="flex gap-2 justify-end">
             <button

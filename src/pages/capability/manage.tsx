@@ -30,7 +30,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Cap, CapabilityLayout, ProjectInCap } from '../../lib/capabilityYaml';
-import { nameToId, ensureUniqueId } from '../../lib/idUtils';
+import { nameToId, ensureUniqueId, sanitizeId } from '../../lib/idUtils';
 import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/capability/ProjectCard';
 import { SaveStatusIndicator, type SaveStatusIndicatorRef } from '../../components/capability/SaveStatusIndicator';
@@ -197,6 +197,7 @@ export default function CapabilityManagePage() {
   const [projectListLoading, setProjectListLoading] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [projectSelectOpen, setProjectSelectOpen] = useState(false);
+  const [addProjectError, setAddProjectError] = useState<string | null>(null);
   const savedScrollYRef = useRef<number | null>(null);
   const [capGridLayout, setCapGridLayout] = useState<LayoutItem[]>([]);
   const layoutRef = useRef(layout);
@@ -401,6 +402,7 @@ export default function CapabilityManagePage() {
       setNewProjectName('');
       setProjectSearchQuery('');
       setProjectSelectOpen(false);
+      setAddProjectError(null);
     }
   }, [addProjectCapId, loadProjectList]);
 
@@ -698,7 +700,7 @@ export default function CapabilityManagePage() {
     setEditingCapId(null);
   };
 
-  const handleAddProject = (e: React.FormEvent) => {
+  const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
     const capId = addProjectCapId;
     if (!capId) return;
@@ -712,7 +714,28 @@ export default function CapabilityManagePage() {
     } else {
       const name = newProjectName.trim();
       if (!name) return;
-      id = nameToId(name);
+      setAddProjectError(null);
+      try {
+        const res = await fetch('/api/projects/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          setAddProjectError(data.error || 'project id นี้มีอยู่แล้ว');
+          return;
+        }
+        if (!res.ok) {
+          setAddProjectError(data.error || 'สร้างโปรเจกต์ไม่สำเร็จ');
+          return;
+        }
+        id = data.id ?? (sanitizeId(nameToId(name)) || 'project');
+        await loadProjectList();
+      } catch {
+        setAddProjectError('สร้างโปรเจกต์ไม่สำเร็จ');
+        return;
+      }
     }
     const existingIds = cap.projects.map((p) => p.id);
     if (existingIds.includes(id)) return;
@@ -728,6 +751,7 @@ export default function CapabilityManagePage() {
     setSelectedProjectId(null);
     setNewProjectName('');
     setAddProjectCapId(null);
+    setAddProjectError(null);
   };
 
   const handleRemoveProject = (capId: string, projectId: string) => {
@@ -1084,8 +1108,13 @@ export default function CapabilityManagePage() {
         projectSelectOpen={projectSelectOpen}
         setProjectSelectOpen={setProjectSelectOpen}
         selectedProjectLabel={selectedProjectLabel}
+        addProjectError={addProjectError}
+        onClearAddProjectError={() => setAddProjectError(null)}
         onSubmit={handleAddProject}
-        onClose={() => setAddProjectCapId(null)}
+        onClose={() => {
+          setAddProjectCapId(null);
+          setAddProjectError(null);
+        }}
       />
     </div>
   );

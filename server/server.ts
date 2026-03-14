@@ -154,6 +154,36 @@ app.get('/api/projects', (_req, res) => {
   }
 });
 
+/** Create a new project file. Returns 409 if id already exists. */
+app.post('/api/projects/create', (req, res) => {
+  try {
+    const { name } = req.body || {};
+    const projectName = (typeof name === 'string' && name.trim()) ? name.trim() : '';
+    if (!projectName) {
+      return res.status(400).json({ ok: false, error: 'กรุณาระบุชื่อโปรเจกต์' });
+    }
+    const fileId = sanitizeId(nameToId(projectName)) || 'project';
+    if (resolveProjectPath(fileId)) {
+      return res.status(409).json({
+        ok: false,
+        error: 'project id นี้มีอยู่แล้ว',
+        id: fileId,
+      });
+    }
+    fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
+    const toWrite = projectToYaml({
+      id: fileId,
+      projectName,
+      teams: [] as import('../src/types').Team[],
+    });
+    const filePath = path.join(DATA_PROJECTS_DIR, `${fileId}.yaml`);
+    fs.writeFileSync(filePath, toWrite, 'utf-8');
+    res.status(201).json({ ok: true, id: fileId });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
 app.get('/api/projects/:id', (req, res) => {
   const rawId = decodeURIComponent(req.params.id);
   const safeId = rawId.replace(/[^a-zA-Z0-9_-]/g, '') || 'project';

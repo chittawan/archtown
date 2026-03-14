@@ -3,5 +3,5 @@ name: Infra
 cols: 6
 rows: 5
 projects:
-  - id: exaple_project_excusive
-    cols: 6
+  - id: example_gravitee
+    cols: 12

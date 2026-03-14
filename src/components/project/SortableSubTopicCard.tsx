@@ -35,6 +35,56 @@ const TYPE_OPTIONS: { value: SubTopicType; label: string; icon: typeof ListTodo 
   { value: 'status', label: 'Tracking Status', icon: BarChart3 },
 ];
 
+const MIN_DESC_HEIGHT = 36;
+const MAX_DESC_HEIGHT = 200;
+
+/** Textarea ที่ขยายความสูงตามจำนวนบรรทัดอัตโนมัติ */
+function AutoResizeDescriptionTextarea({
+  value,
+  onChange,
+  onBlur,
+  onKeyDown,
+  placeholder,
+  title,
+  className,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  placeholder: string;
+  title: string;
+  className: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const sh = el.scrollHeight;
+    if (sh <= MAX_DESC_HEIGHT) {
+      el.style.height = `${Math.max(MIN_DESC_HEIGHT, sh)}px`;
+      el.style.overflowY = 'hidden';
+    } else {
+      el.style.height = `${MAX_DESC_HEIGHT}px`;
+      el.style.overflowY = 'auto';
+    }
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      title={title}
+      rows={1}
+      className={className}
+    />
+  );
+}
+
 /** สีตามสถานะรายการ — สไตล์ Notion, รองรับ dark mode ให้ contrast ชัด */
 function getStatusStyles(status: TodoItemStatus): { row: string; select: string } {
   switch (status) {
@@ -101,11 +151,11 @@ export function SortableSubTopicCard({
   const details = subTopic.details ?? [];
   const type = subTopicType ?? 'todos';
   const [draftDetailText, setDraftDetailText] = useState<Record<number, string>>({});
+  const [draftDetailDescription, setDraftDetailDescription] = useState<Record<number, string>>({});
   /** index ของ detail ที่เปิด Note/memo อยู่ (Notion-style: กดปุ่มถึงแสดง) */
   const [openNoteIndex, setOpenNoteIndex] = useState<number | null>(null);
   const [localTitle, setLocalTitle] = useState(editTitleValue);
   const prevIsEditingTitle = useRef(false);
-
   const isDone = (item: { status?: TodoItemStatus; done?: boolean }) =>
     item.status === 'done' || (item.status == null && item.done);
 
@@ -135,6 +185,22 @@ export function SortableSubTopicCard({
       delete next[index];
       return next;
     });
+  };
+
+  const getDetailDescriptionDisplayValue = (index: number) =>
+    draftDetailDescription[index] !== undefined
+      ? draftDetailDescription[index]
+      : details[index]?.description ?? '';
+
+  const flushDetailDescriptionDraft = (index: number) => {
+    const value = getDetailDescriptionDisplayValue(index).trim();
+    onUpdateDetailDescription(index, value || undefined);
+    setDraftDetailDescription((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+    if (!value) setOpenNoteIndex(null);
   };
 
   const getDaysLeft = (dueDate?: string): string | null => {
@@ -366,22 +432,23 @@ export function SortableSubTopicCard({
                             )}
                           </div>
                         </div>
-                        {/* Note อยู่บรรทัดถัดไป */}
+                        {/* Note — textarea auto height ตามบรรทัด */}
                         {(item.description != null && item.description !== '') || openNoteIndex === index ? (
-                          <textarea
-                            rows={2}
-                            value={item.description ?? ''}
+                          <AutoResizeDescriptionTextarea
+                            value={getDetailDescriptionDisplayValue(index)}
                             onChange={(e) =>
-                              onUpdateDetailDescription(index, e.target.value || undefined)
+                              setDraftDetailDescription((prev) => ({
+                                ...prev,
+                                [index]: e.target.value,
+                              }))
                             }
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              onUpdateDetailDescription(index, v || undefined);
-                              if (!v) setOpenNoteIndex(null);
+                            onBlur={() => flushDetailDescriptionDraft(index)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur();
                             }}
                             placeholder="Memo / Note..."
-                            className="w-full min-w-0 text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-[var(--color-text-muted)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-y min-h-[52px] ml-7"
                             title="Note"
+                            className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-muted)] dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-[var(--color-text-subtle)]"
                           />
                         ) : (
                           <button
@@ -499,22 +566,23 @@ export function SortableSubTopicCard({
                                 )}
                               </div>
                             </div>
-                            {/* Note อยู่บรรทัดถัดไป */}
+                            {/* Note — textarea auto height ตามบรรทัด */}
                             {(item.description != null && item.description !== '') || openNoteIndex === index ? (
-                              <textarea
-                                rows={2}
-                                value={item.description ?? ''}
+                              <AutoResizeDescriptionTextarea
+                                value={getDetailDescriptionDisplayValue(index)}
                                 onChange={(e) =>
-                                  onUpdateDetailDescription(index, e.target.value || undefined)
+                                  setDraftDetailDescription((prev) => ({
+                                    ...prev,
+                                    [index]: e.target.value,
+                                  }))
                                 }
-                                onBlur={(e) => {
-                                  const v = e.target.value.trim();
-                                  onUpdateDetailDescription(index, v || undefined);
-                                  if (!v) setOpenNoteIndex(null);
+                                onBlur={() => flushDetailDescriptionDraft(index)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur();
                                 }}
                                 placeholder="Memo / Note..."
-                                className="w-full min-w-0 text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-[var(--color-text-muted)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-y min-h-[52px] ml-7"
                                 title="Note"
+                                className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-muted)] dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-[var(--color-text-subtle)]"
                               />
                             ) : (
                               <button

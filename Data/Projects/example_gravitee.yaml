@@ -1,0 +1,33 @@
+id: example_gravitee
+name: Example Gravitee
+description: asdasd
+teams:
+  - name: F&A
+    topics:
+      - title: example
+        subTopics:
+          - title: Test Title
+            status: GREEN
+            details:
+              - text: asdasd ฟหกฟกดกหฟด
+                description: |-
+                  sadfsajf;lsadf
+                  asdfklsklasjdfasdf
+                  asfdsadfk;
+                  ฟกฟกฟหก
+                status: done
+                dueDate: '2026-03-14'
+              - text: ''
+                status: todo
+      - title: asdasdas
+        subTopics:
+          - title: asdasdasd
+            status: GREEN
+            subTopicType: status
+            details:
+              - text: asdasdasdsadsads ฟหกฟหก
+                description: a dsaASDASDฟหกasdasdaasdsad.asdsad.dasdasdฟหกฟหกฟกหฟก
+                status: todo
+              - text: asdasdasdadsda
+                description: ฟกดหกดฟasdasdหดกฟหดกสา่ร่หดกฟหf ดasdfjiojoiหกดหกดฟหก
+                status: todo

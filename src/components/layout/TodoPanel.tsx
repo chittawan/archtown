@@ -437,10 +437,10 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
                           </span>
                         )}
                       </div>
-                      {/* Note/Memo แบบ Notion: มีข้อความแล้วแสดง, ไม่มีต้องกดปุ่ม */}
+                      {/* Note/Memo แบบ Notion: มีข้อความแล้วแสดง, ไม่มีต้องกดปุ่ม — รองรับ multiline */}
                       {(d.description != null && d.description !== '') || openNoteKey === draftKey ? (
                         <textarea
-                          rows={2}
+                          rows={Math.min(8, Math.max(2, (d.description ?? '').split('\n').length))}
                           value={d.description ?? ''}
                           onChange={(e) =>
                             updateDetail(
@@ -451,6 +451,27 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
                               { description: e.target.value || undefined }
                             )
                           }
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const el = e.target as HTMLTextAreaElement;
+                              const start = el.selectionStart;
+                              const end = el.selectionEnd;
+                              const v = d.description ?? '';
+                              const next = v.slice(0, start) + '\n' + v.slice(end);
+                              updateDetail(
+                                group.teamIdx,
+                                group.topicIdx,
+                                group.subTopicIdx,
+                                d.detailIdx,
+                                { description: next || undefined }
+                              );
+                              requestAnimationFrame(() => {
+                                el.selectionStart = el.selectionEnd = start + 1;
+                              });
+                            }
+                          }}
                           onBlur={(e) => {
                             const v = e.target.value.trim();
                             updateDetail(
@@ -462,9 +483,9 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
                             );
                             if (!v) setOpenNoteKey(null);
                           }}
-                          placeholder="Memo / Note..."
-                          className="w-full text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-[var(--color-text-muted)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] resize-y min-h-[52px] mt-0.5"
-                          title="Note"
+                          placeholder="Memo / Note... (รองรับหลายบรรทัด)"
+                          className="w-full text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-[var(--color-text-muted)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] resize-y min-h-[52px] whitespace-pre-wrap mt-0.5"
+                          title="Note (multiline)"
                         />
                       ) : (
                         <button

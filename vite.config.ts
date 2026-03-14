@@ -49,6 +49,45 @@ export default defineConfig(({mode}) => {
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
             const url = req.url?.split('?')[0] ?? '';
+            if (url === '/api/projects/create' && req.method === 'POST') {
+              let body = '';
+              req.on('data', (chunk) => { body += chunk; });
+              req.on('end', () => {
+                try {
+                  const { name } = JSON.parse(body || '{}');
+                  const projectName = (typeof name === 'string' && name.trim()) ? name.trim() : '';
+                  if (!projectName) {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'กรุณาระบุชื่อโปรเจกต์' }));
+                    return;
+                  }
+                  const fileId = sanitizeId(nameToId(projectName)) || 'project';
+                  if (resolveProjectPath(fileId)) {
+                    res.statusCode = 409;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'project id นี้มีอยู่แล้ว', id: fileId }));
+                    return;
+                  }
+                  fs.mkdirSync(DATA_PROJECTS_DIR, { recursive: true });
+                  const toWrite = projectToYaml({
+                    id: fileId,
+                    projectName,
+                    teams: [] as import('./src/types').Team[],
+                  });
+                  const filePath = path.join(DATA_PROJECTS_DIR, `${fileId}.yaml`);
+                  fs.writeFileSync(filePath, toWrite, 'utf-8');
+                  res.statusCode = 201;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: true, id: fileId }));
+                } catch (e) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: false, error: String(e) }));
+                }
+              });
+              return;
+            }
             const getOneMatch = url.match(/^\/api\/projects\/([^/]+)$/);
             if (getOneMatch && req.method === 'GET') {
               const rawId = decodeURIComponent(getOneMatch[1]);

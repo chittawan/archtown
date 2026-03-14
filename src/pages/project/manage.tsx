@@ -5,7 +5,6 @@ import {
   DndContext,
   DragEndEvent,
   PointerSensor,
-  KeyboardSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -816,9 +815,9 @@ export default function ProjectManagePage() {
     );
   };
 
+  // ใช้แค่ mouse ลาก — ไม่ใช้ KeyboardSensor เพื่อให้ Enter/Space ใช้ใน textarea ได้
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor)
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
   const handleDragEnd = (teamId: string) => (event: DragEndEvent) => {
