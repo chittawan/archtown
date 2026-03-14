@@ -36,7 +36,7 @@ export default function LandingPage() {
         </div>
 
         <p className="mt-8 text-sm text-[var(--color-text-subtle)]">
-          อนาคตจะเพิ่มหน้า Login
+          หน้า Login กำลังพัฒนา (Coming soon)
         </p>
       </div>
     </div>

@@ -1,14 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Circle, ListTodo, ExternalLink, FileText } from 'lucide-react';
-import type { Team, SubTopicDetail } from '../../types';
-
-interface ProjectData {
-  id?: string;
-  projectName: string;
-  description?: string;
-  teams: Team[];
-}
+import type { ProjectData, Team, SubTopicDetail } from '../../types';
+import { apiGet } from '../../lib/api';
 
 interface TodoGroup {
   /** Full breadcrumb for tooltip */
@@ -24,17 +18,21 @@ interface TodoGroup {
 }
 
 async function fetchProject(projectId: string): Promise<ProjectData | null> {
-  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
-  if (!res.ok) return null;
-  const json = await res.json();
-  const data = json?.data;
-  if (!data || !Array.isArray(data.teams)) return null;
-  return {
-    id: json.id ?? projectId,
-    projectName: data.projectName ?? json.id ?? projectId,
-    description: data.description,
-    teams: data.teams,
-  };
+  try {
+    const json = await apiGet<{ id?: string; data?: ProjectData }>(
+      `/api/projects/${encodeURIComponent(projectId)}`
+    );
+    const data = json?.data;
+    if (!data || !Array.isArray(data.teams)) return null;
+    return {
+      id: json.id ?? projectId,
+      projectName: data.projectName ?? json.id ?? projectId,
+      description: data.description,
+      teams: data.teams,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isDetailDone(d: SubTopicDetail): boolean {

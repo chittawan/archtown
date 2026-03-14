@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle } from 'lucide-react';
+import { apiGet } from '../../lib/api';
 
 interface SummaryItem {
   capName: string;
@@ -19,14 +20,16 @@ interface GroupedSummaryItem {
 }
 
 async function fetchSummary(projectId?: string): Promise<SummaryData> {
-  const url = projectId ? `/api/capability/summary?projectId=${encodeURIComponent(projectId)}` : '/api/capability/summary';
-  const res = await fetch(url);
-  if (!res.ok) return { critical: [], warning: [] };
-  const data = await res.json();
-  return {
-    critical: Array.isArray(data.critical) ? data.critical : [],
-    warning: Array.isArray(data.warning) ? data.warning : [],
-  };
+  try {
+    const url = projectId ? `/api/capability/summary?projectId=${encodeURIComponent(projectId)}` : '/api/capability/summary';
+    const data = await apiGet<{ critical?: SummaryItem[]; warning?: SummaryItem[] }>(url);
+    return {
+      critical: Array.isArray(data?.critical) ? data.critical : [],
+      warning: Array.isArray(data?.warning) ? data.warning : [],
+    };
+  } catch {
+    return { critical: [], warning: [] };
+  }
 }
 
 export default function SummaryStatusPanel({ projectId }: { projectId?: string }) {

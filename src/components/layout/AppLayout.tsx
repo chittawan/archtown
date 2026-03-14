@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
 import { ComponentSearchModal } from './ComponentSearchModal.tsx';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
+  { path: '/project', label: 'Projects', icon: FolderKanban },
   { path: '/tasks', label: 'Tasks', icon: ListTodo },
   { path: '/teams', label: 'Teams', icon: Users },
 ];

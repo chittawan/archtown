@@ -29,7 +29,9 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import type { ProjectSummary } from '../../types';
 import type { Cap, CapabilityLayout, ProjectInCap } from '../../lib/capabilityYaml';
+import { apiGet, apiPost } from '../../lib/api';
 import { nameToId, ensureUniqueId, sanitizeId } from '../../lib/idUtils';
 import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/capability/ProjectCard';
@@ -42,18 +44,13 @@ const CAP_ROW_HEIGHT = 10;
 
 const SortableProjectCardAny = SortableProjectCard as any;
 
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  description?: string | null;
-  summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null;
-}
-
 async function fetchProjectList(): Promise<ProjectSummary[]> {
-  const res = await fetch('/api/projects');
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data.projects) ? data.projects : [];
+  try {
+    const data = await apiGet<{ projects?: ProjectSummary[] }>('/api/projects');
+    return Array.isArray(data?.projects) ? data.projects : [];
+  } catch {
+    return [];
+  }
 }
 
 const CAP_PREFIX = 'cap::';
@@ -127,21 +124,14 @@ function getInsertIndexFromPointer(
 }
 
 async function fetchLayout(): Promise<CapabilityLayout> {
-  const res = await fetch('/api/capability');
-  if (!res.ok) throw new Error('โหลด layout ไม่สำเร็จ');
-  const data = await res.json();
-  if (!data.layout) throw new Error('ข้อมูล layout ไม่ถูกต้อง');
+  const data = await apiGet<{ layout?: CapabilityLayout }>('/api/capability');
+  if (!data?.layout) throw new Error('ข้อมูล layout ไม่ถูกต้อง');
   return data.layout;
 }
 
 async function saveLayout(layout: CapabilityLayout): Promise<boolean> {
-  const res = await fetch('/api/capability/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ layout }),
-  });
-  const data = await res.json().catch(() => ({}));
-  return !!data.ok;
+  const data = await apiPost<{ ok?: boolean }>('/api/capability/save', { layout });
+  return !!data?.ok;
 }
 
 function capColsToGridWidth(cols?: 12 | 6 | 4 | 3): number {
@@ -1006,8 +996,11 @@ export default function CapabilityManagePage() {
 
       {error && (
         <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-[var(--color-text)]">
-          {error}
-          <button type="button" onClick={loadLayout} className="ml-2 underline">
+          <p>{error}</p>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            ลองรีเฟรชหน้าหรือตรวจสอบว่าเซิร์ฟเวอร์ (dev/build) ทำงานอยู่
+          </p>
+          <button type="button" onClick={loadLayout} className="mt-2 underline">
             โหลดใหม่
           </button>
         </div>

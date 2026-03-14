@@ -756,11 +756,14 @@ export default function TeamsManagePage() {
 
       {error && (
         <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-[var(--color-text)]">
-          {error}
+          <p>{error}</p>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            ลองรีเฟรชหน้าหรือตรวจสอบการเชื่อมต่อกับเซิร์ฟเวอร์
+          </p>
           <button
             type="button"
             onClick={loadTeams}
-            className="ml-2 underline"
+            className="mt-2 underline"
           >
             โหลดใหม่
           </button>

@@ -51,3 +51,20 @@ export interface OrgTeam {
   /** id (slug) ของทีมลูก */
   childIds: string[];
 }
+
+/** สรุปโปรเจกต์จาก API /api/projects (ใช้ใน TownStation และ Component Search) */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null;
+}
+
+// Re-export project & capability types (canonical place for app data types)
+export type { ProjectData } from './lib/projectYaml';
+export type {
+  Cap,
+  CapabilityLayout,
+  ProjectInCap,
+  ProjectStatus,
+} from './lib/capabilityYaml';

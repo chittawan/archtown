@@ -1,7 +1,7 @@
 import React from 'react';
 import { FolderKanban, Search, ChevronDown } from 'lucide-react';
 import { nameToId, sanitizeId } from '../../lib/idUtils';
-import type { ProjectSummary } from './manage';
+import type { ProjectSummary } from '../../types';
 
 type AddProjectModalProps = {
   capId: string | null;

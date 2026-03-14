@@ -7,14 +7,10 @@ import 'react-calendar/dist/Calendar.css';
 import 'react-calendar-timeline/style.css';
 import './TasksCalendar.css';
 import './TasksTimeline.css';
-import type { Team, SubTopicDetail, Status } from '../../types';
+import type { ProjectData as ProjectDataType, Team, SubTopicDetail, Status } from '../../types';
+import { apiGet } from '../../lib/api';
 
-type ProjectData = {
-  id: string;
-  projectName: string;
-  description?: string;
-  teams: Team[];
-};
+type ProjectData = ProjectDataType & { id: string };
 
 type FlatTask = {
   id: string;
@@ -35,14 +31,16 @@ type DueBucket = 'overdue' | 'near' | 'mid' | 'far' | 'none';
 type ProjectsById = Record<string, ProjectData>;
 
 async function fetchProjectsIndex(): Promise<{ id: string; name: string }[]> {
-  const res = await fetch('/api/projects');
-  if (!res.ok) return [];
-  const data = await res.json().catch(() => ({}));
-  if (!Array.isArray(data.projects)) return [];
-  return data.projects.map((p: any) => ({
-    id: String(p.id ?? ''),
-    name: String(p.name ?? p.projectName ?? p.id ?? ''),
-  }));
+  try {
+    const data = await apiGet<{ projects?: Array<{ id?: string; name?: string; projectName?: string }> }>('/api/projects');
+    if (!Array.isArray(data?.projects)) return [];
+    return data.projects.map((p) => ({
+      id: String(p.id ?? ''),
+      name: String(p.name ?? p.projectName ?? p.id ?? ''),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /** สรุปสถานะโปรเจกต์จาก subTopics (RED หนักสุด > YELLOW > GREEN) */
@@ -60,17 +58,21 @@ function getProjectSummaryStatus(project: ProjectData): Status {
 }
 
 async function fetchProject(id: string): Promise<ProjectData | null> {
-  const res = await fetch(`/api/projects/${encodeURIComponent(id)}`);
-  if (!res.ok) return null;
-  const json = await res.json().catch(() => null);
-  const data = json?.data;
-  if (!data || !Array.isArray(data.teams)) return null;
-  return {
-    id: json.id ?? id,
-    projectName: data.projectName ?? json.id ?? id,
-    description: data.description,
-    teams: data.teams,
-  };
+  try {
+    const json = await apiGet<{ id?: string; data?: ProjectDataType }>(
+      `/api/projects/${encodeURIComponent(id)}`
+    );
+    const data = json?.data;
+    if (!data || !Array.isArray(data.teams)) return null;
+    return {
+      id: json.id ?? id,
+      projectName: data.projectName ?? json.id ?? id,
+      description: data.description,
+      teams: data.teams,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildFlatTasks(projects: ProjectsById): FlatTask[] {
@@ -465,6 +467,9 @@ export default function TasksOverviewPage() {
           <div>
             <p className="font-medium">เกิดข้อผิดพลาดในการโหลด Task</p>
             <p className="text-[var(--color-text-muted)] mt-1">{error}</p>
+            <p className="text-[var(--color-text-subtle)] mt-1 text-xs">
+              ลองรีเฟรชหน้าหรือตรวจสอบการเชื่อมต่อกับเซิร์ฟเวอร์
+            </p>
           </div>
         </div>
       ) : totalTasks === 0 ? (

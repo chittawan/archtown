@@ -2,19 +2,16 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, FolderKanban } from 'lucide-react';
 import { StatusBadge } from '../ui/StatusBadge';
-
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  description?: string | null;
-  summaryStatus: 'RED' | 'YELLOW' | 'GREEN' | null;
-}
+import type { ProjectSummary } from '../../types';
+import { apiGet } from '../../lib/api';
 
 async function fetchProjectList(): Promise<ProjectSummary[]> {
-  const res = await fetch('/api/projects');
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data.projects) ? data.projects : [];
+  try {
+    const data = await apiGet<{ projects?: ProjectSummary[] }>('/api/projects');
+    return Array.isArray(data?.projects) ? data.projects : [];
+  } catch {
+    return [];
+  }
 }
 
 function escapeRegExp(s: string): string {
