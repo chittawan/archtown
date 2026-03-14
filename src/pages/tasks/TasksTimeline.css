@@ -42,9 +42,9 @@
   border-color: var(--rct-border) !important;
 }
 
-/* Dark mode: primary date header label (e.g. "March 2026") uses blue-50 for better contrast */
+/* Dark mode: primary date header label (e.g. "March 2026") uses theme text for contrast on primary-muted */
 .dark .tasks-timeline-wrapper .react-calendar-timeline .rct-dateHeader-primary span {
-  color: var(--color-blue-50) !important;
+  color: var(--color-text) !important;
 }
 
 .tasks-timeline-wrapper .react-calendar-timeline .rct-item .rct-item-content {

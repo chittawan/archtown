@@ -290,7 +290,7 @@ export function SortableSubTopicCard({
                       <button
                         type="button"
                         onClick={() => onToggleDetailDone(index)}
-                        className="flex-shrink-0 p-0.5 rounded text-[var(--color-emerald-50)] dark:text-slate-300 hover:text-[var(--color-primary)] dark:hover:text-emerald-300"
+                        className="flex-shrink-0 p-0.5 rounded text-emerald-600 dark:text-slate-300 hover:text-[var(--color-primary)] dark:hover:text-emerald-300"
                         title={isDone(item) ? 'ยกเลิกทำแล้ว' : 'ทำแล้ว'}
                       >
                         {isDone(item) ? (
@@ -301,7 +301,7 @@ export function SortableSubTopicCard({
                       </button>
                       <span
                         className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                          itemStatus === 'done' ? 'text-[var(--color-emerald-500)] dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-[var(--color-blue-400)] dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
+                          itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
                         }`}
                       >
                         {index + 1}.
@@ -351,7 +351,7 @@ export function SortableSubTopicCard({
                               className={`whitespace-nowrap ${
                                 isOverdue(item.dueDate)
                                   ? ''
-                                  : 'text-[var(--color-emerald-50)] dark:text-slate-300'
+                                  : 'text-emerald-600 dark:text-slate-300'
                               }`}
                               style={isOverdue(item.dueDate) ? { color: 'rgba(165, 0, 54, 1)' } : undefined}
                             >
@@ -360,7 +360,7 @@ export function SortableSubTopicCard({
                           )}
                         </div>
                       </div>
-                        <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-[var(--color-amber-600)]">
+                        <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400">
                           <LongPressDeleteButton
                             onDelete={() => onRemoveDetail(index)}
                             title="ลบรายการ"
@@ -397,7 +397,7 @@ export function SortableSubTopicCard({
                         >
                           <span
                             className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                              itemStatus === 'done' ? 'text-[var(--color-emerald-500)] dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-[var(--color-blue-400)] dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
+                              itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
                             }`}
                           >
                             {index + 1}.
@@ -452,7 +452,7 @@ export function SortableSubTopicCard({
                                 className={`whitespace-nowrap ${
                                   isOverdue(item.dueDate)
                                     ? ''
-                                    : 'text-[var(--color-emerald-50)] dark:text-slate-300'
+                                    : 'text-emerald-600 dark:text-slate-300'
                                 }`}
                                 style={isOverdue(item.dueDate) ? { color: 'rgba(165, 0, 54, 1)' } : undefined}
                               >
@@ -460,7 +460,7 @@ export function SortableSubTopicCard({
                               </span>
                             )}
                           </div>
-                          <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-[var(--color-amber-600)]">
+                          <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400">
                             <LongPressDeleteButton
                               onDelete={() => onRemoveDetail(index)}
                               title="ลบรายการ"

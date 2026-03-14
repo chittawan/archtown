@@ -129,16 +129,14 @@ export function SummaryView({
                 type="button"
                 onClick={handleSavePdf}
                 disabled={isSavingPdf}
-                className="inline-flex items-center px-5 py-3 text-white font-semibold rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ backgroundColor: isSavingPdf ? '#9ca3af' : '#2d4a3e', fontSize: '1rem' }}
+                className="inline-flex items-center px-5 py-3 text-base text-white font-semibold rounded-lg transition-colors bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-[var(--color-text-muted)]"
               >
                 {isSavingPdf ? 'กำลังบันทึก...' : 'Save to PDF'}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="inline-flex items-center px-5 py-3 border font-medium rounded-lg transition-colors hover:bg-gray-50"
-                style={{ borderColor: '#d1d5db', color: '#374151', fontSize: '1rem' }}
+                className="inline-flex items-center px-5 py-3 text-base border font-medium rounded-lg transition-colors border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-overlay)]"
               >
                 ปิด
               </button>

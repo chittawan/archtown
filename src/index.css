@@ -49,8 +49,9 @@
     color: var(--color-text);
     transition: background-color 0.2s ease, color 0.2s ease;
   }
+  /* SVG ยึดตามสีตัวหนังสือของ parent (ปุ่ม primary จะได้ไอคอนสีเดียวกับข้อความ) */
   svg {
-    color: var(--color-text);
+    color: currentColor;
   }
 }
 

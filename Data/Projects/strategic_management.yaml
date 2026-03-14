@@ -19,6 +19,7 @@ teams:
                 dueDate: '2026-03-13'
           - title: (2) Governance & Policy
             status: GREEN
+            subTopicType: status
             details: []
           - title: (3) Best Practices & Optimization
             status: GREEN
