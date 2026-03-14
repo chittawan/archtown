@@ -8,7 +8,7 @@ import 'react-calendar-timeline/style.css';
 import './TasksCalendar.css';
 import './TasksTimeline.css';
 import type { ProjectData as ProjectDataType, Team, SubTopicDetail, Status } from '../../types';
-import { apiGet } from '../../lib/api';
+import * as archtownDb from '../../db/archtownDb';
 
 type ProjectData = ProjectDataType & { id: string };
 
@@ -32,11 +32,11 @@ type ProjectsById = Record<string, ProjectData>;
 
 async function fetchProjectsIndex(): Promise<{ id: string; name: string }[]> {
   try {
-    const data = await apiGet<{ projects?: Array<{ id?: string; name?: string; projectName?: string }> }>('/api/projects');
-    if (!Array.isArray(data?.projects)) return [];
-    return data.projects.map((p) => ({
+    const { projects } = await archtownDb.listProjects();
+    if (!Array.isArray(projects)) return [];
+    return projects.map((p) => ({
       id: String(p.id ?? ''),
-      name: String(p.name ?? p.projectName ?? p.id ?? ''),
+      name: String(p.name ?? p.id ?? ''),
     }));
   } catch {
     return [];
@@ -59,16 +59,13 @@ function getProjectSummaryStatus(project: ProjectData): Status {
 
 async function fetchProject(id: string): Promise<ProjectData | null> {
   try {
-    const json = await apiGet<{ id?: string; data?: ProjectDataType }>(
-      `/api/projects/${encodeURIComponent(id)}`
-    );
-    const data = json?.data;
-    if (!data || !Array.isArray(data.teams)) return null;
+    const result = await archtownDb.getProject(id);
+    if (!result || !result.data) return null;
     return {
-      id: json.id ?? id,
-      projectName: data.projectName ?? json.id ?? id,
-      description: data.description,
-      teams: data.teams,
+      id: result.id,
+      projectName: result.data.projectName ?? result.id,
+      description: result.data.description,
+      teams: result.data.teams,
     };
   } catch {
     return null;
@@ -320,20 +317,14 @@ export default function TasksOverviewPage() {
 
   const saveProject = useCallback((project: ProjectData) => {
     setSavingProjects((prev) => new Set(prev).add(project.id));
-    fetch('/api/save-project', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectName: project.projectName,
-        data: {
-          id: project.id,
-          projectName: project.projectName,
-          description: project.description,
-          teams: project.teams,
-        },
-      }),
-    })
-      .then((res) => res.json().catch(() => ({})))
+    const payload = {
+      id: project.id,
+      projectName: project.projectName,
+      description: project.description,
+      teams: project.teams,
+    };
+    archtownDb
+      .saveProject(project.projectName, payload)
       .then((resData) => {
         if (resData?.ok && typeof window !== 'undefined') {
           window.dispatchEvent(

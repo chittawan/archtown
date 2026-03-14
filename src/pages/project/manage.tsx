@@ -21,6 +21,7 @@ import { SubtopicDroppableArea } from '../../components/project/SubtopicDroppabl
 import { SummaryView } from '../../components/project/SummaryView';
 import { projectToYaml, yamlToProject, type ProjectData } from '../../lib/projectYaml';
 import { nameToId } from '../../lib/idUtils';
+import * as archtownDb from '../../db/archtownDb';
 import { useTeamModal } from './hooks/useTeamModal';
 import { useTopicModal } from './hooks/useTopicModal';
 import { useSubTopicModal } from './hooks/useSubTopicModal';
@@ -118,32 +119,23 @@ export default function ProjectManagePage() {
     };
   }, [projectIdFromUrl]);
 
-  /** โหลดข้อมูลโปรเจกต์จาก data/projects/ เมื่อเปิดจาก Capability (มี ?id= ใน URL) */
+  /** โหลดข้อมูลโปรเจกต์จาก SQLite WASM เมื่อเปิดจาก Capability (มี ?id= ใน URL) */
   useEffect(() => {
     if (!projectIdFromUrl || projectLoadState !== 'idle') return;
     setProjectLoadState('loading');
-    fetch(`/api/projects/${encodeURIComponent(projectIdFromUrl)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : 'Failed to load');
-        return res.json();
-      })
-      .then((data: { id?: string; data?: { projectName: string; description?: string; teams: Team[] } }) => {
-        const payload = data?.data;
-        if (!payload) {
-          setProjectLoadState('idle');
+    archtownDb
+      .getProject(projectIdFromUrl)
+      .then((data) => {
+        if (!data) {
+          setProjectLoadState('error');
           return;
         }
         if (data.id) setProjectId(data.id);
-        const {
-          projectName: name,
-          description: desc,
-          teams: nextTeams,
-        } = payload;
+        const { projectName: name, description: desc, teams: nextTeams } = data.data;
         setProjectName(name || '');
         setProjectNameInput(name || '');
         setProjectDescription(desc ?? '');
         dispatchTeams({ type: 'setAll', teams: nextTeams });
-        // เข้ามาครั้งแรกให้หุบหมด (ไม่ auto-expand หัวข้อใหญ่)
         setExpandedTopics(new Set());
         setProjectLoadState('loaded');
       })
@@ -379,8 +371,9 @@ export default function ProjectManagePage() {
     URL.revokeObjectURL(url);
   };
 
-  /** บันทึกลง data/projects/{projectName}.md ผ่าน API (dev) หรือ fallback เป็นดาวน์โหลด */
+  /** บันทึกลง SQLite WASM (OPFS/หน่วยความจำ) */
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const skipSaveAfterLoadRef = useRef(true);
 
   /**
@@ -419,47 +412,27 @@ export default function ProjectManagePage() {
     const data = { id: fileId, projectName: name, description: projectDescription.trim() || undefined, teams };
     setSaveStatus('saving');
     try {
-      const res = await fetch('/api/save-project', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectName: name, data }),
-      });
-      const resData = await res.json().catch(() => ({}));
-      if (res.ok && resData.ok) {
-        if (resData.id) setProjectId(resData.id);
+      const result = await archtownDb.saveProject(name, data);
+      if (result.ok && result.id) {
+        setProjectId(result.id);
         setSaveStatus('ok');
         setTimeout(() => setSaveStatus('idle'), 2000);
-        const savedId = resData.id || fileId;
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: savedId } }));
+          window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: result.id } }));
         }
       } else {
-        const yamlStr = projectToYaml({
-          id: fileId,
-          projectName: name,
-          description: projectDescription.trim() || undefined,
-          teams,
-        });
-        downloadAsYaml(yamlStr, fileId);
-        setSaveStatus('ok');
+        setSaveStatus('error');
         setTimeout(() => setSaveStatus('idle'), 2000);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: fileId } }));
-        }
       }
-    } catch {
-      const yamlStr = projectToYaml({
-        id: fileId,
-        projectName: name,
-        description: projectDescription.trim() || undefined,
-        teams,
-      });
-      downloadAsYaml(yamlStr, fileId);
-      setSaveStatus('ok');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: fileId } }));
-      }
+    } catch (err) {
+      const o = err && typeof err === 'object' ? err as { message?: string; result?: { message?: string } } : null;
+      const msg = o?.result?.message ?? o?.message ?? String(err);
+      setSaveError(msg);
+      setSaveStatus('error');
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setSaveError(null);
+      }, 6000);
     }
   };
 
@@ -959,6 +932,21 @@ export default function ProjectManagePage() {
             <span className="text-sm text-[var(--color-primary)] flex items-center gap-1.5">
               <Save className="w-4 h-4" />
               บันทึกแล้ว
+            </span>
+          )}
+          {saveStatus === 'error' && saveError && (
+            <span className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1.5" title={saveError}>
+              บันทึกไม่สำเร็จ: {saveError.length > 40 ? `${saveError.slice(0, 40)}…` : saveError}
+              <button
+                type="button"
+                onClick={() => {
+                  const data = { id: projectId || 'project', projectName: projectName || 'project', description: projectDescription.trim() || undefined, teams };
+                  downloadAsYaml(projectToYaml(data), data.id || 'project');
+                }}
+                className="underline hover:no-underline"
+              >
+                ดาวน์โหลด YAML
+              </button>
             </span>
           )}
           {false && (

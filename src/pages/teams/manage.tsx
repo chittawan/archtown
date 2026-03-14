@@ -33,6 +33,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { OrgTeam } from '../../types';
 import { orgTeamToYaml } from '../../lib/teamYaml';
 import { nameToId, ensureUniqueId } from '../../lib/idUtils';
+import * as archtownDb from '../../db/archtownDb';
 
 type TeamMap = Map<string, OrgTeam>;
 
@@ -70,28 +71,25 @@ function dropIdMakeChildOf(parentId: string) {
 }
 
 async function fetchTeamIds(): Promise<string[]> {
-  const res = await fetch('/api/teams');
-  if (!res.ok) return [];
-  const data = await res.json().catch(() => ({}));
-  return Array.isArray(data.ids) ? data.ids : [];
+  try {
+    const { ids } = await archtownDb.listTeamIds();
+    return ids ?? [];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchTeam(id: string): Promise<{ id: string; data: OrgTeam } | null> {
-  const res = await fetch(`/api/teams/${encodeURIComponent(id)}`);
-  if (!res.ok) return null;
-  const data = await res.json().catch(() => ({}));
-  return data.data != null ? { id: data.id || id, data: data.data } : null;
+  return archtownDb.getTeam(id);
 }
 
 async function saveTeamApi(id: string, team: OrgTeam): Promise<boolean> {
-  const res = await fetch('/api/teams/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, data: team }),
-  });
-  if (!res.ok) return false;
-  const data = await res.json().catch(() => ({}));
-  return !!data.ok;
+  try {
+    const result = await archtownDb.saveTeam(id, team);
+    return !!result.ok;
+  } catch {
+    return false;
+  }
 }
 
 export default function TeamsManagePage() {

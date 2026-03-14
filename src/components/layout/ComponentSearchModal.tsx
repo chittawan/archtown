@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Search, FolderKanban } from 'lucide-react';
 import { StatusBadge } from '../ui/StatusBadge';
 import type { ProjectSummary } from '../../types';
-import { apiGet } from '../../lib/api';
+import * as archtownDb from '../../db/archtownDb';
 
 async function fetchProjectList(): Promise<ProjectSummary[]> {
   try {
-    const data = await apiGet<{ projects?: ProjectSummary[] }>('/api/projects');
-    return Array.isArray(data?.projects) ? data.projects : [];
+    const { projects } = await archtownDb.listProjects();
+    return projects ?? [];
   } catch {
     return [];
   }
@@ -197,7 +197,7 @@ export function ComponentSearchModal({ open, onClose }: ComponentSearchModalProp
                   )}
                 </div>
                 {p.summaryStatus && (
-                  <StatusBadge status={p.summaryStatus} compact />
+                  <StatusBadge status={p.summaryStatus} variant="compact" />
                 )}
               </button>
             ))

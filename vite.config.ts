@@ -41,6 +41,9 @@ function resolveProjectPath(projId: string): { path: string; ext: 'yaml' } | nul
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
+    optimizeDeps: {
+      exclude: ['@sqlite.org/sqlite-wasm'],
+    },
     plugins: [
       react(),
       tailwindcss(),
@@ -300,7 +303,7 @@ export default defineConfig(({mode}) => {
                 if (fs.existsSync(orderPathYaml)) {
                   capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
                 }
-                const caps: Record<string, { id: string; name: string; cols?: 12 | 6 | 4 | 3; projects: Array<{ id: string; name: string; status?: string; cols?: 12 | 6 | 4 | 3 }> }> = {};
+                const caps: Record<string, import('./src/lib/capabilityYaml').Cap> = {};
                 const files = fs.readdirSync(DATA_CAPABILITY_DIR);
                 const capFilesYaml = files.filter((f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML);
                 const seen = new Set(capOrder);
@@ -338,7 +341,7 @@ export default defineConfig(({mode}) => {
                 if (fs.existsSync(orderPathYaml)) {
                   capOrder = yamlToCapOrder(fs.readFileSync(orderPathYaml, 'utf-8'));
                 }
-                const caps: Record<string, { id: string; name: string; projects: Array<{ id: string; name: string }> }> = {};
+                const caps: Record<string, { id: string; name: string; projects: Array<{ id: string; name?: string }> }> = {};
                 const files = fs.readdirSync(DATA_CAPABILITY_DIR);
                 const capFilesYaml = files.filter((f) => f.endsWith('.yaml') && f !== CAPABILITY_ORDER_FILE_YAML);
                 const seen = new Set(capOrder);
@@ -445,6 +448,58 @@ export default defineConfig(({mode}) => {
           });
         },
       },
+      {
+        name: 'sync-api',
+        configureServer(server) {
+          const SYNC_BACKUP_FILE = path.resolve(__dirname, 'data', 'sync', 'backup.json');
+          server.middlewares.use(async (req, res, next) => {
+            const url = req.url?.split('?')[0] ?? '';
+            if (url === '/api/sync/download' && req.method === 'GET') {
+              try {
+                if (!fs.existsSync(SYNC_BACKUP_FILE)) {
+                  res.statusCode = 404;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'ยังไม่มีข้อมูลบน Cloud' }));
+                  return;
+                }
+                const json = fs.readFileSync(SYNC_BACKUP_FILE, 'utf-8');
+                res.setHeader('Content-Type', 'application/json');
+                res.end(json);
+              } catch (e) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: String(e) }));
+              }
+              return;
+            }
+            if (url === '/api/sync/upload' && req.method === 'POST') {
+              let body = '';
+              req.on('data', (chunk) => { body += chunk; });
+              req.on('end', () => {
+                try {
+                  const payload = JSON.parse(body || '{}');
+                  if (!payload || typeof payload !== 'object' || !payload.schema_version || !payload.tables) {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' }));
+                    return;
+                  }
+                  fs.mkdirSync(path.dirname(SYNC_BACKUP_FILE), { recursive: true });
+                  fs.writeFileSync(SYNC_BACKUP_FILE, JSON.stringify(payload), 'utf-8');
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: true }));
+                } catch (e) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: false, error: String(e) }));
+                }
+              });
+              return;
+            }
+            next();
+          });
+        },
+      },
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
@@ -455,11 +510,13 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: {
-        // ไม่ให้ Vite dev server trigger reload เมื่อแก้ไฟล์ใน data/
         ignored: ['**/data/**'],
       },
     },

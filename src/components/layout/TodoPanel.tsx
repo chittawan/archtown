@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Circle, ListTodo, ExternalLink, FileText } from 'lucide-react';
 import type { ProjectData, Team, SubTopicDetail } from '../../types';
-import { apiGet } from '../../lib/api';
+import * as archtownDb from '../../db/archtownDb';
 
 interface TodoGroup {
   /** Full breadcrumb for tooltip */
@@ -19,16 +19,13 @@ interface TodoGroup {
 
 async function fetchProject(projectId: string): Promise<ProjectData | null> {
   try {
-    const json = await apiGet<{ id?: string; data?: ProjectData }>(
-      `/api/projects/${encodeURIComponent(projectId)}`
-    );
-    const data = json?.data;
-    if (!data || !Array.isArray(data.teams)) return null;
+    const result = await archtownDb.getProject(projectId);
+    if (!result || !result.data) return null;
     return {
-      id: json.id ?? projectId,
-      projectName: data.projectName ?? json.id ?? projectId,
-      description: data.description,
-      teams: data.teams,
+      id: result.id,
+      projectName: result.data.projectName ?? result.id,
+      description: result.data.description,
+      teams: result.data.teams,
     };
   } catch {
     return null;
@@ -87,7 +84,7 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'ok' | 'error'>('idle');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadProject = useCallback(() => {
@@ -148,22 +145,22 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
       },
     };
     setSaveStatus('saving');
-    fetch('/api/save-project', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-      .then((res) => res.json().catch(() => ({})))
+    archtownDb
+      .saveProject(payload.projectName, payload.data)
       .then((resData) => {
         if (resData?.ok) {
           setSaveStatus('ok');
           setTimeout(() => setSaveStatus('idle'), 1500);
           window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: { projectId: projectData.id } }));
         } else {
-          setSaveStatus('idle');
+          setSaveStatus('error');
+          setTimeout(() => setSaveStatus('idle'), 3000);
         }
       })
-      .catch(() => setSaveStatus('idle'));
+      .catch(() => {
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      });
   }, [projectData, projectId]);
 
   const scheduleSave = useCallback(() => {
@@ -318,6 +315,7 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
         <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-[var(--color-text-muted)]">
           {saveStatus === 'saving' && <span className="animate-pulse">กำลังบันทึก...</span>}
           {saveStatus === 'ok' && <span className="text-emerald-600">บันทึกแล้ว</span>}
+          {saveStatus === 'error' && <span className="text-red-600 dark:text-red-400">บันทึกไม่สำเร็จ</span>}
           <span>ทำแล้ว {doneCount} / ทั้งหมด {totalItems}</span>
         </div>
       </div>

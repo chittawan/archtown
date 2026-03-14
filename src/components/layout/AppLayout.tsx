@@ -4,10 +4,12 @@ import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightCl
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
 import { ComponentSearchModal } from './ComponentSearchModal.tsx';
+import { DbStatusBar } from './DbStatusBar.tsx';
+import { CloudSync } from './CloudSync.tsx';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
-  { path: '/project', label: 'Projects', icon: FolderKanban },
+  // { path: '/project', label: 'Projects', icon: FolderKanban }, // ซ่อนไว้ก่อน
   { path: '/tasks', label: 'Tasks', icon: ListTodo },
   { path: '/teams', label: 'Teams', icon: Users },
 ];
@@ -148,7 +150,9 @@ export default function AppLayout() {
               })}
             </nav>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <DbStatusBar />
+            <CloudSync />
             <button
               type="button"
               onClick={() => setRightPanelOpen((o) => !o)}

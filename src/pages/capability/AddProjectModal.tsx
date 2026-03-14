@@ -124,7 +124,7 @@ export function AddProjectModal({
                   />
                   <button
                     type="button"
-                    onClick={() => setProjectSelectOpen((o) => !o)}
+                    onClick={() => setProjectSelectOpen(!projectSelectOpen)}
                     className="shrink-0 p-1 rounded-md text-[var(--color-text-subtle)] hover:bg-[var(--color-overlay)]"
                     aria-label={projectSelectOpen ? 'ปิดรายการ' : 'เปิดรายการ'}
                   >

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Team } from '../../../types';
 import { nameToId, ensureUniqueId } from '../../../lib/idUtils';
+import * as archtownDb from '../../../db/archtownDb';
 
 export type TeamModalParams = {
   teams: Team[];
@@ -29,30 +30,18 @@ export function useTeamModal({
       setSelectedOrgTeamId(null);
       setNewTeamName('');
     }
-    fetch('/api/teams')
-      .then((res) => (res.ok ? res.json() : { ids: [] }))
-      .then((data: { ids?: string[] }) => {
-        const ids = Array.isArray(data.ids) ? data.ids : [];
-        return Promise.all(
+    archtownDb
+      .listTeamIds()
+      .then(({ ids }) =>
+        Promise.all(
           ids.map((id: string) =>
-            fetch(`/api/teams/${encodeURIComponent(id)}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .then(
-                (raw: {
-                  id?: string;
-                  data?: { name: string };
-                  markdown?: string;
-                } | null) =>
-                  raw != null && raw.data != null
-                    ? { id: raw.id ?? id, name: raw.data.name }
-                    : null
-              )
+            archtownDb.getTeam(id).then((raw) =>
+              raw != null && raw.data != null ? { id: raw.id, name: raw.data.name } : null
+            )
           )
-        );
-      })
-      .then((list) =>
-        setOrgTeamsForSelect(list.filter(Boolean) as OrgTeamOption[])
+        )
       )
+      .then((list) => setOrgTeamsForSelect(list.filter(Boolean) as OrgTeamOption[]))
       .catch(() => setOrgTeamsForSelect([]))
       .finally(() => setLoadingOrgTeams(false));
   }, [isOpen, editingTeamId]);
@@ -125,13 +114,8 @@ export function useTeamModal({
         parentId: null as string | null,
         childIds: [] as string[],
       };
-      const res = await fetch('/api/teams/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, data: orgTeam }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.ok) {
+      const result = await archtownDb.saveTeam(id, orgTeam);
+      if (result.ok) {
         setOrgTeamsForSelect((prev) => [...prev, { id, name }]);
       }
       updateTeams((prev) => [...prev, { id, name, topics: [] }]);

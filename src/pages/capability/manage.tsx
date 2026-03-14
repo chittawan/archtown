@@ -31,7 +31,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import type { ProjectSummary } from '../../types';
 import type { Cap, CapabilityLayout, ProjectInCap } from '../../lib/capabilityYaml';
-import { apiGet, apiPost } from '../../lib/api';
+import * as archtownDb from '../../db/archtownDb';
 import { nameToId, ensureUniqueId, sanitizeId } from '../../lib/idUtils';
 import { motion } from 'motion/react';
 import { SortableProjectCard, projectDragId, PROJECT_PREFIX } from '../../components/capability/ProjectCard';
@@ -46,8 +46,8 @@ const SortableProjectCardAny = SortableProjectCard as any;
 
 async function fetchProjectList(): Promise<ProjectSummary[]> {
   try {
-    const data = await apiGet<{ projects?: ProjectSummary[] }>('/api/projects');
-    return Array.isArray(data?.projects) ? data.projects : [];
+    const { projects } = await archtownDb.listProjects();
+    return projects ?? [];
   } catch {
     return [];
   }
@@ -124,14 +124,14 @@ function getInsertIndexFromPointer(
 }
 
 async function fetchLayout(): Promise<CapabilityLayout> {
-  const data = await apiGet<{ layout?: CapabilityLayout }>('/api/capability');
-  if (!data?.layout) throw new Error('ข้อมูล layout ไม่ถูกต้อง');
-  return data.layout;
+  const { layout } = await archtownDb.getCapabilityLayout();
+  if (!layout) throw new Error('ข้อมูล layout ไม่ถูกต้อง');
+  return layout;
 }
 
 async function saveLayout(layout: CapabilityLayout): Promise<boolean> {
-  const data = await apiPost<{ ok?: boolean }>('/api/capability/save', { layout });
-  return !!data?.ok;
+  const { ok } = await archtownDb.saveCapabilityLayout(layout);
+  return !!ok;
 }
 
 function capColsToGridWidth(cols?: 12 | 6 | 4 | 3): number {
@@ -706,21 +706,12 @@ export default function CapabilityManagePage() {
       if (!name) return;
       setAddProjectError(null);
       try {
-        const res = await fetch('/api/projects/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 409) {
-          setAddProjectError(data.error || 'project id นี้มีอยู่แล้ว');
+        const result = await archtownDb.createProject(name);
+        if (!result.ok) {
+          setAddProjectError(result.error || 'project id นี้มีอยู่แล้ว');
           return;
         }
-        if (!res.ok) {
-          setAddProjectError(data.error || 'สร้างโปรเจกต์ไม่สำเร็จ');
-          return;
-        }
-        id = data.id ?? (sanitizeId(nameToId(name)) || 'project');
+        id = result.id ?? (sanitizeId(nameToId(name)) || 'project');
         await loadProjectList();
       } catch {
         setAddProjectError('สร้างโปรเจกต์ไม่สำเร็จ');

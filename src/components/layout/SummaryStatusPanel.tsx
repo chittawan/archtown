@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, AlertCircle } from 'lucide-react';
-import { apiGet } from '../../lib/api';
+import * as archtownDb from '../../db/archtownDb';
 
 interface SummaryItem {
   capName: string;
@@ -21,11 +21,10 @@ interface GroupedSummaryItem {
 
 async function fetchSummary(projectId?: string): Promise<SummaryData> {
   try {
-    const url = projectId ? `/api/capability/summary?projectId=${encodeURIComponent(projectId)}` : '/api/capability/summary';
-    const data = await apiGet<{ critical?: SummaryItem[]; warning?: SummaryItem[] }>(url);
+    const { critical, warning } = await archtownDb.getCapabilitySummary(projectId);
     return {
-      critical: Array.isArray(data?.critical) ? data.critical : [],
-      warning: Array.isArray(data?.warning) ? data.warning : [],
+      critical: Array.isArray(critical) ? critical : [],
+      warning: Array.isArray(warning) ? warning : [],
     };
   } catch {
     return { critical: [], warning: [] };
