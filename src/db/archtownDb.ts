@@ -52,9 +52,27 @@ const SYNC_TABLES_EXPORT_ORDER = [
 
 export const SYNC_SCHEMA_VERSION = 1;
 
+/** localStorage key for last successful upload (version + updated_at) */
+export const SYNC_LAST_UPLOADED_KEY = 'archtown_sync_last_uploaded';
+
 export interface SyncExportPayload {
   schema_version: number;
+  /** Monotonic version for conflict detection (optional for backward compatibility with old backups). */
+  version?: number;
+  /** ISO 8601 export time (optional for backward compatibility). */
+  updated_at?: string;
   tables: Record<string, Record<string, unknown>[]>;
+}
+
+function getNextSyncVersion(): { version: number; updated_at: string } {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SYNC_LAST_UPLOADED_KEY) : null;
+    const last = raw ? (JSON.parse(raw) as { version?: number; updated_at?: string }) : null;
+    const nextVersion = (last?.version ?? 0) + 1;
+    return { version: nextVersion, updated_at: new Date().toISOString() };
+  } catch {
+    return { version: 1, updated_at: new Date().toISOString() };
+  }
 }
 
 export async function exportAllTables(): Promise<SyncExportPayload> {
@@ -64,7 +82,8 @@ export async function exportAllTables(): Promise<SyncExportPayload> {
     const { resultRows } = await client.exec<Record<string, unknown>>(`SELECT * FROM ${table}`);
     tables[table] = (resultRows ?? []) as Record<string, unknown>[];
   }
-  return { schema_version: SYNC_SCHEMA_VERSION, tables };
+  const { version, updated_at } = getNextSyncVersion();
+  return { schema_version: SYNC_SCHEMA_VERSION, version, updated_at, tables };
 }
 
 export async function importAllTables(payload: SyncExportPayload): Promise<void> {

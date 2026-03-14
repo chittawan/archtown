@@ -478,14 +478,42 @@ export default defineConfig(({mode}) => {
               req.on('end', () => {
                 try {
                   const payload = JSON.parse(body || '{}');
-                  if (!payload || typeof payload !== 'object' || !payload.schema_version || !payload.tables) {
+                  const isPlain = payload?.schema_version != null && payload?.tables != null;
+                  const isEncrypted = typeof payload?.enc === 'string' && typeof payload?.iv === 'string' && typeof payload?.salt === 'string';
+                  if (!payload || typeof payload !== 'object' || (!isPlain && !isEncrypted)) {
                     res.statusCode = 400;
                     res.setHeader('Content-Type', 'application/json');
                     res.end(JSON.stringify({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' }));
                     return;
                   }
+                  const query = req.url?.includes('?') ? new URLSearchParams(req.url.slice(req.url.indexOf('?'))) : null;
+                  const force = query?.get('force') === '1' || query?.get('force') === 'true' || payload.force === true;
+                  if (!force && fs.existsSync(SYNC_BACKUP_FILE)) {
+                    const existingJson = fs.readFileSync(SYNC_BACKUP_FILE, 'utf-8');
+                    let existing: { version?: number; updated_at?: string };
+                    try {
+                      existing = JSON.parse(existingJson);
+                    } catch {
+                      existing = {};
+                    }
+                    const serverVersion = existing.version ?? 0;
+                    const payloadVersion = payload.version ?? 0;
+                    if (payloadVersion <= serverVersion) {
+                      res.statusCode = 409;
+                      res.setHeader('Content-Type', 'application/json');
+                      res.end(JSON.stringify({
+                        ok: false,
+                        error: 'Cloud มีข้อมูลใหม่กว่า',
+                        conflict: true,
+                        remoteVersion: serverVersion,
+                        remoteUpdatedAt: existing.updated_at ?? null,
+                      }));
+                      return;
+                    }
+                  }
                   fs.mkdirSync(path.dirname(SYNC_BACKUP_FILE), { recursive: true });
-                  fs.writeFileSync(SYNC_BACKUP_FILE, JSON.stringify(payload), 'utf-8');
+                  const { force: _f, ...payloadToWrite } = payload;
+                  fs.writeFileSync(SYNC_BACKUP_FILE, JSON.stringify(payloadToWrite), 'utf-8');
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ ok: true }));
                 } catch (e) {

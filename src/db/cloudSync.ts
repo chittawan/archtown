@@ -1,33 +1,97 @@
 /**
  * Cloud Sync: อัปโหลด/ดาวน์โหลด backup ไปยัง server เพื่อเปิดได้ทุกที่
  * ใช้ร่วมกับ /api/sync/upload และ /api/sync/download
+ * รองรับการเข้ารหัสด้วยรหัสผ่าน (AES-GCM) ก่อนอัปโหลด
  */
-import { exportForSync } from './sync';
-import { importFromSync } from './sync';
+import { exportAllTables, importAllTables, SYNC_LAST_UPLOADED_KEY } from './archtownDb';
+import {
+  base64ToArrayBuffer,
+  base64ToBytes,
+  buildEncryptedSyncPayload,
+  decryptPayload,
+  encryptPayload,
+  isEncryptedPayload,
+  mergeDecryptedWithMeta,
+  type EncryptedInnerPayload,
+} from './syncCrypto';
+import { exportForSync, importFromSync } from './sync';
 
 const SYNC_UPLOAD_URL = '/api/sync/upload';
 const SYNC_DOWNLOAD_URL = '/api/sync/download';
 
-export type CloudSyncResult = { ok: true } | { ok: false; error: string };
+export type CloudSyncFailure = {
+  ok: false;
+  error: string;
+  conflict?: boolean;
+  remoteVersion?: number;
+  remoteUpdatedAt?: string | null;
+};
+
+export type CloudSyncResult = { ok: true } | CloudSyncFailure;
 
 /**
- * ส่งออก DB ปัจจุบันไปยัง Cloud (server)
+ * ส่งออก DB ปัจจุบันไปยัง Cloud (server).
+ * @param force - ถ้า true ส่ง ?force=1 เพื่อเขียนทับข้อมูลบน Cloud แม้ version ใหม่กว่า
+ * @param password - ถ้าระบุ จะเข้ารหัส payload ก่อนอัปโหลด (เก็บเฉพาะในหน่วยความจำ)
  */
-export async function uploadToCloud(): Promise<CloudSyncResult> {
+export async function uploadToCloud(force = false, password?: string): Promise<CloudSyncResult> {
   try {
-    const blob = await exportForSync();
-    const json = await blob.text();
-    const res = await fetch(SYNC_UPLOAD_URL, {
+    let body: string;
+    let version: number | undefined;
+    let updated_at: string | undefined;
+
+    if (password != null && password !== '') {
+      const payload = await exportAllTables();
+      const inner = { schema_version: payload.schema_version, tables: payload.tables };
+      const { encrypted, iv, salt } = await encryptPayload(JSON.stringify(inner), password);
+      const wrapper = buildEncryptedSyncPayload(payload, encrypted, iv, salt);
+      version = payload.version;
+      updated_at = payload.updated_at;
+      body = JSON.stringify(force ? { ...wrapper, force: true } : wrapper);
+    } else {
+      const blob = await exportForSync();
+      const json = await blob.text();
+      const parsed = JSON.parse(json) as { version?: number; updated_at?: string };
+      version = parsed.version;
+      updated_at = parsed.updated_at;
+      body = force ? JSON.stringify({ ...parsed, force: true }) : json;
+    }
+
+    const url = force ? `${SYNC_UPLOAD_URL}?force=1` : SYNC_UPLOAD_URL;
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: json,
+      body,
     });
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      message?: string;
+      conflict?: boolean;
+      remoteVersion?: number;
+      remoteUpdatedAt?: string | null;
+    };
+    if (res.status === 409) {
+      return {
+        ok: false,
+        error: data.error || 'Cloud มีข้อมูลใหม่กว่า',
+        conflict: true,
+        remoteVersion: data.remoteVersion,
+        remoteUpdatedAt: data.remoteUpdatedAt ?? null,
+      };
+    }
     if (!res.ok) {
       return { ok: false, error: data.error || data.message || `HTTP ${res.status}` };
     }
     if (data.ok === false) {
       return { ok: false, error: data.error || 'อัปโหลดไม่สำเร็จ' };
+    }
+    try {
+      if (version != null && updated_at != null && typeof localStorage !== 'undefined') {
+        localStorage.setItem(SYNC_LAST_UPLOADED_KEY, JSON.stringify({ version, updated_at }));
+      }
+    } catch {
+      /* ignore */
     }
     return { ok: true };
   } catch (e) {
@@ -36,9 +100,10 @@ export async function uploadToCloud(): Promise<CloudSyncResult> {
 }
 
 /**
- * ดึงข้อมูลจาก Cloud มาแทนที่ DB ปัจจุบัน (เปิดได้ทุกที่)
+ * ดึงข้อมูลจาก Cloud มาแทนที่ DB ปัจจุบัน (เปิดได้ทุกที่).
+ * @param password - ถ้า backup บน Cloud เข้ารหัสไว้ ต้องใส่รหัสผ่านเพื่อถอดรหัส
  */
-export async function downloadFromCloud(): Promise<CloudSyncResult> {
+export async function downloadFromCloud(password?: string): Promise<CloudSyncResult> {
   try {
     const res = await fetch(SYNC_DOWNLOAD_URL);
     if (res.status === 404) {
@@ -46,10 +111,40 @@ export async function downloadFromCloud(): Promise<CloudSyncResult> {
     }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      return { ok: false, error: data.error || data.message || `HTTP ${res.status}` };
+      return { ok: false, error: (data as { error?: string; message?: string }).error || (data as { error?: string; message?: string }).message || `HTTP ${res.status}` };
     }
     const buffer = await res.arrayBuffer();
-    await importFromSync(buffer);
+    const json = new TextDecoder().decode(buffer);
+    const payload = JSON.parse(json) as Record<string, unknown> & { version?: number; updated_at?: string };
+
+    if (isEncryptedPayload(payload)) {
+      if (password == null || password === '') {
+        return { ok: false, error: 'ต้องใส่รหัสผ่านเพื่อถอดรหัสข้อมูลจาก Cloud' };
+      }
+      try {
+        const decrypted = await decryptPayload(
+          base64ToArrayBuffer(payload.enc),
+          base64ToBytes(payload.iv),
+          password,
+          base64ToBytes(payload.salt)
+        );
+        const inner = JSON.parse(decrypted) as EncryptedInnerPayload;
+        const full = mergeDecryptedWithMeta(inner, payload.version as number | undefined, payload.updated_at as string | undefined);
+        await importAllTables(full);
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    } else {
+      await importFromSync(buffer);
+    }
+
+    try {
+      if (payload.version != null && payload.updated_at != null && typeof localStorage !== 'undefined') {
+        localStorage.setItem(SYNC_LAST_UPLOADED_KEY, JSON.stringify({ version: payload.version, updated_at: payload.updated_at }));
+      }
+    } catch {
+      /* ignore */
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

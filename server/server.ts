@@ -34,12 +34,39 @@ app.get('/api/sync/download', (_req, res) => {
 app.post('/api/sync/upload', (req, res) => {
   try {
     const payload = req.body;
-    if (!payload || typeof payload !== 'object' || !payload.schema_version || !payload.tables) {
+    const isPlain = payload?.schema_version != null && payload?.tables != null;
+    const isEncrypted = typeof payload?.enc === 'string' && typeof payload?.iv === 'string' && typeof payload?.salt === 'string';
+    if (!payload || typeof payload !== 'object' || (!isPlain && !isEncrypted)) {
       res.status(400).json({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' });
       return;
     }
+    const force = req.query.force === '1' || req.query.force === 'true' || payload.force === true;
+
+    if (!force && fs.existsSync(SYNC_BACKUP_FILE)) {
+      const existingJson = fs.readFileSync(SYNC_BACKUP_FILE, 'utf-8');
+      let existing: { version?: number; updated_at?: string };
+      try {
+        existing = JSON.parse(existingJson) as { version?: number; updated_at?: string };
+      } catch {
+        existing = {};
+      }
+      const serverVersion = existing.version ?? 0;
+      const payloadVersion = payload.version ?? 0;
+      if (payloadVersion <= serverVersion) {
+        res.status(409).json({
+          ok: false,
+          error: 'Cloud มีข้อมูลใหม่กว่า',
+          conflict: true,
+          remoteVersion: serverVersion,
+          remoteUpdatedAt: existing.updated_at ?? null,
+        });
+        return;
+      }
+    }
+
     fs.mkdirSync(path.dirname(SYNC_BACKUP_FILE), { recursive: true });
-    fs.writeFileSync(SYNC_BACKUP_FILE, JSON.stringify(payload), 'utf-8');
+    const { force: _f, ...payloadToWrite } = payload;
+    fs.writeFileSync(SYNC_BACKUP_FILE, JSON.stringify(payloadToWrite), 'utf-8');
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
