@@ -6,7 +6,7 @@ import TodoPanel from './TodoPanel.tsx';
 import { ComponentSearchModal } from './ComponentSearchModal.tsx';
 import { DbStatusBar } from './DbStatusBar.tsx';
 import { CloudSync } from './CloudSync.tsx';
-import { isGoogleLoggedIn, logoutGoogle, redirectToGoogleLogin } from '../../lib/googleAuth';
+import { isGoogleLoggedIn, logoutGoogle, redirectToGoogleLogin, getGoogleUserInfo, emailInitials } from '../../lib/googleAuth';
 import { clearAppData } from '../../lib/clearAppData';
 import { exportForSync } from '../../db/sync';
 import { uploadToCloud, isSyncAvailable } from '../../db/cloudSync';
@@ -20,6 +20,27 @@ const navItems = [
 
 const RIGHT_PANEL_STORAGE_KEY = 'archtown-right-panel-open';
 type RightPanelTab = 'summary' | 'todo';
+
+/** รูปโปรไฟล์ Google — ถ้าโหลดไม่ได้ (ถูก block) แสดง initial แทน */
+function GoogleAvatarPicture({ src, fallbackInitial }: { src: string; fallbackInitial: string | null }) {
+  const [errored, setErrored] = useState(false);
+  if (errored) {
+    return (
+      <span className="text-xs font-semibold text-[var(--color-text)]">
+        {fallbackInitial ?? '?'}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-full h-full object-cover"
+      referrerPolicy="strict-origin-when-cross-origin"
+      onError={() => setErrored(true)}
+    />
+  );
+}
 
 export default function AppLayout() {
   const location = useLocation();
@@ -42,6 +63,7 @@ export default function AppLayout() {
   const [componentSearchOpen, setComponentSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [googleUser, setGoogleUser] = useState(false);
+  const googleUserInfo = googleUser ? getGoogleUserInfo() : { picture: undefined, email: undefined };
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [logoutBackingUp, setLogoutBackingUp] = useState(false);
   const [syncAvailable, setSyncAvailable] = useState(false);
@@ -187,17 +209,29 @@ export default function AppLayout() {
               <button
                 type="button"
                 onClick={() => setUserMenuOpen((o) => !o)}
-                className="flex items-center gap-2 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
+                className="flex items-center justify-center p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
                 title={googleUser ? 'บัญชี Google' : 'Guest'}
                 aria-label={googleUser ? 'Google account menu' : 'Guest menu'}
                 aria-expanded={userMenuOpen}
               >
-                <div className="w-8 h-8 rounded-full bg-[var(--color-overlay)] flex items-center justify-center border border-[var(--color-border)]">
-                  <User className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-full bg-[var(--color-overlay)] flex items-center justify-center border border-[var(--color-border)] overflow-hidden shrink-0">
+                  {googleUser ? (
+                    googleUserInfo.picture ? (
+                      <GoogleAvatarPicture
+                        src={googleUserInfo.picture}
+                        fallbackInitial={googleUserInfo.email ? emailInitials(googleUserInfo.email) : null}
+                      />
+                    ) : googleUserInfo.email ? (
+                      <span className="text-xs font-semibold text-[var(--color-text)]">
+                        {emailInitials(googleUserInfo.email)}
+                      </span>
+                    ) : (
+                      <User className="w-4 h-4" />
+                    )
+                  ) : (
+                    <span className="text-xs font-semibold text-[var(--color-text)]">G</span>
+                  )}
                 </div>
-                <span className="text-sm font-medium text-[var(--color-text)] hidden sm:inline">
-                  {googleUser ? 'Google' : 'Guest'}
-                </span>
               </button>
               {userMenuOpen && (
                 <div

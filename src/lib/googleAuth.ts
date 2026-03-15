@@ -37,8 +37,9 @@ export function logoutGoogle(): void {
   sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
 }
 
-/** Decode id_token JWT and return Google user id (sub). Used for per-user sync path. */
-export function getGoogleUserId(): string | null {
+type GoogleTokenPayload = { sub?: string; email?: string; picture?: string };
+
+function decodeIdTokenPayload(): GoogleTokenPayload | null {
   if (typeof window === 'undefined') return null;
   const token = sessionStorage.getItem(AUTH_ID_TOKEN_KEY);
   if (!token) return null;
@@ -49,9 +50,29 @@ export function getGoogleUserId(): string | null {
     const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
     const json = atob(padded);
-    const payload = JSON.parse(json) as { sub?: string };
-    return payload?.sub ?? null;
+    return JSON.parse(json) as GoogleTokenPayload;
   } catch {
     return null;
   }
+}
+
+/** Decode id_token JWT and return Google user id (sub). Used for per-user sync path. */
+export function getGoogleUserId(): string | null {
+  const payload = decodeIdTokenPayload();
+  return payload?.sub ?? null;
+}
+
+/** Decode id_token and return picture + email for avatar/initial. */
+export function getGoogleUserInfo(): { picture?: string; email?: string } {
+  const payload = decodeIdTokenPayload();
+  if (!payload) return {};
+  return { picture: payload.picture, email: payload.email };
+}
+
+/** สร้างตัวอักษร 2 ตัวจาก email สำหรับใช้เป็น initial (เช่น chittawan.ris@gmail.com → CH). */
+export function emailInitials(email: string): string {
+  const s = (email || '').trim();
+  if (s.length >= 2) return s.slice(0, 2).toUpperCase();
+  if (s.length === 1) return s.toUpperCase();
+  return '?';
 }
