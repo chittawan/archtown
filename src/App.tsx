@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from './components/layout/AppLayout';
 import LandingPage from './pages/home/landing';
+import AuthCallbackPage from './pages/auth/callback';
 import ProjectManagePage from './pages/project/manage';
 import LoginPage from './pages/home/login';
 import CapabilityManagePage from './pages/capability/manage';
@@ -15,6 +16,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<AppLayout />}>
           <Route path="/project" element={<ProjectManagePage />} />
           <Route path="/teams" element={<TeamsManagePage />} />

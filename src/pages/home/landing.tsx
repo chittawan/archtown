@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { LayoutDashboard, ArrowRight, Upload } from 'lucide-react';
 import { importYamlFiles } from '../../db/importYaml';
 
@@ -54,28 +55,70 @@ export default function LandingPage() {
       />
       <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-[var(--color-overlay)] to-transparent pointer-events-none" />
 
-      <div className="relative z-10 text-center max-w-xl mx-auto">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[var(--color-primary)] text-white mb-8 shadow-[var(--shadow-modal)]">
-          <LayoutDashboard className="w-8 h-8" />
+      <div className="relative z-10 w-full max-w-[400px] mx-auto">
+        {/* Hero */}
+        <div className="text-center mb-10">
+          <div
+            className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--color-primary)] text-white mb-6"
+            style={{ boxShadow: 'var(--shadow-modal)' }}
+          >
+            <LayoutDashboard className="w-7 h-7" strokeWidth={2} />
+          </div>
+          <h1 className="text-3xl font-semibold text-[var(--color-text)] tracking-tight">
+            ArchTown
+          </h1>
+          <p className="mt-2 text-[var(--color-text-muted)] text-base leading-relaxed">
+            จัดการโปรเจกต์และความสามารถ
+          </p>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-semibold text-[var(--color-text)] tracking-tight">
-          ArchTown
-        </h1>
-        <p className="mt-3 text-[var(--color-text-muted)] text-lg">
-          จัดการโปรเจกต์และความสามารถ — เข้าระบบเพื่อเริ่มต้น
-        </p>
 
-        <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-3">
+        {/* Primary: Google Sign-in card */}
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[var(--shadow-card)]">
+          <p className="text-center text-sm font-medium text-[var(--color-text-muted)] mb-4">
+            เข้าสู่ระบบเพื่อบันทึกและ sync ข้อมูล
+          </p>
+          <div className="flex justify-center [&>div]:!min-w-0">
+            <GoogleLogin
+              onSuccess={(credentialResponse) => {
+                console.log(credentialResponse);
+                window.location.href = '/capability';
+              }}
+              onError={() => {
+                console.log('Login Failed');
+              }}
+              theme="outline"
+              size="large"
+              text="signin_with"
+              shape="rectangular"
+              width="100%"
+              containerProps={{
+                className: 'w-full max-w-[280px] mx-auto',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="flex items-center gap-4 my-6">
+          <span className="flex-1 h-px bg-[var(--color-border)]" />
+          <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
+            หรือ
+          </span>
+          <span className="flex-1 h-px bg-[var(--color-border)]" />
+        </div>
+
+        {/* Secondary actions */}
+        <div className="flex flex-col gap-3">
           <Link
             to="/capability"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-hover)] transition-colors shadow-[var(--shadow-card)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)]"
+            className="group flex items-center justify-center gap-2.5 w-full py-3.5 px-4 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-overlay)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)] transition-all duration-200"
           >
-            เข้าระบบ
-            <ArrowRight className="w-5 h-5" />
+            <span>เข้าระบบโดยไม่ล็อกอิน</span>
+            <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
           </Link>
-          <label className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium cursor-pointer hover:bg-[var(--color-overlay)] transition-colors">
-            <Upload className="w-5 h-5" />
-            {importing ? 'กำลังนำเข้า...' : 'นำเข้าจาก YAML'}
+          <label className="flex items-center justify-center gap-2.5 w-full py-3.5 px-4 rounded-xl border-2 border-dashed border-[var(--color-border)] bg-transparent text-[var(--color-text-muted)] font-medium cursor-pointer hover:border-[var(--color-primary)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] focus-within:ring-2 focus-within:ring-[var(--color-primary)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--color-page)] transition-all duration-200">
+            <Upload className="w-4 h-4" />
+            <span>{importing ? 'กำลังนำเข้า...' : 'นำเข้าจาก YAML'}</span>
             <input
               ref={fileInputRef}
               type="file"
@@ -89,7 +132,7 @@ export default function LandingPage() {
         </div>
 
         {importResult && (
-          <div className="mt-6 p-4 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-left text-sm">
+          <div className="mt-6 p-4 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-left text-sm shadow-[var(--shadow-card)]">
             <p className="font-medium text-[var(--color-text)]">ผลการนำเข้า</p>
             <p className="mt-1 text-[var(--color-text-muted)]">
               โปรเจกต์ {importResult.projects} · ทีม {importResult.teams} · กลุ่มความสามารถ {importResult.caps}
@@ -111,9 +154,6 @@ export default function LandingPage() {
           </div>
         )}
 
-        <p className="mt-8 text-sm text-[var(--color-text-subtle)]">
-          หน้า Login กำลังพัฒนา (Coming soon)
-        </p>
       </div>
     </div>
   );
