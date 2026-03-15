@@ -3,6 +3,18 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 const AUTH_CODE_KEY = 'archtown_oauth_code';
+const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
+const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
+
+function parseHashParams(hash: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const stripped = hash.startsWith('#') ? hash.slice(1) : hash;
+  stripped.split('&').forEach((pair) => {
+    const [key, value] = pair.split('=');
+    if (key && value) params[decodeURIComponent(key)] = decodeURIComponent(value);
+  });
+  return params;
+}
 
 export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -10,6 +22,39 @@ export default function AuthCallbackPage() {
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   useEffect(() => {
+    // Implicit flow: id_token and optional error in hash
+    const hash = window.location.hash;
+    if (hash) {
+      const params = parseHashParams(hash);
+      const hashError = params.error;
+      const hashErrorDescription = params.error_description || hashError;
+      const idToken = params.id_token;
+      const nonce = params.nonce;
+
+      if (hashError) {
+        setStatus('error');
+        setErrorMessage(hashErrorDescription || hashError);
+        return;
+      }
+
+      if (idToken) {
+        const storedNonce = sessionStorage.getItem(GOOGLE_OAUTH_NONCE_KEY);
+        if (storedNonce && nonce && storedNonce !== nonce) {
+          setStatus('error');
+          setErrorMessage('nonce ไม่ตรงกัน');
+          return;
+        }
+        sessionStorage.removeItem(GOOGLE_OAUTH_NONCE_KEY);
+        sessionStorage.setItem(AUTH_ID_TOKEN_KEY, idToken);
+        setStatus('success');
+        const t = setTimeout(() => {
+          window.location.href = '/capability';
+        }, 800);
+        return () => clearTimeout(t);
+      }
+    }
+
+    // Auth code flow: code and error in query
     const code = searchParams.get('code');
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description') || '';
@@ -84,6 +129,11 @@ export default function AuthCallbackPage() {
             <p className="mt-2 text-[var(--color-text-muted)]">
               {errorMessage}
             </p>
+            <div className="mt-4 p-3 rounded-lg bg-[var(--color-overlay)] text-xs text-left w-full max-w-md">
+              <p className="font-medium text-[var(--color-text)] mb-2">สิ่งที่ได้รับจาก Google (สำหรับตรวจสอบ):</p>
+              <p><strong>Hash:</strong> <code className="break-all text-[0.65rem]">{window.location.hash || '(ว่าง)'}</code></p>
+              <p className="mt-1"><strong>Query:</strong> <code className="break-all text-[0.65rem]">{window.location.search || '(ว่าง)'}</code></p>
+            </div>
             <Link
               to="/"
               className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-hover)] transition-colors"
