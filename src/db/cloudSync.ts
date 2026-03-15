@@ -209,3 +209,17 @@ export async function isSyncAvailable(): Promise<boolean> {
     return false;
   }
 }
+
+/** อ่านเวลาที่ sync ขึ้น Cloud ล่าสุด (สำหรับแสดงใน UI) */
+export function getLastSyncedAt(): { version: number; updated_at: string } | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(SYNC_LAST_UPLOADED_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { version?: number; updated_at?: string };
+    if (parsed.version == null || !parsed.updated_at) return null;
+    return { version: parsed.version, updated_at: parsed.updated_at };
+  } catch {
+    return null;
+  }
+}

@@ -52,13 +52,17 @@ export async function getProject(id: string) {
 export async function createProject(name: string) {
   await ensureIdbFallbackInitialized();
   const out = await projectRepository.createProject(name);
-  if (out.ok) schedulePersistIdbFallback();
+  if (out.ok) {
+    schedulePersistIdbFallback();
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('archtown-data-saved'));
+  }
   return out;
 }
 export async function saveProject(projectName: string, data: Parameters<typeof projectRepository.saveProject>[1]) {
   await ensureIdbFallbackInitialized();
   const out = await projectRepository.saveProject(projectName, data);
   schedulePersistIdbFallback();
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('archtown-data-saved'));
   return out;
 }
 
@@ -75,6 +79,7 @@ export async function saveTeam(id: string, data: Parameters<typeof orgTeamReposi
   await ensureIdbFallbackInitialized();
   const out = await orgTeamRepository.saveTeam(id, data);
   schedulePersistIdbFallback();
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('archtown-data-saved'));
   return out;
 }
 
@@ -87,6 +92,7 @@ export async function saveCapabilityLayout(layout: Parameters<typeof capabilityR
   await ensureIdbFallbackInitialized();
   const out = await capabilityRepository.saveCapabilityLayout(layout);
   schedulePersistIdbFallback();
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('archtown-data-saved'));
   return out;
 }
 export async function getCapabilitySummary(projectId?: string) {

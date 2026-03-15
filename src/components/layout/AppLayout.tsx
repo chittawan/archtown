@@ -10,6 +10,7 @@ import { isGoogleLoggedIn, logoutGoogle, redirectToGoogleLogin, getGoogleUserInf
 import { clearAppData } from '../../lib/clearAppData';
 import { exportForSync } from '../../db/sync';
 import { uploadToCloud, isSyncAvailable } from '../../db/cloudSync';
+import { scheduleSyncToCloud } from '../../db/cloudSyncScheduler';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
@@ -72,6 +73,12 @@ export default function AppLayout() {
 
   useEffect(() => {
     setGoogleUser(isGoogleLoggedIn());
+  }, []);
+
+  useEffect(() => {
+    const onDataSaved = () => scheduleSyncToCloud();
+    window.addEventListener('archtown-data-saved', onDataSaved);
+    return () => window.removeEventListener('archtown-data-saved', onDataSaved);
   }, []);
 
   useEffect(() => {

@@ -1,25 +1,34 @@
 import { useState, useRef, useEffect } from 'react';
-import { Cloud, CloudUpload, CloudDownload, Lock, Upload } from 'lucide-react';
-import { uploadToCloud, downloadFromCloud, restoreFromJsonFile, type CloudSyncFailure } from '../../db/cloudSync';
+import { Cloud, Upload, Download } from 'lucide-react';
+import { restoreFromJsonFile, getLastSyncedAt } from '../../db/cloudSync';
+import { exportForSync } from '../../db/sync';
+import { getAutoSyncEnabled, setAutoSyncEnabled, scheduleSyncToCloud } from '../../db/cloudSyncScheduler';
+import { isOpfsUsed } from '../../db/archtownDb';
 
 /**
- * ปุ่ม Sync กับ Cloud: อัปโหลด/ดาวน์โหลด backup เพื่อเปิดได้ทุกที่
- * + Restore from JSON (อัปโหลดจากไฟล์ backup.json)
- * รองรับการเข้ารหัสด้วยรหัสผ่าน (เก็บเฉพาะในหน่วยความจำ)
+ * เมนู Backup & Sync: ดาวน์โหลด/นำเข้าจากไฟล์ + Auto sync ขึ้น Cloud (เมื่อใช้ OPFS)
  */
-type ConflictInfo = { remoteVersion: number; remoteUpdatedAt: string | null };
+function formatLastSynced(updated_at: string): string {
+  try {
+    const d = new Date(updated_at);
+    return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return updated_at;
+  }
+}
 
 export function CloudSync() {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState<'upload' | 'download' | 'restore' | null>(null);
+  const [loading, setLoading] = useState<'restore' | 'export' | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
-  const [conflict, setConflict] = useState<ConflictInfo | null>(null);
-  const [syncPassword, setSyncPassword] = useState('');
+  const [autoSync, setAutoSync] = useState(getAutoSyncEnabled);
+  const [lastSynced, setLastSynced] = useState<{ version: number; updated_at: string } | null>(() => getLastSyncedAt());
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    setLastSynced(getLastSyncedAt());
     const onOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
     };
@@ -27,49 +36,39 @@ export function CloudSync() {
     return () => document.removeEventListener('click', onOutside);
   }, [open]);
 
-  const handleUpload = async (force = false) => {
-    setLoading('upload');
+  useEffect(() => {
+    const onSkipped = (e: Event) => {
+      const ev = e as CustomEvent<{ message?: string }>;
+      setMessage({ type: 'error', text: ev.detail?.message ?? 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปโหลด' });
+      setTimeout(() => setMessage(null), 4000);
+    };
+    window.addEventListener('cloud-sync-skipped-conflict', onSkipped);
+    return () => window.removeEventListener('cloud-sync-skipped-conflict', onSkipped);
+  }, []);
+
+  const handleAutoSyncChange = (enabled: boolean) => {
+    setAutoSyncEnabled(enabled);
+    setAutoSync(enabled);
+    if (enabled) scheduleSyncToCloud();
+  };
+
+  const handleDownloadBackupJson = async () => {
+    setLoading('export');
     setMessage(null);
-    setConflict(null);
-    const result = await uploadToCloud(force, syncPassword || undefined);
-    setLoading(null);
-    if (result.ok) {
-      setMessage({ type: 'ok', text: 'อัปโหลดไป Cloud แล้ว' });
+    try {
+      const blob = await exportForSync();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'backup.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage({ type: 'ok', text: 'ดาวน์โหลด backup.json แล้ว' });
       setTimeout(() => setMessage(null), 2500);
-    } else {
-      const err = result as CloudSyncFailure;
-      if (err.conflict && err.remoteVersion != null) {
-        setConflict({
-          remoteVersion: err.remoteVersion,
-          remoteUpdatedAt: err.remoteUpdatedAt ?? null,
-        });
-      } else {
-        setMessage({ type: 'error', text: err.error });
-      }
-    }
-  };
-
-  const handleOverwrite = async () => {
-    await handleUpload(true);
-    setConflict(null);
-  };
-
-  const handleDownload = async () => {
-    setLoading('download');
-    setMessage(null);
-    const result = await downloadFromCloud(syncPassword || undefined);
-    setLoading(null);
-    if (result.ok) {
-      setMessage({ type: 'ok', text: 'Restore จาก Cloud แล้ว — กำลังรีเฟรช' });
-      window.dispatchEvent(new CustomEvent('capability-refresh'));
-      window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: {} }));
-      setTimeout(() => {
-        setMessage(null);
-        window.location.reload();
-      }, 1200);
-    } else {
-      const err = result as CloudSyncFailure;
-      setMessage({ type: 'error', text: err.error });
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'ส่งออกไม่สำเร็จ' });
+    } finally {
+      setLoading(null);
     }
   };
 
@@ -86,7 +85,7 @@ export function CloudSync() {
     setMessage(null);
     try {
       const buffer = await file.arrayBuffer();
-      const result = await restoreFromJsonFile(buffer, syncPassword || undefined);
+      const result = await restoreFromJsonFile(buffer);
       setLoading(null);
       if (result.ok) {
         setMessage({ type: 'ok', text: 'Restore จากไฟล์ JSON แล้ว — กำลังรีเฟรช' });
@@ -112,47 +111,44 @@ export function CloudSync() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-lg p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
-        title="Sync กับ Cloud — เปิดได้ทุกที่"
-        aria-label="Cloud Sync"
+        title="Backup & Sync"
+        aria-label="Backup & Sync"
       >
         <Cloud className="w-5 h-5" />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 py-1 w-56 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-modal)] z-50">
           <p className="px-3 py-2 text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-            Sync กับ Cloud — เปิดได้ทุกที่
+            Backup & Sync
           </p>
-          <div className="px-3 py-2 border-b border-[var(--color-border)]">
-            <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] mb-1">
-              <Lock className="w-3.5 h-3.5" />
-              รหัสผ่าน (ถ้าต้องการเข้ารหัส backup)
-            </label>
-            <input
-              type="password"
-              value={syncPassword}
-              onChange={(e) => setSyncPassword(e.target.value)}
-              placeholder="เว้นว่าง = ไม่เข้ารหัส"
-              className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50"
-              autoComplete="off"
-            />
-          </div>
+          {isOpfsUsed() && (
+            <div className="px-3 py-2 border-b border-[var(--color-border)] flex items-center justify-between gap-2">
+              <span className="text-xs text-[var(--color-text-muted)]">Sync ขึ้น Cloud อัตโนมัติ</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoSync}
+                onClick={() => handleAutoSyncChange(!autoSync)}
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border border-[var(--color-border)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 ${
+                  autoSync ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-bg)]'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition translate-x-0.5 mt-0.5 ${
+                    autoSync ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => handleUpload()}
+            onClick={handleDownloadBackupJson}
             disabled={!!loading}
             className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] disabled:opacity-50"
           >
-            <CloudUpload className="w-4 h-4 shrink-0" />
-            {loading === 'upload' ? 'กำลังอัปโหลด...' : 'อัปโหลดไป Cloud'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={!!loading}
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] disabled:opacity-50"
-          >
-            <CloudDownload className="w-4 h-4 shrink-0" />
-            {loading === 'download' ? 'กำลังดาวน์โหลด...' : 'Restore จาก Cloud'}
+            <Download className="w-4 h-4 shrink-0" />
+            {loading === 'export' ? 'กำลังส่งออก...' : 'ดาวน์โหลด backup.json'}
           </button>
           <input
             ref={fileInputRef}
@@ -169,31 +165,12 @@ export function CloudSync() {
             className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] disabled:opacity-50 border-t border-[var(--color-border)]"
           >
             <Upload className="w-4 h-4 shrink-0" />
-            {loading === 'restore' ? 'กำลัง Restore...' : 'Upload from JSON (Restore จาก backup.json)'}
+            {loading === 'restore' ? 'กำลังนำเข้า...' : 'นำเข้าจากไฟล์ backup.json'}
           </button>
-          {conflict && (
-            <div className="px-3 py-2 border-t border-[var(--color-border)] space-y-2">
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                Cloud มีข้อมูลใหม่กว่า ต้องการเขียนทับหรือไม่?
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleOverwrite}
-                  disabled={!!loading}
-                  className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/30 disabled:opacity-50"
-                >
-                  เขียนทับ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConflict(null)}
-                  className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-overlay)]"
-                >
-                  ยกเลิก
-                </button>
-              </div>
-            </div>
+          {lastSynced && (
+            <p className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] border-t border-[var(--color-border)]">
+              Sync ขึ้น Cloud ล่าสุด: {formatLastSynced(lastSynced.updated_at)}
+            </p>
           )}
           {message && (
             <p
