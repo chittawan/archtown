@@ -3,11 +3,10 @@ import { Database } from 'lucide-react';
 import { getDbStatus } from '../../db/archtownDb';
 
 /**
- * แถบแสดงสถานะ DB: ใช้ OPFS (เก็บถาวร) หรือหน่วยความจำ (รีเฟรชแล้วหาย) และจำนวนโปรเจกต์
- * ใช้ตรวจสอบว่าเปิดแอปแล้วมีข้อมูลหรือยัง และ save ทำงานหรือไม่
+ * แถบแสดงสถานะ DB: OPFS (เก็บถาวร), IndexedDB (เก็บถาวร) หรือหน่วยความจำ (รีเฟรชแล้วหาย) และจำนวนโปรเจกต์
  */
 export function DbStatusBar() {
-  const [status, setStatus] = useState<{ opfsUsed: boolean; projectCount: number } | null>(null);
+  const [status, setStatus] = useState<{ opfsUsed: boolean; idbFallback: boolean; projectCount: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = () => {
@@ -55,10 +54,16 @@ export function DbStatusBar() {
     );
   }
 
-  const storageLabel = status.opfsUsed ? 'OPFS (เก็บถาวร)' : 'หน่วยความจำ (รีเฟรชแล้วหาย)';
+  const storageLabel = status.opfsUsed
+    ? 'OPFS (เก็บถาวร)'
+    : status.idbFallback
+      ? 'IndexedDB (เก็บถาวร)'
+      : 'หน่วยความจำ (รีเฟรชแล้วหาย)';
   const title = status.opfsUsed
     ? 'ข้อมูลเก็บใน OPFS — บันทึกแล้วอยู่ถาวร'
-    : 'เบราว์เซอร์ไม่รองรับ OPFS — ข้อมูลอยู่ในหน่วยความจำ จะหายเมื่อรีเฟรช ใช้ "นำเข้าจาก YAML" ที่หน้าแรกเพื่อโหลดข้อมูล';
+    : status.idbFallback
+      ? 'ข้อมูลเก็บใน IndexedDB — บันทึกแล้วอยู่ถาวร (fallback เมื่อไม่มี OPFS)'
+      : 'เบราว์เซอร์ไม่รองรับ OPFS — ข้อมูลอยู่ในหน่วยความจำ จะหายเมื่อรีเฟรช';
 
   return (
     <span

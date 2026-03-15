@@ -1,0 +1,13 @@
+# รัน ArchTown บน Docker
+# ดูรายละเอียด SQLite / หน่วยความจำ (รีเฟรชแล้วหาย): docs/DOCKER_AND_SQLITE.md
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+    volumes:
+      # ให้ Cloud Sync backup อยู่ถาวรในโฮสต์ (data/sync/<userId>/backup.json)
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=80

@@ -25,6 +25,15 @@ function getSyncBackupPath(userId: string): string {
 }
 
 const app = express();
+
+// OPFS (SQLite WASM) ต้องใช้ SharedArrayBuffer — ต้องส่ง COOP/COEP เพื่อให้เบราว์เซอร์เปิดใช้ได้
+// ถ้าไม่มี header เหล่านี้ รัน Docker (หรือ production) จะได้แค่ IndexedDB fallback แทน OPFS
+app.use((_req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 // --- Cloud Sync API (เก็บ/ดึง backup ต่อ user: data/sync/{googleId}/backup.json) ---

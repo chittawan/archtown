@@ -1,38 +1,117 @@
 /**
  * ArchTown SQLite WASM — public API for frontend.
  * Delegates to repositories (layer แยกตาม table) และ client (connection).
- * หน้า frontend เรียก archtownDb.* หรือ import จาก repositories โดยตรง
+ * เมื่อไม่ใช้ OPFS จะ fallback เก็บใน IndexedDB (sync payload) เพื่อให้รีเฟรชแล้วข้อมูลไม่หาย
  */
 import * as client from './client';
+import { loadSyncPayloadFromIndexedDB, saveSyncPayloadToIndexedDB } from './storage';
 import * as projectRepository from './repositories/project.repository';
 import * as orgTeamRepository from './repositories/org_team.repository';
 import * as capabilityRepository from './repositories/capability.repository';
 
+let idbFallbackLoaded = false;
+let persistIdbTimer: ReturnType<typeof setTimeout> | null = null;
+const PERSIST_DEBOUNCE_MS = 1500;
+
+/** เมื่อไม่ใช้ OPFS โหลดข้อมูลจาก IndexedDB (ครั้งเดียวต่อ session) */
+async function ensureIdbFallbackInitialized(): Promise<void> {
+  if (client.isOpfsUsed()) return;
+  if (idbFallbackLoaded) return;
+  await client.ensureDb();
+  const payload = await loadSyncPayloadFromIndexedDB();
+  if (payload?.tables && Object.keys(payload.tables).length > 0) {
+    await importAllTables(payload as SyncExportPayload);
+  }
+  idbFallbackLoaded = true;
+}
+
+/** บันทึก snapshot ลง IndexedDB (debounced) เมื่อไม่ใช้ OPFS */
+function schedulePersistIdbFallback(): void {
+  if (client.isOpfsUsed()) return;
+  if (persistIdbTimer) clearTimeout(persistIdbTimer);
+  persistIdbTimer = setTimeout(async () => {
+    persistIdbTimer = null;
+    try {
+      const payload = await exportAllTables();
+      await saveSyncPayloadToIndexedDB(payload);
+    } catch (_) {
+      // ignore
+    }
+  }, PERSIST_DEBOUNCE_MS);
+}
+
 // --- Projects (ผ่าน project.repository → table repos) ---
-export const listProjects = projectRepository.listProjects;
-export const getProject = projectRepository.getProject;
-export const createProject = projectRepository.createProject;
-export const saveProject = projectRepository.saveProject;
+export async function listProjects() {
+  await ensureIdbFallbackInitialized();
+  return projectRepository.listProjects();
+}
+export async function getProject(id: string) {
+  await ensureIdbFallbackInitialized();
+  return projectRepository.getProject(id);
+}
+export async function createProject(name: string) {
+  await ensureIdbFallbackInitialized();
+  const out = await projectRepository.createProject(name);
+  if (out.ok) schedulePersistIdbFallback();
+  return out;
+}
+export async function saveProject(projectName: string, data: Parameters<typeof projectRepository.saveProject>[1]) {
+  await ensureIdbFallbackInitialized();
+  const out = await projectRepository.saveProject(projectName, data);
+  schedulePersistIdbFallback();
+  return out;
+}
 
 // --- Teams (ผ่าน org_team.repository) ---
-export const listTeamIds = orgTeamRepository.listTeamIds;
-export const getTeam = orgTeamRepository.getTeam;
-export const saveTeam = orgTeamRepository.saveTeam;
+export async function listTeamIds() {
+  await ensureIdbFallbackInitialized();
+  return orgTeamRepository.listTeamIds();
+}
+export async function getTeam(id: string) {
+  await ensureIdbFallbackInitialized();
+  return orgTeamRepository.getTeam(id);
+}
+export async function saveTeam(id: string, data: Parameters<typeof orgTeamRepository.saveTeam>[1]) {
+  await ensureIdbFallbackInitialized();
+  const out = await orgTeamRepository.saveTeam(id, data);
+  schedulePersistIdbFallback();
+  return out;
+}
 
 // --- Capability (ผ่าน capability.repository) ---
-export const getCapabilityLayout = capabilityRepository.getCapabilityLayout;
-export const saveCapabilityLayout = capabilityRepository.saveCapabilityLayout;
-export const getCapabilitySummary = capabilityRepository.getCapabilitySummary;
+export async function getCapabilityLayout() {
+  await ensureIdbFallbackInitialized();
+  return capabilityRepository.getCapabilityLayout();
+}
+export async function saveCapabilityLayout(layout: Parameters<typeof capabilityRepository.saveCapabilityLayout>[0]) {
+  await ensureIdbFallbackInitialized();
+  const out = await capabilityRepository.saveCapabilityLayout(layout);
+  schedulePersistIdbFallback();
+  return out;
+}
+export async function getCapabilitySummary(projectId?: string) {
+  await ensureIdbFallbackInitialized();
+  return capabilityRepository.getCapabilitySummary(projectId);
+}
 
 // --- DB status ---
 export const isOpfsUsed = client.isOpfsUsed;
 
-export async function getDbStatus(): Promise<{ opfsUsed: boolean; projectCount: number }> {
+export async function getDbStatus(): Promise<{ opfsUsed: boolean; idbFallback: boolean; projectCount: number }> {
+  await ensureIdbFallbackInitialized();
   try {
     const { projects } = await projectRepository.listProjects();
-    return { opfsUsed: client.isOpfsUsed(), projectCount: projects?.length ?? 0 };
+    return {
+      opfsUsed: client.isOpfsUsed(),
+      idbFallback: !client.isOpfsUsed(),
+      projectCount: projects?.length ?? 0,
+    };
   } catch {
-    return { opfsUsed: client.isOpfsUsed(), projectCount: 0 };
+    return {
+      opfsUsed: client.isOpfsUsed(),
+      idbFallback: !client.isOpfsUsed(),
+      projectCount: 0,
+    };
   }
 }
 
@@ -76,7 +155,7 @@ function getNextSyncVersion(): { version: number; updated_at: string } {
 }
 
 export async function exportAllTables(): Promise<SyncExportPayload> {
-  await client.ensureDb();
+  await ensureIdbFallbackInitialized();
   const tables: Record<string, Record<string, unknown>[]> = {};
   for (const table of SYNC_TABLES_EXPORT_ORDER) {
     const { resultRows } = await client.exec<Record<string, unknown>>(`SELECT * FROM ${table}`);
