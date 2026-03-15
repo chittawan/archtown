@@ -355,7 +355,7 @@ export function SortableSubTopicCard({
                   return (
                     <div
                       key={index}
-                      className={`group flex items-start gap-2 pl-2.5 py-1.5 ${statusStyle.row}`}
+                      className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                     >
                       <button
                         type="button"
@@ -374,7 +374,7 @@ export function SortableSubTopicCard({
                         <div className="flex items-center gap-2 min-h-[30px]">
                           <span
                             className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                              itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
+                              itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-slate-800 dark:!text-slate-100'
                             }`}
                           >
                             {index + 1}.
@@ -398,10 +398,10 @@ export function SortableSubTopicCard({
                             placeholder={`Task ${index + 1}`}
                             className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                               isDone(item)
-                                ? 'line-through text-[var(--color-text-subtle)] dark:!text-emerald-100'
+                                ? 'line-through !text-slate-500 dark:!text-emerald-100'
                                 : itemStatus === 'doing'
-                                  ? 'text-[var(--color-text)] dark:!text-blue-100'
-                                  : 'text-[var(--color-text)] dark:!text-slate-100'
+                                  ? '!text-slate-800 dark:!text-blue-100'
+                                  : '!text-slate-800 dark:!text-slate-100'
                             }`}
                           />
                           <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
@@ -412,20 +412,15 @@ export function SortableSubTopicCard({
                                 onUpdateDetailDueDate(index, e.target.value || undefined)
                               }
                               title="Due date"
-                              className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                              className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
                                 isOverdueAndNotDone(item.dueDate, isDone(item))
-                                  ? 'border-red-500 text-red-500 dark:text-red-400 focus:ring-red-500 dark:focus:ring-red-400'
+                                  ? 'border-red-500 !text-red-500 dark:!text-red-400 focus:ring-red-500 dark:focus:ring-red-400'
                                   : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
                               }`}
                             />
                             {getDaysLeft(item.dueDate) && (
                               <span
-                                className={`whitespace-nowrap ${
-                                  isOverdue(item.dueDate)
-                                    ? ''
-                                    : 'text-emerald-600 dark:text-slate-300'
-                                }`}
-                                style={isOverdue(item.dueDate) ? { color: 'rgba(165, 0, 54, 1)' } : undefined}
+                                className={`whitespace-nowrap ${isOverdue(item.dueDate) ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-[var(--color-text)]'}`}
                               >
                                 {getDaysLeft(item.dueDate)}
                               </span>
@@ -448,13 +443,13 @@ export function SortableSubTopicCard({
                             }}
                             placeholder="Memo / Note..."
                             title="Note"
-                            className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-muted)] dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-[var(--color-text-subtle)]"
+                            className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                           />
                         ) : (
                           <button
                             type="button"
                             onClick={() => setOpenNoteIndex(index)}
-                            className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
+                            className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
                             title="เพิ่ม memo / note"
                           >
                             <FileText className="w-3.5 h-3.5" />
@@ -486,7 +481,7 @@ export function SortableSubTopicCard({
               <div className="space-y-1.5">
                 {details.length > 0 && (
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-medium text-[var(--color-text-subtle)] dark:!text-slate-200 uppercase tracking-wide">
+                    <span className="text-[10px] font-medium text-slate-600 dark:!text-slate-200 uppercase tracking-wide">
                       รายการติดตาม ({details.length})
                     </span>
                     {details.map((item, index) => {
@@ -495,14 +490,14 @@ export function SortableSubTopicCard({
                       return (
                         <div
                           key={index}
-                          className={`group flex items-start gap-2 pl-2.5 py-1.5 ${statusStyle.row}`}
+                          className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                         >
                           <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                             {/* บรรทัดเดียว: หัวข้อ + ชื่อรายการ + สถานะ + วันที่ */}
                             <div className="flex items-center gap-2 min-h-[30px]">
                               <span
                                 className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                                  itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-[var(--color-text)] dark:!text-slate-100'
+                                  itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-slate-800 dark:!text-slate-100'
                                 }`}
                               >
                                 {index + 1}.
@@ -524,7 +519,7 @@ export function SortableSubTopicCard({
                                   }
                                 }}
                                 placeholder={`รายการ ${index + 1}`}
-                                className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text)] ${
+                                className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
                                   itemStatus === 'done' ? 'dark:!text-emerald-100' : itemStatus === 'doing' ? 'dark:!text-blue-100' : 'dark:!text-slate-100'
                                 }`}
                               />
@@ -546,20 +541,15 @@ export function SortableSubTopicCard({
                                     onUpdateDetailDueDate(index, e.target.value || undefined)
                                   }
                                   title="Due date"
-                                  className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                                  className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
                                     isOverdue(item.dueDate)
-                                      ? 'border-red-500 text-red-500 focus:ring-red-500 dark:text-red-400'
+                                      ? 'border-red-500 !text-red-500 focus:ring-red-500 dark:!text-red-400'
                                       : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
                                   }`}
                                 />
                                 {getDaysLeft(item.dueDate) && (
                                   <span
-                                    className={`whitespace-nowrap ${
-                                      isOverdue(item.dueDate)
-                                        ? ''
-                                        : 'text-emerald-600 dark:text-slate-300'
-                                    }`}
-                                    style={isOverdue(item.dueDate) ? { color: 'rgba(165, 0, 54, 1)' } : undefined}
+                                    className={`whitespace-nowrap ${isOverdue(item.dueDate) ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-[var(--color-text)]'}`}
                                   >
                                     {getDaysLeft(item.dueDate)}
                                   </span>
@@ -582,13 +572,13 @@ export function SortableSubTopicCard({
                                 }}
                                 placeholder="Memo / Note..."
                                 title="Note"
-                                className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-muted)] dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-[var(--color-text-subtle)]"
+                                className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                               />
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => setOpenNoteIndex(index)}
-                                className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
+                                className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
                                 title="เพิ่ม memo / note"
                               >
                                 <FileText className="w-3.5 h-3.5" />

@@ -59,6 +59,9 @@ export default function AppLayout() {
   });
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return false;
+    const stored = localStorage.getItem('theme');
+    if (stored === 'dark') return true;
+    if (stored === 'light') return false;
     return document.documentElement.classList.contains('dark');
   });
   const [componentSearchOpen, setComponentSearchOpen] = useState(false);

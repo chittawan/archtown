@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Use .dark class for dark mode so app theme toggle wins over OS prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Business Tone: Primary = deep forest/moss green from brand */
 @theme {
   /* Light (soft) */
@@ -13,12 +16,36 @@
   --color-border: #e5e3df;
   --color-border-strong: #d4d1cb;
   --color-text: #2c332f;
-  --color-text-muted: #5c6560;
-  --color-text-subtle: #8a928d;
+  --color-text-muted: #4a524d;
+  --color-text-subtle: #5e6661;
   --color-overlay: rgba(44, 74, 62, 0.08);
   --color-modal-backdrop: rgba(26, 29, 28, 0.4);
   --shadow-card: 0 1px 3px rgba(44, 74, 62, 0.06);
   --shadow-modal: 0 20px 40px rgba(44, 74, 62, 0.12);
+  --color-due-soon: #b45309;
+  --color-due-overdue: #dc2626;
+}
+
+/* Ensure light theme variables are on :root so var(--color-*) resolve in light mode */
+:root {
+  --color-primary: #2d4a3e;
+  --color-primary-hover: #3d5f50;
+  --color-primary-muted: #e8eeeb;
+  --color-primary-muted-hover: #dce5e0;
+  --color-page: #f5f4f2;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-border: #e5e3df;
+  --color-border-strong: #d4d1cb;
+  --color-text: #2c332f;
+  --color-text-muted: #4a524d;
+  --color-text-subtle: #5e6661;
+  --color-overlay: rgba(44, 74, 62, 0.08);
+  --color-modal-backdrop: rgba(26, 29, 28, 0.4);
+  --shadow-card: 0 1px 3px rgba(44, 74, 62, 0.06);
+  --shadow-modal: 0 20px 40px rgba(44, 74, 62, 0.12);
+  --color-due-soon: #b45309;
+  --color-due-overdue: #dc2626;
 }
 
 .dark {
@@ -38,6 +65,8 @@
   --color-modal-backdrop: rgba(0, 0, 0, 0.6);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.25);
   --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.4);
+  --color-due-soon: #cbd5e1;
+  --color-due-overdue: #f87171;
 }
 
 @layer base {

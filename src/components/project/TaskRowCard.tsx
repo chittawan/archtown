@@ -83,7 +83,7 @@ export function TaskRowCard({
   const [noteOpen, setNoteOpen] = useState(false);
 
   return (
-    <div className={`group flex items-start gap-2 pl-2.5 py-1.5 min-w-0 ${statusStyle.row}`}>
+    <div className={`group flex items-start gap-2 pl-2.5 py-1.5 min-w-0 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}>
       <div className="flex-1 min-w-0 flex flex-col gap-0.5 overflow-hidden">
         <div className="flex items-center gap-2 min-h-[30px] min-w-0">
           <span
@@ -92,7 +92,7 @@ export function TaskRowCard({
                 ? 'text-emerald-500 dark:!text-emerald-100'
                 : status === 'doing'
                   ? 'text-blue-400 dark:!text-blue-100'
-                  : 'text-[var(--color-text)] dark:!text-slate-100'
+                  : 'text-slate-800 dark:!text-slate-100'
             }`}
           >
             {index}.
@@ -102,7 +102,7 @@ export function TaskRowCard({
             value={text}
             onChange={(e) => onTextChange(e.target.value)}
             placeholder={`รายการ ${index}`}
-            className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text)] ${
+            className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
               status === 'done'
                 ? 'dark:!text-emerald-100'
                 : status === 'doing'
@@ -126,18 +126,15 @@ export function TaskRowCard({
               value={dueDate ?? ''}
               onChange={(e) => onDueDateChange(e.target.value || undefined)}
               title="Due date"
-              className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+              className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
                 isOverdue(dueDate)
-                  ? 'border-red-500 text-red-500 focus:ring-red-500 dark:text-red-400'
+                  ? 'border-red-500 !text-red-500 focus:ring-red-500 dark:!text-red-400'
                   : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
               }`}
             />
             {getDaysLeft(dueDate) && (
               <span
-                className={`whitespace-nowrap ${
-                  isOverdue(dueDate) ? '' : 'text-emerald-600 dark:text-slate-300'
-                }`}
-                style={isOverdue(dueDate) ? { color: 'rgba(165, 0, 54, 1)' } : undefined}
+                className={`whitespace-nowrap ${isOverdue(dueDate) ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-[var(--color-text)]'}`}
               >
                 {getDaysLeft(dueDate)}
               </span>
@@ -157,7 +154,7 @@ export function TaskRowCard({
                 if (!v) setNoteOpen(false);
               }}
               placeholder="Memo / Note... (รองรับหลายบรรทัด)"
-              className="w-full min-w-0 text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-[var(--color-text-muted)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-y min-h-[52px] whitespace-pre-wrap"
+              className="w-full min-w-0 text-[11px] bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1.5 text-slate-600 dark:text-[var(--color-text-muted)] placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-y min-h-[52px] whitespace-pre-wrap"
               title="Note (multiline)"
             />
           </div>
@@ -165,7 +162,7 @@ export function TaskRowCard({
           <button
             type="button"
             onClick={() => setNoteOpen(true)}
-            className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7 shrink-0"
+            className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7 shrink-0"
             title="เพิ่ม memo / note"
           >
             <FileText className="w-3.5 h-3.5" />
