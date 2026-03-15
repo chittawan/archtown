@@ -111,3 +111,15 @@ export async function importAllTables(payload: SyncExportPayload): Promise<void>
     }
   });
 }
+
+/** Clear all sync tables (for logout / user switch). Uses empty payload so all rows are deleted. */
+export async function clearAllTables(): Promise<void> {
+  const tables: Record<string, Record<string, unknown>[]> = {};
+  for (const table of SYNC_TABLES_EXPORT_ORDER) {
+    tables[table] = [];
+  }
+  await importAllTables({
+    schema_version: SYNC_SCHEMA_VERSION,
+    tables,
+  });
+}

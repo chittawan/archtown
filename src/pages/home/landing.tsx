@@ -2,28 +2,7 @@ import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutDashboard, ArrowRight, Upload } from 'lucide-react';
 import { importYamlFiles } from '../../db/importYaml';
-
-const GOOGLE_CLIENT_ID = '60952350427-4ofd51gm33p3dg0hfub8n1pqqk90grho.apps.googleusercontent.com';
-
-const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
-
-function buildGoogleRedirectUrl(clientId: string): string {
-  const redirectUri = `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback`;
-  const nonce = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  sessionStorage.setItem(GOOGLE_OAUTH_NONCE_KEY, nonce);
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'id_token',
-    scope: 'openid email profile',
-    nonce,
-  });
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-}
-
-function handleGoogleRedirectLogin(): void {
-  window.location.href = buildGoogleRedirectUrl(GOOGLE_CLIENT_ID);
-}
+import { redirectToGoogleLogin } from '../../lib/googleAuth';
 
 export default function LandingPage() {
   const [importResult, setImportResult] = useState<{ projects: number; teams: number; caps: number; capabilityOrder: boolean; errors: string[] } | null>(null);
@@ -100,7 +79,7 @@ export default function LandingPage() {
           </p>
           <button
             type="button"
-            onClick={handleGoogleRedirectLogin}
+            onClick={redirectToGoogleLogin}
             className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-overlay)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)] transition-all duration-200"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
@@ -111,14 +90,6 @@ export default function LandingPage() {
             </svg>
             <span>ลงชื่อเข้าใช้ด้วย Google</span>
           </button>
-          {(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV && typeof window !== 'undefined' && (
-            <div className="mt-3 p-2 rounded-lg bg-[var(--color-overlay)] text-xs text-[var(--color-text-muted)] text-left space-y-1">
-              <p className="font-medium text-[var(--color-text)]">ตรวจสอบค่า (สำหรับไล่สาเหตุ)</p>
-              <p><strong>Origin:</strong> <code className="break-all">{window.location.origin}</code></p>
-              <p><strong>Client ID:</strong> <code className="break-all text-[0.65rem]">{GOOGLE_CLIENT_ID}</code></p>
-              <p><strong>Redirect URI:</strong> <code className="break-all">{window.location.origin}/auth/callback</code></p>
-            </div>
-          )}
         </div>
 
         {/* Divider */}

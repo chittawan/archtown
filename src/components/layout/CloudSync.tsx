@@ -1,20 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import { Cloud, CloudUpload, CloudDownload, Lock } from 'lucide-react';
-import { uploadToCloud, downloadFromCloud, type CloudSyncFailure } from '../../db/cloudSync';
+import { Cloud, CloudUpload, CloudDownload, Lock, Upload } from 'lucide-react';
+import { uploadToCloud, downloadFromCloud, restoreFromJsonFile, type CloudSyncFailure } from '../../db/cloudSync';
 
 /**
  * ปุ่ม Sync กับ Cloud: อัปโหลด/ดาวน์โหลด backup เพื่อเปิดได้ทุกที่
+ * + Restore from JSON (อัปโหลดจากไฟล์ backup.json)
  * รองรับการเข้ารหัสด้วยรหัสผ่าน (เก็บเฉพาะในหน่วยความจำ)
  */
 type ConflictInfo = { remoteVersion: number; remoteUpdatedAt: string | null };
 
 export function CloudSync() {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState<'upload' | 'download' | null>(null);
+  const [loading, setLoading] = useState<'upload' | 'download' | 'restore' | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
   const [syncPassword, setSyncPassword] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +60,7 @@ export function CloudSync() {
     const result = await downloadFromCloud(syncPassword || undefined);
     setLoading(null);
     if (result.ok) {
-      setMessage({ type: 'ok', text: 'ดึงข้อมูลจาก Cloud แล้ว — กำลังรีเฟรช' });
+      setMessage({ type: 'ok', text: 'Restore จาก Cloud แล้ว — กำลังรีเฟรช' });
       window.dispatchEvent(new CustomEvent('capability-refresh'));
       window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: {} }));
       setTimeout(() => {
@@ -68,6 +70,39 @@ export function CloudSync() {
     } else {
       const err = result as CloudSyncFailure;
       setMessage({ type: 'error', text: err.error });
+    }
+  };
+
+  const handleRestoreFromJsonClick = () => {
+    setMessage(null);
+    fileInputRef.current?.click();
+  };
+
+  const handleRestoreFromJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setLoading('restore');
+    setMessage(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = await restoreFromJsonFile(buffer, syncPassword || undefined);
+      setLoading(null);
+      if (result.ok) {
+        setMessage({ type: 'ok', text: 'Restore จากไฟล์ JSON แล้ว — กำลังรีเฟรช' });
+        window.dispatchEvent(new CustomEvent('capability-refresh'));
+        window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: {} }));
+        setTimeout(() => {
+          setMessage(null);
+          window.location.reload();
+        }, 1200);
+      } else {
+        const err = result as CloudSyncFailure;
+        setMessage({ type: 'error', text: err.error });
+      }
+    } catch (err) {
+      setLoading(null);
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'อ่านไฟล์ไม่สำเร็จ' });
     }
   };
 
@@ -117,7 +152,24 @@ export function CloudSync() {
             className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] disabled:opacity-50"
           >
             <CloudDownload className="w-4 h-4 shrink-0" />
-            {loading === 'download' ? 'กำลังดาวน์โหลด...' : 'ดาวน์โหลดจาก Cloud'}
+            {loading === 'download' ? 'กำลังดาวน์โหลด...' : 'Restore จาก Cloud'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="sr-only"
+            aria-hidden
+            onChange={handleRestoreFromJsonFile}
+          />
+          <button
+            type="button"
+            onClick={handleRestoreFromJsonClick}
+            disabled={!!loading}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] disabled:opacity-50 border-t border-[var(--color-border)]"
+          >
+            <Upload className="w-4 h-4 shrink-0" />
+            {loading === 'restore' ? 'กำลัง Restore...' : 'Upload from JSON (Restore จาก backup.json)'}
           </button>
           {conflict && (
             <div className="px-3 py-2 border-t border-[var(--color-border)] space-y-2">

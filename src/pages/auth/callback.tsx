@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { ensureDb } from '../../db/client';
+import * as archtownDb from '../../db/archtownDb';
+import { isSyncAvailable, downloadFromCloud } from '../../db/cloudSync';
 
 const AUTH_CODE_KEY = 'archtown_oauth_code';
 const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
@@ -18,8 +21,11 @@ function parseHashParams(hash: string): Record<string, string> {
 
 export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'preparing' | 'success' | 'error'>('loading');
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const preparedRef = useRef(false);
 
   useEffect(() => {
     // Implicit flow: id_token and optional error in hash
@@ -46,11 +52,8 @@ export default function AuthCallbackPage() {
         }
         sessionStorage.removeItem(GOOGLE_OAUTH_NONCE_KEY);
         sessionStorage.setItem(AUTH_ID_TOKEN_KEY, idToken);
-        setStatus('success');
-        const t = setTimeout(() => {
-          window.location.href = '/capability';
-        }, 800);
-        return () => clearTimeout(t);
+        setStatus('preparing');
+        return;
       }
     }
 
@@ -67,16 +70,53 @@ export default function AuthCallbackPage() {
 
     if (code) {
       sessionStorage.setItem(AUTH_CODE_KEY, code);
-      setStatus('success');
-      const t = setTimeout(() => {
-        window.location.href = '/capability';
-      }, 800);
-      return () => clearTimeout(t);
+      setStatus('preparing');
+      return;
     }
 
     setStatus('error');
     setErrorMessage('ไม่พบ code หรือ error จาก Google');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (status !== 'preparing' || preparedRef.current) return;
+    preparedRef.current = true;
+
+    (async () => {
+      try {
+        setProgressLabel('กำลังเตรียมฐานข้อมูล...');
+        setProgress(10);
+        await ensureDb();
+        setProgress(25);
+
+        const syncOk = await isSyncAvailable();
+        if (syncOk) {
+          setProgressLabel('กำลัง Restore ข้อมูลล่าสุดจาก Cloud...');
+          const result = await downloadFromCloud();
+          if (result.ok) {
+            setProgress(50);
+          }
+          // ถ้าไม่ ok (404, เข้ารหัส ฯลฯ) ข้ามไปเตรียมข้อมูล local ต่อ
+        }
+        setProgressLabel('กำลังโหลดและเตรียมข้อมูล...');
+        setProgress(55);
+        await archtownDb.listProjects();
+        setProgress(75);
+        await archtownDb.getCapabilityLayout();
+        setProgress(100);
+        setProgressLabel('พร้อมแล้ว');
+        setStatus('success');
+        const t = setTimeout(() => {
+          window.location.href = '/capability';
+        }, 400);
+        return () => clearTimeout(t);
+      } catch {
+        setStatus('error');
+        setErrorMessage('โหลดข้อมูลไม่สำเร็จ');
+        preparedRef.current = false;
+      }
+    })();
+  }, [status]);
 
   return (
     <div className="min-h-screen bg-[var(--color-page)] text-[var(--color-text)] font-sans flex flex-col items-center justify-center px-4 relative overflow-hidden">
@@ -101,6 +141,31 @@ export default function AuthCallbackPage() {
             <p className="mt-2 text-[var(--color-text-muted)]">
               รอสักครู่
             </p>
+          </>
+        )}
+
+        {status === 'preparing' && (
+          <>
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[var(--color-primary)] text-white mb-6 shadow-[var(--shadow-modal)]">
+              <Loader2 className="w-8 h-8 animate-spin" />
+            </div>
+            <h1 className="text-xl font-semibold text-[var(--color-text)]">
+              กำลังโหลด
+            </h1>
+            <p className="mt-2 text-sm text-[var(--color-text-muted)] min-h-[1.25rem]">
+              {progressLabel || 'กำลังโหลดและเตรียมข้อมูล'}
+            </p>
+            <div className="mt-6 w-full max-w-[280px] mx-auto">
+              <div className="h-2 rounded-full bg-[var(--color-overlay)] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="mt-2 text-sm font-medium text-[var(--color-text-muted)]">
+                {progress}%
+              </p>
+            </div>
           </>
         )}
 

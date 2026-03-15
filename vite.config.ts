@@ -451,18 +451,29 @@ export default defineConfig(({mode}) => {
       {
         name: 'sync-api',
         configureServer(server) {
-          const SYNC_BACKUP_FILE = path.resolve(__dirname, 'data', 'sync', 'backup.json');
+          const SYNC_DIR = path.resolve(__dirname, 'data', 'sync');
+          function getSyncUserId(incomingReq: { url?: string; headers?: Record<string, string | string[] | undefined> }): string {
+            const raw = (incomingReq.headers?.['x-google-user-id'] as string) ||
+              (incomingReq.url?.includes('userId=') ? new URLSearchParams(incomingReq.url.slice(incomingReq.url.indexOf('?'))).get('userId') || '' : '');
+            const safe = String(raw).replace(/[^a-zA-Z0-9_.-]/g, '');
+            return safe || 'guest';
+          }
+          function getSyncBackupPath(userId: string) {
+            return path.join(SYNC_DIR, userId, 'backup.json');
+          }
           server.middlewares.use(async (req, res, next) => {
             const url = req.url?.split('?')[0] ?? '';
             if (url === '/api/sync/download' && req.method === 'GET') {
               try {
-                if (!fs.existsSync(SYNC_BACKUP_FILE)) {
+                const userId = getSyncUserId(req);
+                const backupFile = getSyncBackupPath(userId);
+                if (!fs.existsSync(backupFile)) {
                   res.statusCode = 404;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ error: 'ยังไม่มีข้อมูลบน Cloud' }));
                   return;
                 }
-                const json = fs.readFileSync(SYNC_BACKUP_FILE, 'utf-8');
+                const json = fs.readFileSync(backupFile, 'utf-8');
                 res.setHeader('Content-Type', 'application/json');
                 res.end(json);
               } catch (e) {
@@ -486,10 +497,12 @@ export default defineConfig(({mode}) => {
                     res.end(JSON.stringify({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' }));
                     return;
                   }
+                  const userId = getSyncUserId(req);
+                  const backupFile = getSyncBackupPath(userId);
                   const query = req.url?.includes('?') ? new URLSearchParams(req.url.slice(req.url.indexOf('?'))) : null;
                   const force = query?.get('force') === '1' || query?.get('force') === 'true' || payload.force === true;
-                  if (!force && fs.existsSync(SYNC_BACKUP_FILE)) {
-                    const existingJson = fs.readFileSync(SYNC_BACKUP_FILE, 'utf-8');
+                  if (!force && fs.existsSync(backupFile)) {
+                    const existingJson = fs.readFileSync(backupFile, 'utf-8');
                     let existing: { version?: number; updated_at?: string };
                     try {
                       existing = JSON.parse(existingJson);
@@ -511,9 +524,9 @@ export default defineConfig(({mode}) => {
                       return;
                     }
                   }
-                  fs.mkdirSync(path.dirname(SYNC_BACKUP_FILE), { recursive: true });
+                  fs.mkdirSync(path.dirname(backupFile), { recursive: true });
                   const { force: _f, ...payloadToWrite } = payload;
-                  fs.writeFileSync(SYNC_BACKUP_FILE, JSON.stringify(payloadToWrite), 'utf-8');
+                  fs.writeFileSync(backupFile, JSON.stringify(payloadToWrite), 'utf-8');
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ ok: true }));
                 } catch (e) {

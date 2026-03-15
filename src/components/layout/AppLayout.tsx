@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban, User, LogOut, CloudUpload, Download, Loader2 } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
 import { ComponentSearchModal } from './ComponentSearchModal.tsx';
 import { DbStatusBar } from './DbStatusBar.tsx';
 import { CloudSync } from './CloudSync.tsx';
+import { isGoogleLoggedIn, logoutGoogle, redirectToGoogleLogin } from '../../lib/googleAuth';
+import { clearAppData } from '../../lib/clearAppData';
+import { exportForSync } from '../../db/sync';
+import { uploadToCloud, isSyncAvailable } from '../../db/cloudSync';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
@@ -36,7 +40,33 @@ export default function AppLayout() {
     return document.documentElement.classList.contains('dark');
   });
   const [componentSearchOpen, setComponentSearchOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [googleUser, setGoogleUser] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [logoutBackingUp, setLogoutBackingUp] = useState(false);
+  const [syncAvailable, setSyncAvailable] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const cmdKChordRef = useRef(false);
+
+  useEffect(() => {
+    setGoogleUser(isGoogleLoggedIn());
+  }, []);
+
+  useEffect(() => {
+    if (!logoutModalOpen) return;
+    isSyncAvailable().then(setSyncAvailable);
+  }, [logoutModalOpen]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('click', onDocClick, true);
+    return () => document.removeEventListener('click', onDocClick, true);
+  }, [userMenuOpen]);
 
   /** Shortcut: ⌘K then S = Component Search; 1/2/3 = ไปหน้า capability/tasks/teams; C/D = project collapse/expand */
   useEffect(() => {
@@ -153,6 +183,67 @@ export default function AppLayout() {
           <div className="flex items-center gap-3">
             <DbStatusBar />
             <CloudSync />
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen((o) => !o)}
+                className="flex items-center gap-2 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
+                title={googleUser ? 'บัญชี Google' : 'Guest'}
+                aria-label={googleUser ? 'Google account menu' : 'Guest menu'}
+                aria-expanded={userMenuOpen}
+              >
+                <div className="w-8 h-8 rounded-full bg-[var(--color-overlay)] flex items-center justify-center border border-[var(--color-border)]">
+                  <User className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-medium text-[var(--color-text)] hidden sm:inline">
+                  {googleUser ? 'Google' : 'Guest'}
+                </span>
+              </button>
+              {userMenuOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 py-1 min-w-[180px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-modal)] z-50"
+                  role="menu"
+                >
+                  {googleUser ? (
+                    <>
+                      <div className="px-3 py-2 text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                        ลงชื่อเข้าใช้ด้วย Google แล้ว
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          setLogoutModalOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] text-left"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Logout
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="px-3 py-2 text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                        กำลังใช้เป็น Guest
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          redirectToGoogleLogin();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] text-left"
+                      >
+                        <User className="w-4 h-4" />
+                        Sync with Google
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setRightPanelOpen((o) => !o)}
@@ -254,6 +345,137 @@ export default function AppLayout() {
         open={componentSearchOpen}
         onClose={() => setComponentSearchOpen(false)}
       />
+
+      {logoutModalOpen && (
+        <LogoutBackupModal
+          syncAvailable={syncAvailable}
+          backingUp={logoutBackingUp}
+          setBackingUp={setLogoutBackingUp}
+          onClose={() => setLogoutModalOpen(false)}
+          onLogoutComplete={() => {
+            setGoogleUser(false);
+            setLogoutModalOpen(false);
+            setLogoutBackingUp(false);
+            // Reload หน้าเพื่อให้ Guest ไม่เห็นข้อมูลของ user ที่ logout แล้ว
+            window.location.href = '/';
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function LogoutBackupModal({
+  syncAvailable,
+  backingUp,
+  setBackingUp,
+  onClose,
+  onLogoutComplete,
+}: {
+  syncAvailable: boolean;
+  backingUp: boolean;
+  setBackingUp: (v: boolean) => void;
+  onClose: () => void;
+  onLogoutComplete: () => void;
+}) {
+  const runLogout = async () => {
+    await clearAppData();
+    logoutGoogle();
+    onLogoutComplete();
+  };
+
+  const handleUploadCloud = async () => {
+    setBackingUp(true);
+    try {
+      const result = await uploadToCloud();
+      if (result.ok) {
+        await runLogout();
+      } else {
+        setBackingUp(false);
+        alert('error' in result ? result.error : 'อัปโหลดไม่สำเร็จ');
+      }
+    } catch (e) {
+      setBackingUp(false);
+      alert(e instanceof Error ? e.message : 'อัปโหลดไม่สำเร็จ');
+    }
+  };
+
+  const handleDownloadFile = async () => {
+    setBackingUp(true);
+    try {
+      const blob = await exportForSync();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `archtown-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      await runLogout();
+    } catch (e) {
+      setBackingUp(false);
+      alert(e instanceof Error ? e.message : 'สำรองข้อมูลไม่สำเร็จ');
+    }
+  };
+
+  const handleSkip = async () => {
+    await runLogout();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" aria-modal role="dialog">
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-[var(--shadow-modal)] max-w-md w-full p-5">
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">
+          สำรองข้อมูลก่อนออกจากระบบ
+        </h2>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+          ต้องการสำรองข้อมูลก่อนล้างและออกจากระบบหรือไม่ (เผื่อมีการเปลี่ยน user)
+        </p>
+        {backingUp && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-[var(--color-primary)]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            กำลังสำรองข้อมูล...
+          </div>
+        )}
+        <div className="mt-4 flex flex-col gap-2">
+          {syncAvailable && (
+            <button
+              type="button"
+              disabled={backingUp}
+              onClick={handleUploadCloud}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium hover:bg-[var(--color-overlay)] disabled:opacity-50"
+            >
+              <CloudUpload className="w-4 h-4" />
+              อัปโหลดไป Cloud
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={backingUp}
+            onClick={handleDownloadFile}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium hover:bg-[var(--color-overlay)] disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            ดาวน์โหลดไฟล์ backup
+          </button>
+          <button
+            type="button"
+            disabled={backingUp}
+            onClick={handleSkip}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] font-medium hover:bg-[var(--color-overlay)] hover:text-[var(--color-text)] disabled:opacity-50"
+          >
+            <LogOut className="w-4 h-4" />
+            ข้ามและออก
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={backingUp}
+          className="mt-4 w-full py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50"
+        >
+          ยกเลิก
+        </button>
+      </div>
     </div>
   );
 }

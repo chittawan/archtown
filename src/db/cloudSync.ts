@@ -15,9 +15,15 @@ import {
   type EncryptedInnerPayload,
 } from './syncCrypto';
 import { exportForSync, importFromSync } from './sync';
+import { getGoogleUserId } from '../lib/googleAuth';
 
 const SYNC_UPLOAD_URL = '/api/sync/upload';
 const SYNC_DOWNLOAD_URL = '/api/sync/download';
+
+function getSyncHeaders(): Record<string, string> {
+  const userId = getGoogleUserId();
+  return { 'X-Google-User-Id': userId ?? 'guest' };
+}
 
 export type CloudSyncFailure = {
   ok: false;
@@ -60,7 +66,7 @@ export async function uploadToCloud(force = false, password?: string): Promise<C
     const url = force ? `${SYNC_UPLOAD_URL}?force=1` : SYNC_UPLOAD_URL;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getSyncHeaders() },
       body,
     });
     const data = (await res.json().catch(() => ({}))) as {
@@ -105,7 +111,7 @@ export async function uploadToCloud(force = false, password?: string): Promise<C
  */
 export async function downloadFromCloud(password?: string): Promise<CloudSyncResult> {
   try {
-    const res = await fetch(SYNC_DOWNLOAD_URL);
+    const res = await fetch(SYNC_DOWNLOAD_URL, { headers: getSyncHeaders() });
     if (res.status === 404) {
       return { ok: false, error: 'ยังไม่มีข้อมูลบน Cloud' };
     }
@@ -151,10 +157,53 @@ export async function downloadFromCloud(password?: string): Promise<CloudSyncRes
   }
 }
 
+/**
+ * Restore DB from a local JSON file (e.g. backup.json).
+ * รองรับทั้งไฟล์ธรรมดาและไฟล์ที่เข้ารหัส (ใส่รหัสผ่านถ้าเคยเข้ารหัสตอน export)
+ */
+export async function restoreFromJsonFile(buffer: ArrayBuffer, password?: string): Promise<CloudSyncResult> {
+  try {
+    const json = new TextDecoder().decode(buffer);
+    const payload = JSON.parse(json) as Record<string, unknown> & { version?: number; updated_at?: string };
+
+    if (isEncryptedPayload(payload)) {
+      if (password == null || password === '') {
+        return { ok: false, error: 'ต้องใส่รหัสผ่านเพื่อถอดรหัสข้อมูลจากไฟล์' };
+      }
+      try {
+        const decrypted = await decryptPayload(
+          base64ToArrayBuffer(payload.enc),
+          base64ToBytes(payload.iv),
+          password,
+          base64ToBytes(payload.salt)
+        );
+        const inner = JSON.parse(decrypted) as EncryptedInnerPayload;
+        const full = mergeDecryptedWithMeta(inner, payload.version as number | undefined, payload.updated_at as string | undefined);
+        await importAllTables(full);
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    } else {
+      await importFromSync(buffer);
+    }
+
+    try {
+      if (payload.version != null && payload.updated_at != null && typeof localStorage !== 'undefined') {
+        localStorage.setItem(SYNC_LAST_UPLOADED_KEY, JSON.stringify({ version: payload.version, updated_at: payload.updated_at }));
+      }
+    } catch {
+      /* ignore */
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** ตรวจว่า server รองรับ sync หรือไม่ (มี API) */
 export async function isSyncAvailable(): Promise<boolean> {
   try {
-    const res = await fetch(SYNC_DOWNLOAD_URL, { method: 'HEAD' });
+    const res = await fetch(SYNC_DOWNLOAD_URL, { method: 'HEAD', headers: getSyncHeaders() });
     return res.status === 200 || res.status === 404;
   } catch {
     return false;
