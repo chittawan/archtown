@@ -44,6 +44,75 @@ export async function listProjects(): Promise<{ projects: ProjectSummary[] }> {
   return { projects };
 }
 
+export type ProjectSearchContext = { teamName: string; topicTitle: string; subTopicTitle: string };
+
+export type ProjectForSearch = ProjectSummary & { context: ProjectSearchContext[] };
+
+/** List projects with topic/subtopic context for search (name, id, team/topic/subtopic titles). */
+export async function listProjectsForSearch(): Promise<{ projects: ProjectForSearch[] }> {
+  const { resultRows } = await client.exec<{
+    project_id: string;
+    project_name: string;
+    description: string | null;
+    summary_status: string | null;
+    team_name: string | null;
+    topic_title: string | null;
+    sub_title: string | null;
+  }>(`
+    SELECT p.id AS project_id, p.name AS project_name, p.description,
+           (SELECT s.status FROM project_sub_topics s
+            JOIN project_topics t ON t.id = s.topic_id
+            JOIN project_teams tm ON tm.id = t.team_id
+            WHERE tm.project_id = p.id
+            ORDER BY CASE s.status WHEN 'RED' THEN 3 WHEN 'YELLOW' THEN 2 ELSE 1 END DESC
+            LIMIT 1) AS summary_status,
+           tm.name AS team_name, t.title AS topic_title, s.title AS sub_title
+    FROM projects p
+    LEFT JOIN project_teams tm ON tm.project_id = p.id
+    LEFT JOIN project_topics t ON t.team_id = tm.id
+    LEFT JOIN project_sub_topics s ON s.topic_id = t.id
+    ORDER BY p.id, tm.sort_order, t.sort_order, s.sort_order
+  `);
+
+  const byId = new Map<
+    string,
+    { name: string; description: string | null; summaryStatus: ProjectSummary['summaryStatus']; context: ProjectSearchContext[] }
+  >();
+  for (const r of resultRows ?? []) {
+    const id = String(r.project_id ?? '');
+    if (!byId.has(id)) {
+      byId.set(id, {
+        name: String(r.project_name ?? r.project_id ?? ''),
+        description: r.description != null ? String(r.description) : null,
+        summaryStatus:
+          r.summary_status === 'RED' || r.summary_status === 'YELLOW' || r.summary_status === 'GREEN'
+            ? r.summary_status
+            : null,
+        context: [],
+      });
+    }
+    const rec = byId.get(id)!;
+    const teamName = r.team_name != null ? String(r.team_name).trim() : '';
+    const topicTitle = r.topic_title != null ? String(r.topic_title).trim() : '';
+    const subTitle = r.sub_title != null ? String(r.sub_title).trim() : '';
+    if (teamName || topicTitle || subTitle) {
+      const existing = rec.context.some(
+        (c) => c.teamName === teamName && c.topicTitle === topicTitle && c.subTopicTitle === subTitle
+      );
+      if (!existing) rec.context.push({ teamName, topicTitle, subTopicTitle: subTitle });
+    }
+  }
+
+  const projects: ProjectForSearch[] = Array.from(byId.entries()).map(([id, v]) => ({
+    id,
+    name: v.name,
+    description: v.description ?? undefined,
+    summaryStatus: v.summaryStatus,
+    context: v.context,
+  }));
+  return { projects };
+}
+
 export async function getProject(id: string): Promise<{ id: string; data: ProjectData } | null> {
   const safeId = sanitizeId(id) || 'project';
   const proj = await projectsTable.getById(safeId);

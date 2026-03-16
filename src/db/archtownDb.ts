@@ -45,6 +45,10 @@ export async function listProjects() {
   await ensureIdbFallbackInitialized();
   return projectRepository.listProjects();
 }
+export async function listProjectsForSearch() {
+  await ensureIdbFallbackInitialized();
+  return projectRepository.listProjectsForSearch();
+}
 export async function getProject(id: string) {
   await ensureIdbFallbackInitialized();
   return projectRepository.getProject(id);
