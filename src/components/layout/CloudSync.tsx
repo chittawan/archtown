@@ -1,6 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { Cloud, Upload, Download } from 'lucide-react';
-import { restoreFromJsonFile, getLastSyncedAt, uploadToCloud, isSyncAvailable, type CloudSyncFailure } from '../../db/cloudSync';
+import {
+  restoreFromJsonFile,
+  getLastSyncedAt,
+  uploadToCloud,
+  isSyncAvailable,
+  downloadFromCloud,
+  type CloudSyncFailure,
+} from '../../db/cloudSync';
 import { exportForSync } from '../../db/sync';
 import { getAutoSyncEnabled, setAutoSyncEnabled, scheduleSyncToCloud } from '../../db/cloudSyncScheduler';
 import { isOpfsUsed } from '../../db/archtownDb';
@@ -162,6 +169,37 @@ export function CloudSync() {
     }
   };
 
+  const handleCheckLatestFromCloud = async () => {
+    setLoading('restore');
+    setMessage(null);
+    const before = getLastSyncedAt();
+    try {
+      const result = await downloadFromCloud();
+      setLoading(null);
+      if (!result.ok) {
+        const err = result as CloudSyncFailure;
+        setMessage({ type: 'error', text: err.error });
+        return;
+      }
+      const after = getLastSyncedAt();
+      if (before && after && before.version === after.version) {
+        setMessage({ type: 'ok', text: 'ข้อมูลบนเครื่องนี้เป็นเวอร์ชันล่าสุดจาก Cloud แล้ว' });
+        setTimeout(() => setMessage(null), 3000);
+        return;
+      }
+      setMessage({ type: 'ok', text: 'ดึงข้อมูลล่าสุดจาก Cloud แล้ว — กำลังรีเฟรช' });
+      window.dispatchEvent(new CustomEvent('capability-refresh'));
+      window.dispatchEvent(new CustomEvent('project-summary-invalidate', { detail: {} }));
+      setTimeout(() => {
+        setMessage(null);
+        window.location.reload();
+      }, 1200);
+    } catch (err) {
+      setLoading(null);
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'ดึงข้อมูลจาก Cloud ไม่สำเร็จ' });
+    }
+  };
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -198,6 +236,15 @@ export function CloudSync() {
               </button>
             </div>
           )}
+          <button
+            type="button"
+            onClick={handleCheckLatestFromCloud}
+            disabled={!!loading}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] disabled:opacity-50 border-t border-[var(--color-border)]"
+          >
+            <Download className="w-4 h-4 shrink-0" />
+            ตรวจสอบและดึงจาก Cloud ล่าสุด
+          </button>
           <button
             type="button"
             onClick={handleDownloadBackupJson}

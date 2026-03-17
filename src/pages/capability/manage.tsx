@@ -813,11 +813,46 @@ export default function CapabilityManagePage() {
     capNameInput: string;
   }) {
     if (!cap) return null;
+    const [removeHoldProgress, setRemoveHoldProgress] = useState(0);
+    const removeHoldRef = useRef<number | null>(null);
+    const removeFrameRef = useRef<number | null>(null);
+
     const isEditing = editingCapIdProp === capId;
     const { setNodeRef: setDropRef, isOver } = useDroppable({
       id: `${CAP_PREFIX}${capId}`,
     });
     const sortableProjectIds = cap.projects.map((p) => projectDragId(capId, p.id));
+
+    const clearRemoveHold = () => {
+      if (removeHoldRef.current != null) {
+        window.clearTimeout(removeHoldRef.current);
+        removeHoldRef.current = null;
+      }
+      if (removeFrameRef.current != null) {
+        cancelAnimationFrame(removeFrameRef.current);
+        removeFrameRef.current = null;
+      }
+      setRemoveHoldProgress(0);
+    };
+
+    const handleRemovePointerDown = () => {
+      clearRemoveHold();
+      const start = performance.now();
+      const duration = 1000;
+      const step = () => {
+        const now = performance.now();
+        const elapsed = now - start;
+        const pct = Math.min(100, (elapsed / duration) * 100);
+        setRemoveHoldProgress(pct);
+        if (elapsed >= duration) return;
+        removeFrameRef.current = requestAnimationFrame(step);
+      };
+      removeFrameRef.current = requestAnimationFrame(step);
+      removeHoldRef.current = window.setTimeout(() => {
+        handleDeleteCap(capId);
+        clearRemoveHold();
+      }, duration);
+    };
 
     return (
       <div
@@ -887,10 +922,23 @@ export default function CapabilityManagePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDeleteCap(capId)}
-                    className="p-1 rounded-lg text-red-500 hover:bg-red-500/10"
+                    onPointerDown={handleRemovePointerDown}
+                    onPointerUp={clearRemoveHold}
+                    onPointerLeave={clearRemoveHold}
+                    onPointerCancel={clearRemoveHold}
+                    className="relative p-1 rounded-lg text-red-500 hover:bg-red-500/10 overflow-hidden"
+                    title="กดค้าง 1 วินาทีเพื่อลบกลุ่มนี้"
+                    aria-label="กดค้าง 1 วินาทีเพื่อลบกลุ่มนี้"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    {removeHoldProgress > 0 && (
+                      <span
+                        className="absolute inset-0 bg-red-500/20 rounded ease-linear"
+                        style={{ width: `${removeHoldProgress}%`, transition: 'none' }}
+                      />
+                    )}
+                    <span className="relative z-10 block">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </span>
                   </button>
                 </>
               ) : (
