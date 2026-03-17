@@ -4,6 +4,7 @@ import LandingPage from './pages/home/landing';
 import AuthCallbackPage from './pages/auth/callback';
 import ProjectManagePage from './pages/project/manage';
 import LoginPage from './pages/home/login';
+import GenerateTokenPage from './pages/admin/generate-token';
 import CapabilityManagePage from './pages/capability/manage';
 import GridBuilderDemo from './pages/demo/GridBuilderDemo';
 import TeamsManagePage from './pages/teams/manage';
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/project" element={<ProjectManagePage />} />
           <Route path="/teams" element={<TeamsManagePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin/generate-token" element={<GenerateTokenPage />} />
           <Route path="/capability" element={<CapabilityManagePage />} />
           <Route path="/grid-demo" element={<GridBuilderDemo />} />
           <Route path="/tasks" element={<TasksOverviewPage />} />

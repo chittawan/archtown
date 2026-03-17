@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {defineConfig, loadEnv} from 'vite';
@@ -47,6 +48,162 @@ export default defineConfig(({mode}) => {
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'auth-token-api',
+        configureServer(server) {
+          const DATA_ROOT = path.resolve(__dirname, 'data');
+          const AUTH_DIR = path.join(DATA_ROOT, 'auth');
+          const TOKENS_FILE = path.join(AUTH_DIR, 'tokens.json');
+
+          type StoredToken = {
+            id: string;
+            tokenHash: string;
+            googleId: string;
+            createdAt: string;
+            expiresAt: string | null;
+          };
+          type TokenStore = { version: 1; tokens: StoredToken[] };
+
+          const sanitizeGoogleId = (raw: string) => String(raw || '').replace(/[^a-zA-Z0-9_.-]/g, '');
+          const sha256Hex = (input: string) => crypto.createHash('sha256').update(input, 'utf8').digest('hex');
+          const safeEqualHex = (a: string, b: string) => {
+            const aa = Buffer.from(a, 'hex');
+            const bb = Buffer.from(b, 'hex');
+            if (aa.length !== bb.length) return false;
+            return crypto.timingSafeEqual(aa, bb);
+          };
+          const parseExpiresAt = (expiresAt: unknown): string | null => {
+            if (expiresAt == null || expiresAt === '') return null;
+            if (typeof expiresAt !== 'string') return null;
+            const d = new Date(expiresAt);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.toISOString();
+          };
+          const readTokenStore = (): TokenStore => {
+            try {
+              if (!fs.existsSync(TOKENS_FILE)) return { version: 1, tokens: [] };
+              const raw = fs.readFileSync(TOKENS_FILE, 'utf-8');
+              const parsed = JSON.parse(raw) as Partial<TokenStore>;
+              if (parsed.version !== 1 || !Array.isArray(parsed.tokens)) return { version: 1, tokens: [] };
+              return { version: 1, tokens: parsed.tokens as StoredToken[] };
+            } catch {
+              return { version: 1, tokens: [] };
+            }
+          };
+          const writeTokenStore = (store: TokenStore) => {
+            fs.mkdirSync(path.dirname(TOKENS_FILE), { recursive: true });
+            fs.writeFileSync(TOKENS_FILE, JSON.stringify(store, null, 2), 'utf-8');
+          };
+          const requireAdminKeyIfConfigured = (req: { headers?: Record<string, string | string[] | undefined> }, res: { statusCode: number; setHeader: (k: string, v: string) => void; end: (s: string) => void; }) => {
+            const configured = process.env.ARCHTOWN_ADMIN_KEY;
+            if (!configured) return true;
+            const got = (req.headers?.['x-admin-key'] as string) || '';
+            if (got && got === configured) return true;
+            res.statusCode = 401;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: false, error: 'unauthorized' }));
+            return false;
+          };
+
+          server.middlewares.use(async (req, res, next) => {
+            const url = req.url?.split('?')[0] ?? '';
+
+            if (url === '/api/auth/token/generate' && req.method === 'POST') {
+              let body = '';
+              req.on('data', (chunk) => { body += chunk; });
+              req.on('end', () => {
+                try {
+                  if (!requireAdminKeyIfConfigured(req, res)) return;
+
+                  const parsed = JSON.parse(body || '{}') as { googleId?: string; expiresAt?: unknown };
+                  const googleId = sanitizeGoogleId(parsed.googleId || '');
+                  if (!googleId) {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'googleId is required' }));
+                    return;
+                  }
+
+                  const expiresAt = parseExpiresAt(parsed.expiresAt);
+                  const token = `atkn_${crypto.randomBytes(24).toString('base64url')}`;
+                  const tokenHash = sha256Hex(token);
+
+                  const store = readTokenStore();
+                  const record: StoredToken = {
+                    id: crypto.randomUUID(),
+                    tokenHash,
+                    googleId,
+                    createdAt: new Date().toISOString(),
+                    expiresAt,
+                  };
+                  store.tokens.push(record);
+                  writeTokenStore(store);
+
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: true, token, googleId, expiresAt }));
+                } catch (e) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: false, error: String(e) }));
+                }
+              });
+              return;
+            }
+
+            if (url === '/api/auth/token/login' && req.method === 'POST') {
+              let body = '';
+              req.on('data', (chunk) => { body += chunk; });
+              req.on('end', () => {
+                try {
+                  const parsed = JSON.parse(body || '{}') as { token?: string };
+                  const token = String(parsed.token || '').trim();
+                  if (!token) {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'token is required' }));
+                    return;
+                  }
+                  const tokenHash = sha256Hex(token);
+                  const store = readTokenStore();
+                  const match = store.tokens.find((t) => {
+                    try {
+                      return safeEqualHex(t.tokenHash, tokenHash);
+                    } catch {
+                      return false;
+                    }
+                  });
+                  if (!match) {
+                    res.statusCode = 401;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ ok: false, error: 'invalid token' }));
+                    return;
+                  }
+                  if (match.expiresAt) {
+                    const exp = new Date(match.expiresAt).getTime();
+                    if (!Number.isNaN(exp) && Date.now() > exp) {
+                      res.statusCode = 401;
+                      res.setHeader('Content-Type', 'application/json');
+                      res.end(JSON.stringify({ ok: false, error: 'token expired' }));
+                      return;
+                    }
+                  }
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: true, googleId: match.googleId, expiresAt: match.expiresAt }));
+                } catch (e) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ ok: false, error: String(e) }));
+                }
+              });
+              return;
+            }
+
+            next();
+          });
+        },
+      },
       {
         name: 'projects-list-api',
         configureServer(server) {

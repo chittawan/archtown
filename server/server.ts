@@ -9,9 +9,12 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const DATA_ROOT = path.join(process.cwd(), 'data');
 const SYNC_DIR = path.join(DATA_ROOT, 'sync');
+const AUTH_DIR = path.join(DATA_ROOT, 'auth');
+const TOKENS_FILE = path.join(AUTH_DIR, 'tokens.json');
 
 /** Sanitize Google user id for use as directory name (ป้องกัน path traversal). */
 function getSyncUserId(req: express.Request): string {
@@ -22,6 +25,57 @@ function getSyncUserId(req: express.Request): string {
 
 function getSyncBackupPath(userId: string): string {
   return path.join(SYNC_DIR, userId, 'backup.json');
+}
+
+function sanitizeGoogleId(raw: string): string {
+  const safe = (raw || '').replace(/[^a-zA-Z0-9_.-]/g, '');
+  return safe;
+}
+
+type StoredToken = {
+  id: string;
+  tokenHash: string;
+  googleId: string;
+  createdAt: string;
+  expiresAt: string | null;
+};
+
+type TokenStore = { version: 1; tokens: StoredToken[] };
+
+function readTokenStore(): TokenStore {
+  try {
+    if (!fs.existsSync(TOKENS_FILE)) return { version: 1, tokens: [] };
+    const raw = fs.readFileSync(TOKENS_FILE, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<TokenStore>;
+    if (parsed.version !== 1 || !Array.isArray(parsed.tokens)) return { version: 1, tokens: [] };
+    return { version: 1, tokens: parsed.tokens as StoredToken[] };
+  } catch {
+    return { version: 1, tokens: [] };
+  }
+}
+
+function writeTokenStore(store: TokenStore): void {
+  fs.mkdirSync(path.dirname(TOKENS_FILE), { recursive: true });
+  fs.writeFileSync(TOKENS_FILE, JSON.stringify(store, null, 2), 'utf-8');
+}
+
+function sha256Hex(input: string): string {
+  return crypto.createHash('sha256').update(input, 'utf8').digest('hex');
+}
+
+function safeEqualHex(a: string, b: string): boolean {
+  const aa = Buffer.from(a, 'hex');
+  const bb = Buffer.from(b, 'hex');
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
+}
+
+function parseExpiresAt(expiresAt: unknown): string | null {
+  if (expiresAt == null || expiresAt === '') return null;
+  if (typeof expiresAt !== 'string') return null;
+  const d = new Date(expiresAt);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 const app = express();
@@ -35,6 +89,81 @@ app.use((_req, res, next) => {
 });
 
 app.use(express.json({ limit: '10mb' }));
+
+// --- AI Login Token API ---
+function requireAdminKeyIfConfigured(req: express.Request, res: express.Response): boolean {
+  const configured = process.env.ARCHTOWN_ADMIN_KEY;
+  if (!configured) return true;
+  const got = (req.headers['x-admin-key'] as string) || '';
+  if (got && got === configured) return true;
+  res.status(401).json({ ok: false, error: 'unauthorized' });
+  return false;
+}
+
+app.post('/api/auth/token/generate', (req, res) => {
+  try {
+    if (!requireAdminKeyIfConfigured(req, res)) return;
+
+    const rawGoogleId = (req.body?.googleId as string) || '';
+    const googleId = sanitizeGoogleId(rawGoogleId);
+    if (!googleId) {
+      res.status(400).json({ ok: false, error: 'googleId is required' });
+      return;
+    }
+
+    const expiresAt = parseExpiresAt(req.body?.expiresAt);
+    const token = `atkn_${crypto.randomBytes(24).toString('base64url')}`;
+    const tokenHash = sha256Hex(token);
+
+    const store = readTokenStore();
+    const record: StoredToken = {
+      id: crypto.randomUUID(),
+      tokenHash,
+      googleId,
+      createdAt: new Date().toISOString(),
+      expiresAt,
+    };
+    store.tokens.push(record);
+    writeTokenStore(store);
+
+    res.json({ ok: true, token, googleId, expiresAt });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+app.post('/api/auth/token/login', (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) {
+      res.status(400).json({ ok: false, error: 'token is required' });
+      return;
+    }
+    const tokenHash = sha256Hex(token);
+    const store = readTokenStore();
+    const match = store.tokens.find((t) => {
+      try {
+        return safeEqualHex(t.tokenHash, tokenHash);
+      } catch {
+        return false;
+      }
+    });
+    if (!match) {
+      res.status(401).json({ ok: false, error: 'invalid token' });
+      return;
+    }
+    if (match.expiresAt) {
+      const exp = new Date(match.expiresAt).getTime();
+      if (!Number.isNaN(exp) && Date.now() > exp) {
+        res.status(401).json({ ok: false, error: 'token expired' });
+        return;
+      }
+    }
+    res.json({ ok: true, googleId: match.googleId, expiresAt: match.expiresAt });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
 
 // --- Cloud Sync API (เก็บ/ดึง backup ต่อ user: data/sync/{googleId}/backup.json) ---
 app.get('/api/sync/download', (req, res) => {

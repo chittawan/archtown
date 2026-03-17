@@ -4,8 +4,9 @@ import { getDbStatus } from '../../db/archtownDb';
 
 /**
  * แถบแสดงสถานะ DB: OPFS (เก็บถาวร), IndexedDB (เก็บถาวร) หรือหน่วยความจำ (รีเฟรชแล้วหาย) และจำนวนโปรเจกต์
+ * คลิกที่ "โปรเจกต์ N" จะเปิด popup search (เหมือน ⌘K แล้วกด S)
  */
-export function DbStatusBar() {
+export function DbStatusBar({ onOpenProjectSearch }: { onOpenProjectSearch?: () => void }) {
   const [status, setStatus] = useState<{ opfsUsed: boolean; idbFallback: boolean; projectCount: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +74,18 @@ export function DbStatusBar() {
       <Database className="w-3.5 h-3.5 shrink-0" />
       <span className="hidden sm:inline">{storageLabel}</span>
       <span className="text-[var(--color-text-subtle)]">·</span>
-      <span>โปรเจกต์ {status.projectCount}</span>
+      {onOpenProjectSearch ? (
+        <button
+          type="button"
+          onClick={onOpenProjectSearch}
+          className="cursor-pointer hover:text-[var(--color-text)] hover:underline focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] focus:ring-offset-1 rounded px-0.5 -mx-0.5"
+          title="ค้นหาโปรเจกต์ (⌘K S)"
+        >
+          โปรเจกต์ {status.projectCount}
+        </button>
+      ) : (
+        <span>โปรเจกต์ {status.projectCount}</span>
+      )}
     </span>
   );
 }

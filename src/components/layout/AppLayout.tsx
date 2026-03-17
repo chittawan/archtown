@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban, User, LogOut, CloudUpload, Download, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban, User, LogOut, CloudUpload, Download, Loader2, KeyRound } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
 import { ComponentSearchModal } from './ComponentSearchModal.tsx';
 import { DbStatusBar } from './DbStatusBar.tsx';
 import { CloudSync } from './CloudSync.tsx';
-import { isGoogleLoggedIn, logoutGoogle, redirectToGoogleLogin, getGoogleUserInfo, emailInitials } from '../../lib/googleAuth';
+import { isGoogleLoggedIn, logoutGoogle, redirectToGoogleLogin, getGoogleUserInfo, emailInitials, getLoginKind } from '../../lib/googleAuth';
 import { clearAppData } from '../../lib/clearAppData';
 import { exportForSync } from '../../db/sync';
 import { uploadToCloud, isSyncAvailable } from '../../db/cloudSync';
@@ -67,6 +67,7 @@ export default function AppLayout() {
   const [componentSearchOpen, setComponentSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [googleUser, setGoogleUser] = useState(false);
+  const loginKind = googleUser ? getLoginKind() : 'guest';
   const googleUserInfo = googleUser ? getGoogleUserInfo() : { picture: undefined, email: undefined };
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [logoutBackingUp, setLogoutBackingUp] = useState(false);
@@ -213,15 +214,15 @@ export default function AppLayout() {
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <DbStatusBar />
+            <DbStatusBar onOpenProjectSearch={() => setComponentSearchOpen(true)} />
             <CloudSync />
             <div className="relative" ref={userMenuRef}>
               <button
                 type="button"
                 onClick={() => setUserMenuOpen((o) => !o)}
                 className="flex items-center justify-center p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
-                title={googleUser ? 'บัญชี Google' : 'Guest'}
-                aria-label={googleUser ? 'Google account menu' : 'Guest menu'}
+                title={googleUser ? (loginKind === 'token' ? 'AI Token' : 'Google') : 'Guest'}
+                aria-label={googleUser ? (loginKind === 'token' ? 'Token account menu' : 'Google account menu') : 'Guest menu'}
                 aria-expanded={userMenuOpen}
               >
                 <div className="w-8 h-8 rounded-full bg-[var(--color-overlay)] flex items-center justify-center border border-[var(--color-border)] overflow-hidden shrink-0">
@@ -251,8 +252,18 @@ export default function AppLayout() {
                   {googleUser ? (
                     <>
                       <div className="px-3 py-2 text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-                        ลงชื่อเข้าใช้ด้วย Google แล้ว
+                        {loginKind === 'token' ? 'ลงชื่อเข้าใช้ด้วย Token แล้ว' : 'ลงชื่อเข้าใช้ด้วย Google แล้ว'}
                       </div>
+                      {loginKind === 'google' && (
+                        <Link
+                          to="/admin/generate-token"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] text-left"
+                        >
+                          <KeyRound className="w-4 h-4" />
+                          Generate AI Token
+                        </Link>
+                      )}
                       <button
                         type="button"
                         role="menuitem"

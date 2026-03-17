@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { LayoutDashboard, ArrowRight, Upload } from 'lucide-react';
+import { LayoutDashboard, ArrowRight, Upload, KeyRound } from 'lucide-react';
 import { importYamlFiles } from '../../db/importYaml';
 import { redirectToGoogleLogin } from '../../lib/googleAuth';
 
@@ -103,6 +103,13 @@ export default function LandingPage() {
 
         {/* Secondary actions */}
         <div className="flex flex-col gap-3">
+          <Link
+            to="/login"
+            className="group flex items-center justify-center gap-2.5 w-full py-3.5 px-4 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-overlay)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)] transition-all duration-200"
+          >
+            <KeyRound className="w-4 h-4 opacity-80 group-hover:opacity-100 transition-opacity" />
+            <span>เข้าสู่ระบบด้วย Token</span>
+          </Link>
           <Link
             to="/capability"
             className="group flex items-center justify-center gap-2.5 w-full py-3.5 px-4 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-medium hover:border-[var(--color-primary)] hover:bg-[var(--color-overlay)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-page)] transition-all duration-200"

@@ -17,10 +17,8 @@ echo "Dockerfile: Dockerfile"
 echo "=========================================="
 echo ""
 
-# Build and push
-# --platform linux/amd64,linux/arm64 \
+# Build and push (single platform for OrbStack; use buildx driver for multi-platform)
 docker buildx build \
-  --platform linux/amd64 \
   -t $IMAGE:$TAG \
   --push .
 

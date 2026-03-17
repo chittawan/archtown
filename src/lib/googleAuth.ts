@@ -1,5 +1,8 @@
 export const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
 const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
+const TOKEN_LOGIN_USER_ID_KEY = 'archtown_token_google_user_id';
+const TOKEN_LOGIN_EMAIL_KEY = 'archtown_token_email';
+const TOKEN_LOGIN_PICTURE_KEY = 'archtown_token_picture';
 
 export function getGoogleClientId(): string {
   return (import.meta as unknown as { env?: { VITE_GOOGLE_CLIENT_ID?: string } }).env?.VITE_GOOGLE_CLIENT_ID ||
@@ -29,12 +32,15 @@ export function redirectToGoogleLogin(): void {
 
 export function isGoogleLoggedIn(): boolean {
   if (typeof window === 'undefined') return false;
-  return !!sessionStorage.getItem(AUTH_ID_TOKEN_KEY);
+  return !!sessionStorage.getItem(AUTH_ID_TOKEN_KEY) || !!sessionStorage.getItem(TOKEN_LOGIN_USER_ID_KEY);
 }
 
 export function logoutGoogle(): void {
   if (typeof window === 'undefined') return;
   sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_USER_ID_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_PICTURE_KEY);
 }
 
 type GoogleTokenPayload = { sub?: string; email?: string; picture?: string };
@@ -58,15 +64,42 @@ function decodeIdTokenPayload(): GoogleTokenPayload | null {
 
 /** Decode id_token JWT and return Google user id (sub). Used for per-user sync path. */
 export function getGoogleUserId(): string | null {
+  if (typeof window !== 'undefined') {
+    const tokenUserId = sessionStorage.getItem(TOKEN_LOGIN_USER_ID_KEY);
+    if (tokenUserId) return tokenUserId;
+  }
   const payload = decodeIdTokenPayload();
   return payload?.sub ?? null;
 }
 
 /** Decode id_token and return picture + email for avatar/initial. */
 export function getGoogleUserInfo(): { picture?: string; email?: string } {
+  if (typeof window !== 'undefined') {
+    const email = sessionStorage.getItem(TOKEN_LOGIN_EMAIL_KEY) || undefined;
+    const picture = sessionStorage.getItem(TOKEN_LOGIN_PICTURE_KEY) || undefined;
+    if (email || picture) return { email, picture };
+  }
   const payload = decodeIdTokenPayload();
   if (!payload) return {};
   return { picture: payload.picture, email: payload.email };
+}
+
+export function setTokenLoginIdentity(input: { googleId: string; email?: string; picture?: string }): void {
+  if (typeof window === 'undefined') return;
+  const googleId = (input.googleId || '').trim();
+  if (!googleId) throw new Error('googleId is required');
+  sessionStorage.setItem(TOKEN_LOGIN_USER_ID_KEY, googleId);
+  if (input.email) sessionStorage.setItem(TOKEN_LOGIN_EMAIL_KEY, input.email);
+  else sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
+  if (input.picture) sessionStorage.setItem(TOKEN_LOGIN_PICTURE_KEY, input.picture);
+  else sessionStorage.removeItem(TOKEN_LOGIN_PICTURE_KEY);
+}
+
+export function getLoginKind(): 'google' | 'token' | 'guest' {
+  if (typeof window === 'undefined') return 'guest';
+  if (sessionStorage.getItem(TOKEN_LOGIN_USER_ID_KEY)) return 'token';
+  if (sessionStorage.getItem(AUTH_ID_TOKEN_KEY)) return 'google';
+  return 'guest';
 }
 
 /** สร้างตัวอักษร 2 ตัวจาก email สำหรับใช้เป็น initial (เช่น chittawan.ris@gmail.com → CH). */

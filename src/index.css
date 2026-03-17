@@ -84,6 +84,21 @@
   }
 }
 
+/* CloudSync: animation ตอนกำลัง sync — ลอยขึ้น + pulse (smooth แต่ชัด) */
+@keyframes cloud-sync-float {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-6px) scale(1.12);
+    opacity: 0.82;
+  }
+}
+.animate-cloud-sync {
+  animation: cloud-sync-float 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
 @media print {
   body * {
     visibility: hidden;

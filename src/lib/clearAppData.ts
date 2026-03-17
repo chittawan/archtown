@@ -8,6 +8,9 @@ import { clearAllTables } from '../db/archtownDb';
 const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
 const AUTH_CODE_KEY = 'archtown_oauth_code';
 const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
+const TOKEN_LOGIN_USER_ID_KEY = 'archtown_token_google_user_id';
+const TOKEN_LOGIN_EMAIL_KEY = 'archtown_token_email';
+const TOKEN_LOGIN_PICTURE_KEY = 'archtown_token_picture';
 const SYNC_LAST_UPLOADED_KEY = 'archtown_sync_last_uploaded';
 const PROJECT_NAME_KEY = 'projectName';
 const PROJECT_ID_KEY = 'projectId';
@@ -18,6 +21,9 @@ export async function clearAppData(): Promise<void> {
   sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_CODE_KEY);
   sessionStorage.removeItem(GOOGLE_OAUTH_NONCE_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_USER_ID_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_PICTURE_KEY);
 
   localStorage.removeItem(SYNC_LAST_UPLOADED_KEY);
   localStorage.removeItem(PROJECT_NAME_KEY);

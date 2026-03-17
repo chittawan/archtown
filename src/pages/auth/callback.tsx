@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
-import { ensureDb } from '../../db/client';
-import * as archtownDb from '../../db/archtownDb';
-import { isSyncAvailable, downloadFromCloud } from '../../db/cloudSync';
+import { prepareAfterLogin } from '../../lib/prepareAfterLogin';
 
 const AUTH_CODE_KEY = 'archtown_oauth_code';
 const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
@@ -84,27 +82,10 @@ export default function AuthCallbackPage() {
 
     (async () => {
       try {
-        setProgressLabel('กำลังเตรียมฐานข้อมูล...');
-        setProgress(10);
-        await ensureDb();
-        setProgress(25);
-
-        const syncOk = await isSyncAvailable();
-        if (syncOk) {
-          setProgressLabel('กำลัง Restore ข้อมูลล่าสุดจาก Cloud...');
-          const result = await downloadFromCloud();
-          if (result.ok) {
-            setProgress(50);
-          }
-          // ถ้าไม่ ok (404, เข้ารหัส ฯลฯ) ข้ามไปเตรียมข้อมูล local ต่อ
-        }
-        setProgressLabel('กำลังโหลดและเตรียมข้อมูล...');
-        setProgress(55);
-        await archtownDb.listProjects();
-        setProgress(75);
-        await archtownDb.getCapabilityLayout();
-        setProgress(100);
-        setProgressLabel('พร้อมแล้ว');
+        await prepareAfterLogin((s) => {
+          setProgressLabel(s.label);
+          setProgress(s.progress);
+        });
         setStatus('success');
         const t = setTimeout(() => {
           window.location.href = '/capability';

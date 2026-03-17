@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Cloud, Upload, Download } from 'lucide-react';
-import { restoreFromJsonFile, getLastSyncedAt } from '../../db/cloudSync';
+import { restoreFromJsonFile, getLastSyncedAt, uploadToCloud, isSyncAvailable, type CloudSyncFailure } from '../../db/cloudSync';
 import { exportForSync } from '../../db/sync';
 import { getAutoSyncEnabled, setAutoSyncEnabled, scheduleSyncToCloud } from '../../db/cloudSyncScheduler';
 import { isOpfsUsed } from '../../db/archtownDb';
@@ -20,6 +20,7 @@ function formatLastSynced(updated_at: string): string {
 export function CloudSync() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState<'restore' | 'export' | null>(null);
+  const [syncingToCloud, setSyncingToCloud] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
   const [autoSync, setAutoSync] = useState(getAutoSyncEnabled);
   const [lastSynced, setLastSynced] = useState<{ version: number; updated_at: string } | null>(() => getLastSyncedAt());
@@ -46,10 +47,66 @@ export function CloudSync() {
     return () => window.removeEventListener('cloud-sync-skipped-conflict', onSkipped);
   }, []);
 
+  const syncStartedAtRef = useRef<number>(0);
+  const MIN_SPIN_MS = 700;
+
+  useEffect(() => {
+    const onStart = () => {
+      syncStartedAtRef.current = Date.now();
+      setSyncingToCloud(true);
+    };
+    const onFinish = () => {
+      const elapsed = Date.now() - syncStartedAtRef.current;
+      const remaining = Math.max(0, MIN_SPIN_MS - elapsed);
+      if (remaining > 0) {
+        setTimeout(() => setSyncingToCloud(false), remaining);
+      } else {
+        setSyncingToCloud(false);
+      }
+    };
+    window.addEventListener('cloud-sync-started', onStart);
+    window.addEventListener('cloud-sync-finished', onFinish);
+    return () => {
+      window.removeEventListener('cloud-sync-started', onStart);
+      window.removeEventListener('cloud-sync-finished', onFinish);
+    };
+  }, []);
+
   const handleAutoSyncChange = (enabled: boolean) => {
     setAutoSyncEnabled(enabled);
     setAutoSync(enabled);
     if (enabled) scheduleSyncToCloud();
+  };
+
+  const handleTriggerSyncToCloud = async () => {
+    if (!isOpfsUsed()) return;
+    if (loading || syncingToCloud) return;
+    setMessage(null);
+    const available = await isSyncAvailable();
+    if (!available) {
+      setMessage({ type: 'error', text: 'ไม่สามารถ sync ขึ้น Cloud ได้ (ตรวจสอบการล็อกอิน)' });
+      setTimeout(() => setMessage(null), 4000);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('cloud-sync-started'));
+    try {
+      const result = await uploadToCloud(false);
+      setLastSynced(getLastSyncedAt());
+      if (result.ok) {
+        setMessage({ type: 'ok', text: 'Sync ขึ้น Cloud แล้ว' });
+        setTimeout(() => setMessage(null), 2500);
+      } else {
+        const r = result as { error?: string; conflict?: boolean };
+        if (r.conflict) setMessage({ type: 'error', text: 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปโหลด' });
+        else setMessage({ type: 'error', text: r.error ?? 'Sync ไม่สำเร็จ' });
+        setTimeout(() => setMessage(null), 4000);
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Sync ไม่สำเร็จ' });
+      setTimeout(() => setMessage(null), 4000);
+    } finally {
+      window.dispatchEvent(new CustomEvent('cloud-sync-finished'));
+    }
   };
 
   const handleDownloadBackupJson = async () => {
@@ -111,10 +168,10 @@ export function CloudSync() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-lg p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] transition-colors"
-        title="Backup & Sync"
-        aria-label="Backup & Sync"
+        title={loading || syncingToCloud ? 'กำลัง sync...' : 'Backup & Sync'}
+        aria-label={loading || syncingToCloud ? 'กำลัง sync' : 'Backup & Sync'}
       >
-        <Cloud className="w-5 h-5" />
+        <Cloud className={`w-5 h-5 ${loading || syncingToCloud ? 'animate-cloud-sync' : ''}`} />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 py-1 w-56 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-modal)] z-50">
@@ -167,10 +224,18 @@ export function CloudSync() {
             <Upload className="w-4 h-4 shrink-0" />
             {loading === 'restore' ? 'กำลังนำเข้า...' : 'นำเข้าจากไฟล์ backup.json'}
           </button>
-          {lastSynced && (
-            <p className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] border-t border-[var(--color-border)]">
-              Sync ขึ้น Cloud ล่าสุด: {formatLastSynced(lastSynced.updated_at)}
-            </p>
+          {(lastSynced || isOpfsUsed()) && (
+            <button
+              type="button"
+              onClick={handleTriggerSyncToCloud}
+              disabled={!!loading || syncingToCloud}
+              className="w-full px-3 py-1.5 text-xs text-left text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border-t border-[var(--color-border)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="กดเพื่อ sync ขึ้น Cloud ตอนนี้"
+            >
+              {lastSynced
+                ? `Sync ขึ้น Cloud ล่าสุด: ${formatLastSynced(lastSynced.updated_at)}`
+                : 'กดเพื่อ sync ขึ้น Cloud'}
+            </button>
           )}
           {message && (
             <p

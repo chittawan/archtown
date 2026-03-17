@@ -56,17 +56,22 @@ async function runSyncToCloud(): Promise<void> {
     const now = Date.now();
     if (lastSyncAt > 0 && now - lastSyncAt < MIN_SYNC_INTERVAL_MS) return;
 
-    const result = await uploadToCloud(false);
-    if (result.ok) {
-      lastSyncAt = now;
-    } else if (!result.ok && 'conflict' in result && result.conflict) {
-      window.dispatchEvent(
-        new CustomEvent('cloud-sync-skipped-conflict', {
-          detail: { message: 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปโหลด' },
-        })
-      );
+    window.dispatchEvent(new CustomEvent('cloud-sync-started'));
+    try {
+      const result = await uploadToCloud(false);
+      if (result.ok) {
+        lastSyncAt = now;
+      } else if (!result.ok && 'conflict' in result && result.conflict) {
+        window.dispatchEvent(
+          new CustomEvent('cloud-sync-skipped-conflict', {
+            detail: { message: 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปโหลด' },
+          })
+        );
+      }
+    } finally {
+      window.dispatchEvent(new CustomEvent('cloud-sync-finished'));
     }
   } catch {
-    /* ignore */
+    window.dispatchEvent(new CustomEvent('cloud-sync-finished'));
   }
 }
