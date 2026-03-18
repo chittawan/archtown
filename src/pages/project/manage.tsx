@@ -8,7 +8,6 @@ import {
   useSensor,
   useSensors,
   closestCenter,
-  useDroppable,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -751,6 +750,31 @@ export default function ProjectManagePage() {
     );
   };
 
+  const reorderSubTopicDetails = (
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    fromIndex: number,
+    toIndex: number
+  ) => {
+    if (fromIndex === toIndex) return;
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) =>
+        arrayMove(details, fromIndex, toIndex)
+      )
+    );
+  };
+
+  const parseDetailItemId = (rawId: string): { topicId: string; subTopicId: string; index: number } | null => {
+    if (!rawId.startsWith('detail__')) return null;
+    const parts = rawId.slice('detail__'.length).split('__');
+    if (parts.length !== 3) return null;
+    const [topicId, subTopicId, indexStr] = parts;
+    const index = Number(indexStr);
+    if (!topicId || !subTopicId || !Number.isFinite(index)) return null;
+    return { topicId, subTopicId, index };
+  };
+
   const moveOrReorderSubTopic = (
     teamId: string,
     sourceTopicId: string,
@@ -825,6 +849,26 @@ export default function ProjectManagePage() {
       const toIndex = team.topics.findIndex((t) => t.id === over.id);
       if (fromIndex !== -1 && toIndex !== -1)
         reorderTopics(teamId, fromIndex, toIndex);
+      return;
+    }
+    if (active.data.current?.type === 'detail') {
+      const activeInfo = parseDetailItemId(String(active.id));
+      if (!activeInfo) return;
+      const overId = String(over.id);
+      // Dropped on "end of list" container
+      if (overId.startsWith('detail-list-')) {
+        const topic = team.topics.find((t) => t.id === activeInfo.topicId);
+        const sub = topic?.subTopics.find((s) => s.id === activeInfo.subTopicId);
+        const len = sub?.details?.length ?? 0;
+        const targetIndex = Math.max(0, len - 1);
+        reorderSubTopicDetails(teamId, activeInfo.topicId, activeInfo.subTopicId, activeInfo.index, targetIndex);
+        return;
+      }
+      const overInfo = parseDetailItemId(overId);
+      if (!overInfo) return;
+      // Only reorder within the same subtopic (cross-subtopic move is not supported yet)
+      if (overInfo.topicId !== activeInfo.topicId || overInfo.subTopicId !== activeInfo.subTopicId) return;
+      reorderSubTopicDetails(teamId, activeInfo.topicId, activeInfo.subTopicId, activeInfo.index, overInfo.index);
       return;
     }
     if (active.data.current?.type === 'subtopic') {

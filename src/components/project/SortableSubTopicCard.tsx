@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GripVertical, ChevronDown, ChevronRight, Plus, Check, Circle, ListTodo, BarChart3, FileText } from 'lucide-react';
+import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Status, SubTopic, SubTopicType, TodoItemStatus } from '../../types';
@@ -118,7 +120,60 @@ function getStatusStyles(status: TodoItemStatus): { row: string; select: string 
   }
 }
 
+function detailItemId(topicId: string, subTopicId: string, index: number) {
+  return `detail__${topicId}__${subTopicId}__${index}`;
+}
+
+function detailListId(teamId: string, topicId: string, subTopicId: string) {
+  return `detail-list-${teamId}-${topicId}-${subTopicId}`;
+}
+
+function SortableDetailRow({
+  id,
+  children,
+  className,
+  disabled,
+}: {
+  id: string;
+  children: (args: { dragHandle: React.ReactNode; isDragging: boolean }) => React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({
+      id,
+      disabled,
+      data: { type: 'detail' as const, detailId: id },
+    });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${className ?? ''} ${isDragging ? 'opacity-80 shadow-lg z-20 relative' : ''}`}
+    >
+      {children({
+        isDragging,
+        dragHandle: (
+          <button
+            type="button"
+            className="flex-shrink-0 p-1 -ml-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] touch-none cursor-grab active:cursor-grabbing mt-0.5"
+            title="ลากเพื่อเรียงลำดับรายการ"
+            aria-label="ลากเพื่อเรียงลำดับรายการ"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="w-4 h-4" />
+          </button>
+        ),
+      })}
+    </div>
+  );
+}
+
 export function SortableSubTopicCard({
+  teamId,
   topicId,
   subTopic,
   onUpdateStatus,
@@ -230,6 +285,12 @@ export function SortableSubTopicCard({
     const due = new Date(dueDate + 'T00:00:00');
     return due.getTime() < today.getTime();
   };
+
+  const detailIds = details.map((_, index) => detailItemId(topicId, subTopic.id, index));
+  const { setNodeRef: setDetailListRef, isOver: isOverDetailList } = useDroppable({
+    id: detailListId(teamId, topicId, subTopic.id),
+    data: { type: 'detail-list' as const, topicId, subTopicId: subTopic.id },
+  });
 
   return (
     <div
@@ -348,126 +409,148 @@ export function SortableSubTopicCard({
         {isTodoSectionOpen && (
           <div className="px-4 pb-3 pt-0">
             {type === 'todos' ? (
-              <div className="space-y-1.5">
-                {details.map((item, index) => {
-                  const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
-                  const statusStyle = getStatusStyles(itemStatus);
-                  return (
-                    <div
-                      key={index}
-                      className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onToggleDetailDone(index)}
-                        className="flex-shrink-0 p-0.5 rounded text-emerald-600 dark:text-slate-300 hover:text-[var(--color-primary)] dark:hover:text-emerald-300 mt-0.5"
-                        title={isDone(item) ? 'ยกเลิกทำแล้ว' : 'ทำแล้ว'}
+              <div
+                ref={setDetailListRef}
+                className={`space-y-1.5 rounded-lg transition-colors ${isOverDetailList ? 'ring-2 ring-[var(--color-primary)]/40 bg-[var(--color-primary-muted)]/20' : ''}`}
+              >
+                <SortableContext items={detailIds} strategy={verticalListSortingStrategy}>
+                  {details.map((item, index) => {
+                    const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
+                    const statusStyle = getStatusStyles(itemStatus);
+                    const rowId = detailItemId(topicId, subTopic.id, index);
+                    return (
+                      <SortableDetailRow
+                        key={rowId}
+                        id={rowId}
+                        className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                       >
-                        {isDone(item) ? (
-                          <Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-                        ) : (
-                          <Circle className="w-4 h-4" />
+                        {({ dragHandle }) => (
+                          <>
+                            {dragHandle}
+                            <button
+                              type="button"
+                              onClick={() => onToggleDetailDone(index)}
+                              className="flex-shrink-0 p-0.5 rounded text-emerald-600 dark:text-slate-300 hover:text-[var(--color-primary)] dark:hover:text-emerald-300 mt-0.5"
+                              title={isDone(item) ? 'ยกเลิกทำแล้ว' : 'ทำแล้ว'}
+                            >
+                              {isDone(item) ? (
+                                <Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                              ) : (
+                                <Circle className="w-4 h-4" />
+                              )}
+                            </button>
+                            <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                              {/* บรรทัดเดียว: หัวข้อ + ชื่อ task + วันที่ */}
+                              <div className="flex items-center gap-2 min-h-[30px]">
+                                <span
+                                  className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
+                                    itemStatus === 'done'
+                                      ? 'text-emerald-500 dark:!text-emerald-100'
+                                      : itemStatus === 'doing'
+                                        ? 'text-blue-400 dark:!text-blue-100'
+                                        : 'text-slate-800 dark:!text-slate-100'
+                                  }`}
+                                >
+                                  {index + 1}.
+                                </span>
+                                <input
+                                  type="text"
+                                  value={getDetailDisplayValue(index, item)}
+                                  onChange={(e) =>
+                                    setDraftDetailText((prev) => ({
+                                      ...prev,
+                                      [index]: e.target.value,
+                                    }))
+                                  }
+                                  onBlur={() => flushDetailDraft(index)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      flushDetailDraft(index);
+                                      (e.target as HTMLInputElement).blur();
+                                    }
+                                  }}
+                                  placeholder={`Task ${index + 1}`}
+                                  className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
+                                    isDone(item)
+                                      ? 'line-through !text-slate-500 dark:!text-emerald-100'
+                                      : itemStatus === 'doing'
+                                        ? '!text-slate-800 dark:!text-blue-100'
+                                        : '!text-slate-800 dark:!text-slate-100'
+                                  }`}
+                                />
+                                <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
+                                  <input
+                                    type="date"
+                                    value={item.dueDate ?? ''}
+                                    onChange={(e) =>
+                                      onUpdateDetailDueDate(index, e.target.value || undefined)
+                                    }
+                                    title="Due date"
+                                    className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                                      isOverdueAndNotDone(item.dueDate, isDone(item))
+                                        ? 'border-red-500 !text-red-500 dark:!text-red-400 focus:ring-red-500 dark:focus:ring-red-400'
+                                        : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
+                                    }`}
+                                  />
+                                  {getDaysLeft(item.dueDate) && (
+                                    <span
+                                      className={`whitespace-nowrap ${
+                                        isOverdue(item.dueDate)
+                                          ? 'text-red-600 dark:text-red-400'
+                                          : 'text-slate-800 dark:text-[var(--color-text)]'
+                                      }`}
+                                    >
+                                      {getDaysLeft(item.dueDate)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Note — textarea auto height ตามบรรทัด */}
+                              {(item.description != null && item.description !== '') ||
+                              openNoteIndex === index ? (
+                                <AutoResizeDescriptionTextarea
+                                  value={getDetailDescriptionDisplayValue(index)}
+                                  onChange={(e) =>
+                                    setDraftDetailDescription((prev) => ({
+                                      ...prev,
+                                      [index]: e.target.value,
+                                    }))
+                                  }
+                                  onBlur={() => flushDetailDescriptionDraft(index)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape')
+                                      (e.target as HTMLTextAreaElement).blur();
+                                  }}
+                                  placeholder="Memo / Note..."
+                                  title="Note"
+                                  className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenNoteIndex(index)}
+                                  className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
+                                  title="เพิ่ม memo / note"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  เพิ่ม Note
+                                </button>
+                              )}
+                            </div>
+                            <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
+                              <LongPressDeleteButton
+                                onDelete={() => onRemoveDetail(index)}
+                                title="ลบรายการ"
+                                className="p-1"
+                                iconClassName="w-3.5 h-3.5"
+                              />
+                            </div>
+                          </>
                         )}
-                      </button>
-                      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                        {/* บรรทัดเดียว: หัวข้อ + ชื่อ task + วันที่ */}
-                        <div className="flex items-center gap-2 min-h-[30px]">
-                          <span
-                            className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                              itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-slate-800 dark:!text-slate-100'
-                            }`}
-                          >
-                            {index + 1}.
-                          </span>
-                          <input
-                            type="text"
-                            value={getDetailDisplayValue(index, item)}
-                            onChange={(e) =>
-                              setDraftDetailText((prev) => ({
-                                ...prev,
-                                [index]: e.target.value,
-                              }))
-                            }
-                            onBlur={() => flushDetailDraft(index)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                flushDetailDraft(index);
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                            placeholder={`Task ${index + 1}`}
-                            className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
-                              isDone(item)
-                                ? 'line-through !text-slate-500 dark:!text-emerald-100'
-                                : itemStatus === 'doing'
-                                  ? '!text-slate-800 dark:!text-blue-100'
-                                  : '!text-slate-800 dark:!text-slate-100'
-                            }`}
-                          />
-                          <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
-                            <input
-                              type="date"
-                              value={item.dueDate ?? ''}
-                              onChange={(e) =>
-                                onUpdateDetailDueDate(index, e.target.value || undefined)
-                              }
-                              title="Due date"
-                              className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
-                                isOverdueAndNotDone(item.dueDate, isDone(item))
-                                  ? 'border-red-500 !text-red-500 dark:!text-red-400 focus:ring-red-500 dark:focus:ring-red-400'
-                                  : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
-                              }`}
-                            />
-                            {getDaysLeft(item.dueDate) && (
-                              <span
-                                className={`whitespace-nowrap ${isOverdue(item.dueDate) ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-[var(--color-text)]'}`}
-                              >
-                                {getDaysLeft(item.dueDate)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {/* Note — textarea auto height ตามบรรทัด */}
-                        {(item.description != null && item.description !== '') || openNoteIndex === index ? (
-                          <AutoResizeDescriptionTextarea
-                            value={getDetailDescriptionDisplayValue(index)}
-                            onChange={(e) =>
-                              setDraftDetailDescription((prev) => ({
-                                ...prev,
-                                [index]: e.target.value,
-                              }))
-                            }
-                            onBlur={() => flushDetailDescriptionDraft(index)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur();
-                            }}
-                            placeholder="Memo / Note..."
-                            title="Note"
-                            className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setOpenNoteIndex(index)}
-                            className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
-                            title="เพิ่ม memo / note"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            เพิ่ม Note
-                          </button>
-                        )}
-                      </div>
-                      <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
-                        <LongPressDeleteButton
-                          onDelete={() => onRemoveDetail(index)}
-                          title="ลบรายการ"
-                          className="p-1"
-                          iconClassName="w-3.5 h-3.5"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                      </SortableDetailRow>
+                    );
+                  })}
+                </SortableContext>
                 <button
                   type="button"
                   onClick={onAddDetail}
@@ -478,125 +561,153 @@ export function SortableSubTopicCard({
                 </button>
               </div>
             ) : (
-              <div className="space-y-1.5">
+              <div
+                ref={setDetailListRef}
+                className={`space-y-1.5 rounded-lg transition-colors ${isOverDetailList ? 'ring-2 ring-[var(--color-primary)]/40 bg-[var(--color-primary-muted)]/20' : ''}`}
+              >
                 {details.length > 0 && (
                   <div className="space-y-1.5">
                     <span className="text-[10px] font-medium text-slate-600 dark:!text-slate-200 uppercase tracking-wide">
                       รายการติดตาม ({details.length})
                     </span>
-                    {details.map((item, index) => {
-                      const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
-                      const statusStyle = getStatusStyles(itemStatus);
-                      return (
-                        <div
-                          key={index}
-                          className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
-                        >
-                          <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                            {/* บรรทัดเดียว: หัวข้อ + ชื่อรายการ + สถานะ + วันที่ */}
-                            <div className="flex items-center gap-2 min-h-[30px]">
-                              <span
-                                className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                                  itemStatus === 'done' ? 'text-emerald-500 dark:!text-emerald-100' : itemStatus === 'doing' ? 'text-blue-400 dark:!text-blue-100' : 'text-slate-800 dark:!text-slate-100'
-                                }`}
-                              >
-                                {index + 1}.
-                              </span>
-                              <input
-                                type="text"
-                                value={getDetailDisplayValue(index, item)}
-                                onChange={(e) =>
-                                  setDraftDetailText((prev) => ({
-                                    ...prev,
-                                    [index]: e.target.value,
-                                  }))
-                                }
-                                onBlur={() => flushDetailDraft(index)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    flushDetailDraft(index);
-                                    (e.target as HTMLInputElement).blur();
-                                  }
-                                }}
-                                placeholder={`รายการ ${index + 1}`}
-                                className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
-                                  itemStatus === 'done' ? 'dark:!text-emerald-100' : itemStatus === 'doing' ? 'dark:!text-blue-100' : 'dark:!text-slate-100'
-                                }`}
-                              />
-                              <select
-                                value={itemStatus}
-                                onChange={(e) => onUpdateDetailStatus(index, e.target.value as TodoItemStatus)}
-                                className={`shrink-0 text-[11px] border rounded px-2 py-1 font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 min-w-[5rem] ${statusStyle.select}`}
-                                title="สถานะรายการ (ใช้ค่าเดียวกับ Todo)"
-                              >
-                                <option value="todo">รอทำ</option>
-                                <option value="doing">กำลังทำ</option>
-                                <option value="done">เสร็จ</option>
-                              </select>
-                              <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
-                                <input
-                                  type="date"
-                                  value={item.dueDate ?? ''}
-                                  onChange={(e) =>
-                                    onUpdateDetailDueDate(index, e.target.value || undefined)
-                                  }
-                                  title="Due date"
-                                  className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
-                                    isOverdue(item.dueDate)
-                                      ? 'border-red-500 !text-red-500 focus:ring-red-500 dark:!text-red-400'
-                                      : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
-                                  }`}
-                                />
-                                {getDaysLeft(item.dueDate) && (
-                                  <span
-                                    className={`whitespace-nowrap ${isOverdue(item.dueDate) ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-[var(--color-text)]'}`}
-                                  >
-                                    {getDaysLeft(item.dueDate)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {/* Note — textarea auto height ตามบรรทัด */}
-                            {(item.description != null && item.description !== '') || openNoteIndex === index ? (
-                              <AutoResizeDescriptionTextarea
-                                value={getDetailDescriptionDisplayValue(index)}
-                                onChange={(e) =>
-                                  setDraftDetailDescription((prev) => ({
-                                    ...prev,
-                                    [index]: e.target.value,
-                                  }))
-                                }
-                                onBlur={() => flushDetailDescriptionDraft(index)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur();
-                                }}
-                                placeholder="Memo / Note..."
-                                title="Note"
-                                className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
-                              />
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setOpenNoteIndex(index)}
-                                className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
-                                title="เพิ่ม memo / note"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                                เพิ่ม Note
-                              </button>
+                    <SortableContext items={detailIds} strategy={verticalListSortingStrategy}>
+                      {details.map((item, index) => {
+                        const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
+                        const statusStyle = getStatusStyles(itemStatus);
+                        const rowId = detailItemId(topicId, subTopic.id, index);
+                        return (
+                          <SortableDetailRow
+                            key={rowId}
+                            id={rowId}
+                            className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
+                          >
+                            {({ dragHandle }) => (
+                              <>
+                                {dragHandle}
+                                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                  {/* บรรทัดเดียว: หัวข้อ + ชื่อรายการ + สถานะ + วันที่ */}
+                                  <div className="flex items-center gap-2 min-h-[30px]">
+                                    <span
+                                      className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
+                                        itemStatus === 'done'
+                                          ? 'text-emerald-500 dark:!text-emerald-100'
+                                          : itemStatus === 'doing'
+                                            ? 'text-blue-400 dark:!text-blue-100'
+                                            : 'text-slate-800 dark:!text-slate-100'
+                                      }`}
+                                    >
+                                      {index + 1}.
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={getDetailDisplayValue(index, item)}
+                                      onChange={(e) =>
+                                        setDraftDetailText((prev) => ({
+                                          ...prev,
+                                          [index]: e.target.value,
+                                        }))
+                                      }
+                                      onBlur={() => flushDetailDraft(index)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          flushDetailDraft(index);
+                                          (e.target as HTMLInputElement).blur();
+                                        }
+                                      }}
+                                      placeholder={`รายการ ${index + 1}`}
+                                      className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
+                                        itemStatus === 'done'
+                                          ? 'dark:!text-emerald-100'
+                                          : itemStatus === 'doing'
+                                            ? 'dark:!text-blue-100'
+                                            : 'dark:!text-slate-100'
+                                      }`}
+                                    />
+                                    <select
+                                      value={itemStatus}
+                                      onChange={(e) =>
+                                        onUpdateDetailStatus(index, e.target.value as TodoItemStatus)
+                                      }
+                                      className={`shrink-0 text-[11px] border rounded px-2 py-1 font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 min-w-[5rem] ${statusStyle.select}`}
+                                      title="สถานะรายการ (ใช้ค่าเดียวกับ Todo)"
+                                    >
+                                      <option value="todo">รอทำ</option>
+                                      <option value="doing">กำลังทำ</option>
+                                      <option value="done">เสร็จ</option>
+                                    </select>
+                                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
+                                      <input
+                                        type="date"
+                                        value={item.dueDate ?? ''}
+                                        onChange={(e) =>
+                                          onUpdateDetailDueDate(index, e.target.value || undefined)
+                                        }
+                                        title="Due date"
+                                        className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                                          isOverdue(item.dueDate)
+                                            ? 'border-red-500 !text-red-500 focus:ring-red-500 dark:!text-red-400'
+                                            : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
+                                        }`}
+                                      />
+                                      {getDaysLeft(item.dueDate) && (
+                                        <span
+                                          className={`whitespace-nowrap ${
+                                            isOverdue(item.dueDate)
+                                              ? 'text-red-600 dark:text-red-400'
+                                              : 'text-slate-800 dark:text-[var(--color-text)]'
+                                          }`}
+                                        >
+                                          {getDaysLeft(item.dueDate)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Note — textarea auto height ตามบรรทัด */}
+                                  {(item.description != null && item.description !== '') ||
+                                  openNoteIndex === index ? (
+                                    <AutoResizeDescriptionTextarea
+                                      value={getDetailDescriptionDisplayValue(index)}
+                                      onChange={(e) =>
+                                        setDraftDetailDescription((prev) => ({
+                                          ...prev,
+                                          [index]: e.target.value,
+                                        }))
+                                      }
+                                      onBlur={() => flushDetailDescriptionDraft(index)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Escape')
+                                          (e.target as HTMLTextAreaElement).blur();
+                                      }}
+                                      placeholder="Memo / Note..."
+                                      title="Note"
+                                      className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setOpenNoteIndex(index)}
+                                      className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
+                                      title="เพิ่ม memo / note"
+                                    >
+                                      <FileText className="w-3.5 h-3.5" />
+                                      เพิ่ม Note
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
+                                  <LongPressDeleteButton
+                                    onDelete={() => onRemoveDetail(index)}
+                                    title="ลบรายการ"
+                                    className="p-1"
+                                    iconClassName="w-3.5 h-3.5"
+                                  />
+                                </div>
+                              </>
                             )}
-                          </div>
-                          <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
-                            <LongPressDeleteButton
-                              onDelete={() => onRemoveDetail(index)}
-                              title="ลบรายการ"
-                              className="p-1"
-                              iconClassName="w-3.5 h-3.5"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                          </SortableDetailRow>
+                        );
+                      })}
+                    </SortableContext>
                     <button
                       type="button"
                       onClick={onAddDetail}
