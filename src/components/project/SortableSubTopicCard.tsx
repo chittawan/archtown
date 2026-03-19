@@ -213,6 +213,11 @@ export function SortableSubTopicCard({
   const prevIsEditingTitle = useRef(false);
   const isDone = (item: { status?: TodoItemStatus; done?: boolean }) =>
     item.status === 'done' || (item.status == null && item.done);
+  const [showCompleted, setShowCompleted] = useState(true);
+  const doneCount = details.reduce(
+    (count, item) => count + (isDone(item) ? 1 : 0),
+    0
+  );
 
   useEffect(() => {
     if (isEditingTitle && !prevIsEditingTitle.current) {
@@ -287,6 +292,14 @@ export function SortableSubTopicCard({
   };
 
   const detailIds = details.map((_, index) => detailItemId(topicId, subTopic.id, index));
+  const visibleDetailEntries = showCompleted
+    ? details.map((item, index) => ({ item, index }))
+    : details
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => !isDone(item));
+  const visibleDetailIds = visibleDetailEntries.map(({ index }) =>
+    detailItemId(topicId, subTopic.id, index)
+  );
   const { setNodeRef: setDetailListRef, isOver: isOverDetailList } = useDroppable({
     id: detailListId(teamId, topicId, subTopic.id),
     data: { type: 'detail-list' as const, topicId, subTopicId: subTopic.id },
@@ -384,6 +397,26 @@ export function SortableSubTopicCard({
               )}
             </span>
           </button>
+          {type === 'todos' && doneCount > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowCompleted((v) => !v);
+              }}
+              aria-pressed={!showCompleted}
+              className={`shrink-0 px-3 py-2 text-[10px] font-medium rounded-md border transition-colors ${
+                showCompleted
+                  ? 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-overlay)]'
+                  : 'bg-[var(--color-primary)] border-transparent text-white hover:bg-[var(--color-primary-hover)]'
+              }`}
+              title={showCompleted ? 'ซ่อน task ที่ปิดไปแล้ว' : 'แสดง task ที่ปิดไปแล้ว'}
+            >
+              {showCompleted
+                ? `ซ่อนที่ปิดแล้ว (${doneCount})`
+                : `แสดงที่ปิดแล้ว (${doneCount})`}
+            </button>
+          )}
           <div className="flex rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5 mr-3 shrink-0" role="group" aria-label="ประเภทหัวข้อย่อย">
             {TYPE_OPTIONS.map((opt) => (
               <button
@@ -413,8 +446,8 @@ export function SortableSubTopicCard({
                 ref={setDetailListRef}
                 className={`space-y-1.5 rounded-lg transition-colors ${isOverDetailList ? 'ring-2 ring-[var(--color-primary)]/40 bg-[var(--color-primary-muted)]/20' : ''}`}
               >
-                <SortableContext items={detailIds} strategy={verticalListSortingStrategy}>
-                  {details.map((item, index) => {
+                <SortableContext items={visibleDetailIds} strategy={verticalListSortingStrategy}>
+                  {visibleDetailEntries.map(({ item, index }, visibleIndex) => {
                     const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
                     const statusStyle = getStatusStyles(itemStatus);
                     const rowId = detailItemId(topicId, subTopic.id, index);
@@ -451,7 +484,7 @@ export function SortableSubTopicCard({
                                         : 'text-slate-800 dark:!text-slate-100'
                                   }`}
                                 >
-                                  {index + 1}.
+                                  {visibleIndex + 1}.
                                 </span>
                                 <input
                                   type="text"
@@ -469,7 +502,7 @@ export function SortableSubTopicCard({
                                       (e.target as HTMLInputElement).blur();
                                     }
                                   }}
-                                  placeholder={`Task ${index + 1}`}
+                                  placeholder={`Task ${visibleIndex + 1}`}
                                   className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                                     isDone(item)
                                       ? 'line-through !text-slate-500 dark:!text-emerald-100'
@@ -495,7 +528,7 @@ export function SortableSubTopicCard({
                                   {getDaysLeft(item.dueDate) && (
                                     <span
                                       className={`whitespace-nowrap ${
-                                        isOverdue(item.dueDate)
+                                        isOverdueAndNotDone(item.dueDate, isDone(item))
                                           ? 'text-red-600 dark:text-red-400'
                                           : 'text-slate-800 dark:text-[var(--color-text)]'
                                       }`}
@@ -652,7 +685,7 @@ export function SortableSubTopicCard({
                                       {getDaysLeft(item.dueDate) && (
                                         <span
                                           className={`whitespace-nowrap ${
-                                            isOverdue(item.dueDate)
+                                            isOverdueAndNotDone(item.dueDate, isDone(item))
                                               ? 'text-red-600 dark:text-red-400'
                                               : 'text-slate-800 dark:text-[var(--color-text)]'
                                           }`}
