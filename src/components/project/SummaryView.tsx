@@ -1,10 +1,30 @@
 import { useRef, useState } from 'react';
-import type { Team, Topic, Status } from '../../types';
+import type { Team, Topic, Status, SubTopicDetail } from '../../types';
 import html2pdf from 'html2pdf.js';
 
-function PdfStatusBadge({ status }: { status: Status }) {
+function PdfStatusBadge({ status, size = 14 }: { status: Status; size?: number }) {
   const icons: Record<Status, string> = { GREEN: '🟢', YELLOW: '🟡', RED: '🔴' };
-  return <span title={status}>{icons[status]}</span>;
+  return (
+    <span
+      title={status === 'GREEN' ? 'Normal' : status === 'YELLOW' ? 'Manageable' : 'Critical'}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: size + 8,
+        height: size + 8,
+        lineHeight: 1,
+        fontSize: size,
+        verticalAlign: 'middle',
+      }}
+    >
+      {icons[status]}
+    </span>
+  );
+}
+
+function detailEffectiveStatus(d: SubTopicDetail): 'todo' | 'doing' | 'done' {
+  return d.status ?? (d.done ? 'done' : 'todo');
 }
 
 function getTopicStatus(topic: Topic): Status {
@@ -140,7 +160,7 @@ export function SummaryView({
               border: `1.5px solid ${overallStatus === 'RED' ? '#fecaca' : overallStatus === 'YELLOW' ? '#fde68a' : '#bbf7d0'}`,
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
-              <span style={{ fontSize: 22 }}>
+              <span style={{ fontSize: 22, lineHeight: 1, display: 'inline-block', verticalAlign: 'middle' }}>
                 {overallStatus === 'RED' ? '🔴' : overallStatus === 'YELLOW' ? '🟡' : '🟢'}
               </span>
               <div>
@@ -195,12 +215,12 @@ export function SummaryView({
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ backgroundColor: '#f8fafc' }}>
-                  <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 11 }}>ทีม</th>
-                  <th style={{ textAlign: 'center', padding: '7px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 60 }}>สถานะ</th>
-                  <th style={{ textAlign: 'center', padding: '7px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 60 }}>รายการ</th>
-                  <th style={{ textAlign: 'center', padding: '7px 6px', fontWeight: 600, color: '#dc2626', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 45 }}>🔴</th>
-                  <th style={{ textAlign: 'center', padding: '7px 6px', fontWeight: 600, color: '#d97706', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 45 }}>🟡</th>
-                  <th style={{ textAlign: 'center', padding: '7px 6px', fontWeight: 600, color: '#16a34a', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 45 }}>🟢</th>
+                  <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 11, verticalAlign: 'middle' }}>ทีม</th>
+                  <th style={{ textAlign: 'center', padding: '7px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 60, verticalAlign: 'middle' }}>สถานะ</th>
+                  <th style={{ textAlign: 'center', padding: '7px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 60, verticalAlign: 'middle' }}>รายการ</th>
+                  <th style={{ textAlign: 'center', padding: '7px 6px', fontWeight: 600, color: '#dc2626', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 45, verticalAlign: 'middle' }}>🔴</th>
+                  <th style={{ textAlign: 'center', padding: '7px 6px', fontWeight: 600, color: '#d97706', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 45, verticalAlign: 'middle' }}>🟡</th>
+                  <th style={{ textAlign: 'center', padding: '7px 6px', fontWeight: 600, color: '#16a34a', borderBottom: '2px solid #e2e8f0', fontSize: 11, width: 45, verticalAlign: 'middle' }}>🟢</th>
                 </tr>
               </thead>
               <tbody>
@@ -209,12 +229,12 @@ export function SummaryView({
                   const subs = team.topics.flatMap((t) => t.subTopics);
                   return (
                     <tr key={team.id} style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: i % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                      <td style={{ padding: '6px 10px', fontWeight: 500, fontSize: 12 }}>{team.name}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}><PdfStatusBadge status={ts} /></td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center', color: '#6b7280', fontSize: 12 }}>{subs.length}</td>
-                      <td style={{ padding: '6px 6px', textAlign: 'center', color: '#64748b', fontSize: 12 }}>{subs.filter((s) => s.status === 'RED').length}</td>
-                      <td style={{ padding: '6px 6px', textAlign: 'center', color: '#64748b', fontSize: 12 }}>{subs.filter((s) => s.status === 'YELLOW').length}</td>
-                      <td style={{ padding: '6px 6px', textAlign: 'center', color: '#64748b', fontSize: 12 }}>{subs.filter((s) => s.status === 'GREEN').length}</td>
+                      <td style={{ padding: '6px 10px', fontWeight: 500, fontSize: 12, verticalAlign: 'middle' }}>{team.name}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', verticalAlign: 'middle', lineHeight: 0 }}><PdfStatusBadge status={ts} /></td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', color: '#6b7280', fontSize: 12, verticalAlign: 'middle' }}>{subs.length}</td>
+                      <td style={{ padding: '6px 6px', textAlign: 'center', color: '#64748b', fontSize: 12, verticalAlign: 'middle' }}>{subs.filter((s) => s.status === 'RED').length}</td>
+                      <td style={{ padding: '6px 6px', textAlign: 'center', color: '#64748b', fontSize: 12, verticalAlign: 'middle' }}>{subs.filter((s) => s.status === 'YELLOW').length}</td>
+                      <td style={{ padding: '6px 6px', textAlign: 'center', color: '#64748b', fontSize: 12, verticalAlign: 'middle' }}>{subs.filter((s) => s.status === 'GREEN').length}</td>
                     </tr>
                   );
                 })}
@@ -269,12 +289,12 @@ export function SummaryView({
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
                 <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10 }}>ทีม</th>
-                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10 }}>หัวข้อใหญ่</th>
-                  <th style={{ textAlign: 'center', padding: '6px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10 }}>สถานะ</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10 }}>🔴</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10 }}>🟡</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10 }}>🟢</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>ทีม</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>หัวข้อใหญ่</th>
+                  <th style={{ textAlign: 'center', padding: '6px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>สถานะ</th>
+                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🔴</th>
+                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟡</th>
+                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟢</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,14 +307,14 @@ export function SummaryView({
                   const g = topic.subTopics.filter((s) => s.status === 'GREEN').length;
                   return (
                     <tr key={`${team.id}-${topic.id}`} style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: rowIndex % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                      <td style={{ padding: '5px 10px', fontWeight: topicIndex === 0 ? 500 : 400, color: '#1a1d1e', fontSize: 11 }}>
+                      <td style={{ padding: '5px 10px', fontWeight: topicIndex === 0 ? 500 : 400, color: '#1a1d1e', fontSize: 11, verticalAlign: 'middle' }}>
                         {topicIndex === 0 ? team.name : ''}
                       </td>
-                      <td style={{ padding: '5px 10px', color: '#374151', fontSize: 11 }}>{topic.title}</td>
-                      <td style={{ padding: '5px 8px', textAlign: 'center' }}><PdfStatusBadge status={topicStatus} /></td>
-                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11 }}>{r}</td>
-                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11 }}>{y}</td>
-                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11 }}>{g}</td>
+                      <td style={{ padding: '5px 10px', color: '#374151', fontSize: 11, verticalAlign: 'middle' }}>{topic.title}</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'center', verticalAlign: 'middle', lineHeight: 0 }}><PdfStatusBadge status={topicStatus} /></td>
+                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{r}</td>
+                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{y}</td>
+                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{g}</td>
                     </tr>
                   );
                 })}
@@ -302,31 +322,124 @@ export function SummaryView({
             </table>
           </div>
 
-          {/* Critical items */}
+          {/* Critical items — In-Detail Investigation */}
           {redCount > 0 && (
-            <div className="no-break" style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991b1b', marginBottom: 5 }}>
-                🔴 รายการ Critical — {redCount} รายการ
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991b1b', marginBottom: 8 }}>
+                🔴 Critical Issues — {redCount} รายการที่ต้องดำเนินการ
               </div>
-              <div style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #fecaca', borderLeft: '3px solid #dc2626', backgroundColor: '#fef2f2' }}>
-                <ul style={{ margin: 0, padding: '0 0 0 14px', fontSize: 11, lineHeight: 1.8, color: '#374151' }}>
-                  {teams.flatMap((team) =>
-                    team.topics.flatMap((topic) =>
-                      topic.subTopics
-                        .filter((s) => s.status === 'RED')
-                        .map((s) => (
-                          <li key={s.id}>
-                            <span style={{ fontWeight: 600 }}>{team.name}</span>
-                            <span style={{ color: '#9ca3af' }}> → </span>
-                            {topic.title}
-                            <span style={{ color: '#9ca3af' }}> → </span>
-                            <span style={{ color: '#dc2626', fontWeight: 500 }}>{s.title}</span>
-                          </li>
-                        ))
-                    )
-                  )}
-                </ul>
-              </div>
+              {teams.flatMap((team) =>
+                team.topics.flatMap((topic) =>
+                  topic.subTopics
+                    .filter((s) => s.status === 'RED')
+                    .map((sub) => (
+                      <div key={sub.id} className="no-break" style={{
+                        marginBottom: 8, borderRadius: 6, overflow: 'hidden',
+                        border: '1px solid #fecaca', borderLeft: '3px solid #dc2626',
+                        backgroundColor: '#fff',
+                      }}>
+                        {/* Card header */}
+                        <div style={{
+                          padding: '7px 12px', backgroundColor: '#fef2f2',
+                          borderBottom: sub.details.length > 0 ? '1px solid #fee2e2' : 'none',
+                          display: 'flex', alignItems: 'center', gap: 6,
+                        }}>
+                          <PdfStatusBadge status="RED" size={12} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontSize: 10, color: '#6b7280' }}>{team.name} → {topic.title} → </span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#991b1b' }}>{sub.title}</span>
+                          </div>
+                          {sub.details.length > 0 && (
+                            <span style={{ fontSize: 9, color: '#9ca3af', flexShrink: 0 }}>
+                              {sub.details.filter((d) => detailEffectiveStatus(d) === 'done').length}/{sub.details.length} done
+                            </span>
+                          )}
+                        </div>
+                        {/* Detail tasks */}
+                        {sub.details.length > 0 && (
+                          <div style={{ padding: '4px 12px 6px' }}>
+                            {sub.details.map((d, idx) => {
+                              const st = detailEffectiveStatus(d);
+                              return (
+                                <div key={idx} style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 6,
+                                  padding: '3px 0', fontSize: 10, color: '#374151',
+                                  borderBottom: idx < sub.details.length - 1 ? '1px solid #f9fafb' : 'none',
+                                }}>
+                                  <span style={{
+                                    color: st === 'done' ? '#16a34a' : st === 'doing' ? '#2563eb' : '#9ca3af',
+                                    fontWeight: 700, flexShrink: 0, width: 12, textAlign: 'center',
+                                    lineHeight: '16px',
+                                  }}>
+                                    {st === 'done' ? '✓' : st === 'doing' ? '●' : '○'}
+                                  </span>
+                                  <span style={{
+                                    flex: 1,
+                                    textDecoration: st === 'done' ? 'line-through' : 'none',
+                                    color: st === 'done' ? '#9ca3af' : '#374151',
+                                  }}>
+                                    <span>{d.text}</span>
+                                    {d.description && (() => {
+                                      const raw = d.description.trim();
+                                      if (!raw) return null;
+                                      const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+                                      const bulletLines = lines
+                                        .filter((l) => l.startsWith('- '))
+                                        .map((l) => l.slice(2).trim())
+                                        .filter(Boolean);
+                                      const textLines = lines.filter((l) => !l.startsWith('- '));
+                                      const noteTextRaw = textLines.join('\n');
+                                      const noteText = noteTextRaw.replace(/^\s*note\s*[:：-]?\s*/i, '').trim();
+                                      return (
+                                        <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>
+                                          <span
+                                            style={{
+                                              display: 'block',
+                                              paddingLeft: 10,
+                                              borderLeft: '2px solid #e5e7eb',
+                                              lineHeight: 1.65,
+                                              fontStyle: 'italic',
+                                            }}
+                                          >
+                                            <span style={{ display: 'block', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 1, fontStyle: 'normal' }}>
+                                              Note
+                                            </span>
+                                            {noteText && (
+                                              <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>
+                                                {noteText}
+                                              </span>
+                                            )}
+                                            {bulletLines.length > 0 && (
+                                              <ul style={{ margin: noteText ? '6px 0 0' : '0', padding: 0, lineHeight: 1.6, fontSize: 10, color: '#4b5563', listStyle: 'none' }}>
+                                                {bulletLines.map((t, i) => (
+                                                  <li key={i}>
+                                                    <span style={{ color: '#9ca3af' }}>- </span>
+                                                    {t}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            )}
+                                          </span>
+                                        </span>
+                                      );
+                                    })()}
+                                  </span>
+                                  {d.dueDate && (
+                                    <span style={{
+                                      flexShrink: 0, fontSize: 9, color: '#6b7280',
+                                    }}>
+                                      {d.dueDate}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                )
+              )}
             </div>
           )}
 
