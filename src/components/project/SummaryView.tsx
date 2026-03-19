@@ -3,11 +3,51 @@ import type { Team, Topic, Status, SubTopic, SubTopicDetail } from '../../types'
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-function PdfStatusBadge({ status, size = 14 }: { status: Status; size?: number }) {
+function PdfStatusBadge({
+  status,
+  size = 14,
+  muted,
+  mutedHint,
+}: {
+  status: Status;
+  size?: number;
+  muted?: boolean;
+  /** ข้อความต่อท้ายใน title เมื่อ muted (เช่น ไม่ระบุวัน / ยังไม่ถึงกำหนด) */
+  mutedHint?: string;
+}) {
   const icons: Record<Status, string> = { GREEN: '🟢', YELLOW: '🟡', RED: '🔴' };
+  const baseTitle = status === 'GREEN' ? 'Normal' : status === 'YELLOW' ? 'Manageable' : 'Critical';
+  if (muted) {
+    const dot = Math.max(8, Math.round(size * 0.65));
+    const hint = mutedHint ?? 'ไม่ระบุหรือยังไม่ถึงกำหนด';
+    return (
+      <span
+        title={`${baseTitle} — ${hint}`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: size + 8,
+          height: size + 8,
+          lineHeight: 1,
+          verticalAlign: 'middle',
+        }}
+      >
+        <span
+          style={{
+            width: dot,
+            height: dot,
+            borderRadius: '50%',
+            backgroundColor: '#d1d5db',
+            flexShrink: 0,
+          }}
+        />
+      </span>
+    );
+  }
   return (
     <span
-      title={status === 'GREEN' ? 'Normal' : status === 'YELLOW' ? 'Manageable' : 'Critical'}
+      title={baseTitle}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -88,7 +128,26 @@ const DETAIL_CARD_THEME: Record<
   },
 };
 
-function DetailDescriptionNote({ description, noteBorderLeft }: { description: string; noteBorderLeft: string }) {
+function notePipeBorderLeft(
+  taskStatus: 'todo' | 'doing' | 'done' | undefined,
+  themeBorderLeft: string,
+): string {
+  if (taskStatus === 'todo') return '2px solid #d1d5db';
+  if (taskStatus === 'doing') return '2px solid #60a5fa';
+  if (taskStatus === 'done') return themeBorderLeft;
+  return themeBorderLeft;
+}
+
+function DetailDescriptionNote({
+  description,
+  noteBorderLeft,
+  taskStatus,
+}: {
+  description: string;
+  noteBorderLeft: string;
+  /** สถานะรายการ Todo — ยังไม่ done ใช้แถบเทา/น้ำเงิน; done ใช้สีตามธีมหัวข้อ */
+  taskStatus?: 'todo' | 'doing' | 'done';
+}) {
   const raw = description.trim();
   if (!raw) return null;
   const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -99,13 +158,14 @@ function DetailDescriptionNote({ description, noteBorderLeft }: { description: s
   const textLines = lines.filter((l) => !l.startsWith('- '));
   const noteTextRaw = textLines.join('\n');
   const noteText = noteTextRaw.replace(/^\s*note\s*[:：-]?\s*/i, '').trim();
+  const pipeBorder = notePipeBorderLeft(taskStatus, noteBorderLeft);
   return (
     <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>
       <span
         style={{
           display: 'block',
           paddingLeft: 10,
-          borderLeft: noteBorderLeft,
+          borderLeft: pipeBorder,
           lineHeight: 1.65,
           fontStyle: 'italic',
         }}
@@ -263,6 +323,30 @@ function formatTimelineDueLabel(dueDateRaw: string | null): string {
   return dt.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/** due ยังอยู่ในอนาคต (หลังวันนี้ ตาม local calendar) — จุด/ป้ายวันใช้สีเทา */
+function isTimelineDueDateFutureOnly(dueDateRaw: string | null): boolean {
+  if (!dueDateRaw || !/^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw)) return false;
+  const [y, m, d] = dueDateRaw.split('-').map(Number);
+  const due = new Date(y, m - 1, d);
+  due.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() > today.getTime();
+}
+
+const TIMELINE_FUTURE_MUTED = '#9ca3af';
+
+/** ธีมการ์ด Timeline เมื่อ due ยังอยู่ในอนาคต */
+const TIMELINE_FUTURE_CARD_THEME = {
+  border: '1px solid #e5e7eb',
+  borderLeft: '3px solid #9ca3af',
+  headerBg: '#f3f4f6',
+  headerBorder: '1px solid #e5e7eb',
+  titleColor: '#6b7280',
+  noteBorderLeft: '2px solid #d1d5db',
+  rowBorderBottom: '1px solid #f3f4f6',
+} as const;
+
 /** คีย์วัน — แสดงป้ายวันครั้งเดียวเมื่อวันเดียวกันกับแถวก่อน */
 function timelineDayKey(dueDateRaw: string | null): string {
   if (dueDateRaw) return `date:${dueDateRaw}`;
@@ -310,11 +394,15 @@ function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
         {groups.map((g, index) => {
-          const dotBorder = statusColor(g.sub.status);
+          const dueUndated = !g.dueDateRaw;
+          const dueFuture = isTimelineDueDateFutureOnly(g.dueDateRaw);
+          const dueMuted = dueUndated || dueFuture;
+          const dotBorder = dueMuted ? TIMELINE_FUTURE_MUTED : statusColor(g.sub.status);
           const dk = timelineDayKey(g.dueDateRaw);
           const prevDk = index > 0 ? timelineDayKey(groups[index - 1]!.dueDateRaw) : null;
           const showDateLabel = prevDk === null || dk !== prevDk;
-          const t = DETAIL_CARD_THEME[g.sub.status];
+          const t = dueMuted ? TIMELINE_FUTURE_CARD_THEME : DETAIL_CARD_THEME[g.sub.status];
+          const badgeMutedHint = dueUndated ? 'ไม่ระบุวันครบกำหนด' : 'ยังไม่ถึงวันครบกำหนด';
 
           return (
             <div
@@ -336,7 +424,13 @@ function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
                   paddingTop: 2,
                   fontSize: 11,
                   fontWeight: showDateLabel && g.dueDateRaw ? 700 : showDateLabel ? 500 : 400,
-                  color: showDateLabel ? (g.dueDateRaw ? '#374151' : '#9ca3af') : undefined,
+                  color: showDateLabel
+                    ? g.dueDateRaw
+                      ? dueFuture
+                        ? TIMELINE_FUTURE_MUTED
+                        : '#374151'
+                      : TIMELINE_FUTURE_MUTED
+                    : undefined,
                   lineHeight: 1.35,
                 }}
               >
@@ -368,14 +462,15 @@ function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
                 {g.details.length === 0 ? (
                   <div
                     style={{
-                      border: '1px solid #e5e7eb',
+                      border: dueMuted ? TIMELINE_FUTURE_CARD_THEME.border : '1px solid #e5e7eb',
+                      borderLeft: dueMuted ? TIMELINE_FUTURE_CARD_THEME.borderLeft : undefined,
                       borderRadius: 8,
                       padding: '10px 12px',
-                      backgroundColor: '#fafbfc',
+                      backgroundColor: dueMuted ? TIMELINE_FUTURE_CARD_THEME.headerBg : '#fafbfc',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <PdfStatusBadge status={g.sub.status} size={11} />
+                      <PdfStatusBadge status={g.sub.status} size={11} muted={dueMuted} mutedHint={badgeMutedHint} />
                       <span style={{ fontSize: 10, color: '#6b7280' }}>
                         {g.team.name} → {g.topic.title} → <span style={{ fontWeight: 600, color: '#374151' }}>{g.sub.title}</span>
                       </span>
@@ -404,7 +499,7 @@ function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
                         gap: 6,
                       }}
                     >
-                      <PdfStatusBadge status={g.sub.status} size={12} />
+                      <PdfStatusBadge status={g.sub.status} size={12} muted={dueMuted} mutedHint={badgeMutedHint} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 10, color: '#6b7280' }}>{g.team.name} → {g.topic.title} → </span>
                         <span style={{ fontSize: 11, fontWeight: 600, color: t.titleColor }}>{g.sub.title}</span>
@@ -449,7 +544,11 @@ function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
                             >
                               <span>{d.text}</span>
                               {d.description && (
-                                <DetailDescriptionNote description={d.description} noteBorderLeft={t.noteBorderLeft} />
+                                <DetailDescriptionNote
+                                  description={d.description}
+                                  noteBorderLeft={t.noteBorderLeft}
+                                  taskStatus={st}
+                                />
                               )}
                             </span>
                           </div>
@@ -539,7 +638,11 @@ function SummarySubTopicDetailCard({ team, topic, sub }: { team: Team; topic: To
                 >
                   <span>{d.text}</span>
                   {d.description && (
-                    <DetailDescriptionNote description={d.description} noteBorderLeft={t.noteBorderLeft} />
+                    <DetailDescriptionNote
+                      description={d.description}
+                      noteBorderLeft={t.noteBorderLeft}
+                      taskStatus={st}
+                    />
                   )}
                 </span>
                 {d.dueDate && (
