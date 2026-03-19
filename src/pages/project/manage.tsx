@@ -48,6 +48,8 @@ function teamsReducer(state: Team[], action: TeamsAction): Team[] {
 export default function ProjectManagePage() {
   const [searchParams] = useSearchParams();
   const projectIdFromUrl = searchParams.get('id');
+  const topicIdFromUrl = searchParams.get('topicId');
+  const subTopicIdFromUrl = searchParams.get('subTopicId');
   const [projectId, setProjectId] = useState<string | null>(projectIdFromUrl);
   const [teams, dispatchTeams] = useReducer(teamsReducer, INITIAL_DATA);
   const [projectLoadState, setProjectLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -131,15 +133,38 @@ export default function ProjectManagePage() {
         }
         if (data.id) setProjectId(data.id);
         const { projectName: name, description: desc, teams: nextTeams } = data.data;
+        const nextTeamsSafe = nextTeams ?? [];
         setProjectName(name || '');
         setProjectNameInput(name || '');
         setProjectDescription(desc ?? '');
-        dispatchTeams({ type: 'setAll', teams: nextTeams });
-        setExpandedTopics(new Set());
+        dispatchTeams({ type: 'setAll', teams: nextTeamsSafe });
+
+        // Auto-expand topic/subtopic based on query params from tasks/manage.
+        // This prevents the selected heading from appearing "collapsed" after navigation.
+        const nextExpanded = new Set<string>();
+        const topicExists =
+          !!topicIdFromUrl && nextTeamsSafe.some((team) => team.topics.some((t) => t.id === topicIdFromUrl));
+
+        if (topicExists && topicIdFromUrl) {
+          nextExpanded.add(topicIdFromUrl);
+        } else if (!topicExists && !!subTopicIdFromUrl) {
+          const topicContainingSub = nextTeamsSafe
+            .flatMap((team) => team.topics)
+            .find((t) => t.subTopics.some((s) => s.id === subTopicIdFromUrl));
+          if (topicContainingSub) nextExpanded.add(topicContainingSub.id);
+        }
+
+        const subExists =
+          !!subTopicIdFromUrl &&
+          nextTeamsSafe.some((team) => team.topics.some((t) => t.subTopics.some((s) => s.id === subTopicIdFromUrl)));
+
+        setExpandedTopics(nextExpanded);
+        setOpenTodoSectionIds(subExists && subTopicIdFromUrl ? new Set([subTopicIdFromUrl]) : new Set());
+        setStatusFilter(new Set());
         setProjectLoadState('loaded');
       })
       .catch(() => setProjectLoadState('error'));
-  }, [projectIdFromUrl, projectLoadState]);
+  }, [projectIdFromUrl, projectLoadState, topicIdFromUrl, subTopicIdFromUrl]);
 
   const getTopicStatus = (topic: Topic): Status => {
     if (topic.subTopics.length === 0) return 'GREEN';

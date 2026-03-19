@@ -17,8 +17,11 @@ type FlatTask = {
   projectId: string;
   projectName: string;
   projectStatus: Status;
+  teamId: string;
   teamName: string;
+  topicId: string;
   topicTitle: string;
+  subTopicId: string;
   subTopicTitle: string;
   detailIdx: number;
   text: string;
@@ -96,8 +99,11 @@ function buildFlatTasks(projects: ProjectsById): FlatTask[] {
               projectId: project.id,
               projectName: project.projectName,
               projectStatus: getProjectSummaryStatus(project),
+              teamId: team.id,
               teamName: team.name,
+              topicId: topic.id,
               topicTitle: topic.title,
+              subTopicId: subTopic.id,
               subTopicTitle: subTopic.title,
               detailIdx,
               text,
@@ -433,8 +439,12 @@ export default function TasksOverviewPage() {
     [scheduleSave]
   );
 
-  const openProject = (projectId: string) => {
-    navigate(`/project?id=${encodeURIComponent(projectId)}`);
+  const openProject = (task: FlatTask) => {
+    navigate(
+      `/project?id=${encodeURIComponent(task.projectId)}&teamId=${encodeURIComponent(task.teamId)}&topicId=${encodeURIComponent(
+        task.topicId
+      )}&subTopicId=${encodeURIComponent(task.subTopicId)}&detailIdx=${encodeURIComponent(task.detailIdx)}`
+    );
   };
 
   const totalTasks = allTasks.length;
@@ -742,7 +752,7 @@ type TimelineViewProps = {
   defaultTimeStart: number;
   defaultTimeEnd: number;
   tasksWithDue: FlatTask[];
-  onOpenProject: (projectId: string) => void;
+  onOpenProject: (task: FlatTask) => void;
 };
 
 const TIMELINE_KEYS = {
@@ -770,7 +780,7 @@ function TimelineView({
   const handleItemDoubleClick = useCallback(
     (itemId: string | number) => {
       const task = tasksWithDue.find((t) => t.id === String(itemId));
-      if (task) onOpenProject(task.projectId);
+      if (task) onOpenProject(task);
     },
     [tasksWithDue, onOpenProject]
   );
@@ -828,7 +838,7 @@ type TaskColumnProps = {
   pillBg: string;
   tasks: FlatTask[];
   onUpdate: (task: FlatTask, patch: Partial<SubTopicDetail>) => void;
-  onOpenProject: (projectId: string) => void;
+  onOpenProject: (task: FlatTask) => void;
   dueBucketConfig: DueBucketConfig;
 };
 
@@ -925,11 +935,11 @@ function TaskColumn({
                         role="button"
                         tabIndex={0}
                         title="ดับเบิลคลิกเพื่อเปิดโปรเจกต์"
-                        onDoubleClick={() => onOpenProject(task.projectId)}
+                        onDoubleClick={() => onOpenProject(task)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            onOpenProject(task.projectId);
+                            onOpenProject(task);
                           }
                         }}
                         className="text-[10px] text-[var(--color-text-muted)] cursor-pointer hover:text-[var(--color-primary)]"
