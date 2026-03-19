@@ -27,6 +27,13 @@ type FlatTask = {
 };
 
 type DueBucket = 'overdue' | 'near' | 'mid' | 'far' | 'none';
+type DueBucketConfig = { nearMaxDays: number; midMaxDays: number };
+
+const DEFAULT_DUE_BUCKET_CONFIG: DueBucketConfig = {
+  nearMaxDays: 3,
+  midMaxDays: 14,
+};
+const DUE_BUCKET_CONFIG_STORAGE_KEY = 'tasks_overview_due_bucket_config_v1';
 
 type ProjectsById = Record<string, ProjectData>;
 
@@ -105,7 +112,7 @@ function buildFlatTasks(projects: ProjectsById): FlatTask[] {
   return items;
 }
 
-function getDueBucket(dueDate?: string): DueBucket {
+function getDueBucket(dueDate?: string, cfg: DueBucketConfig = DEFAULT_DUE_BUCKET_CONFIG): DueBucket {
   if (!dueDate) return 'none';
   const d = new Date(dueDate);
   if (Number.isNaN(d.getTime())) return 'none';
@@ -114,8 +121,10 @@ function getDueBucket(dueDate?: string): DueBucket {
   d.setHours(0, 0, 0, 0);
   const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return 'overdue';
-  if (diffDays <= 3) return 'near';
-  if (diffDays <= 14) return 'mid';
+  const nearMax = Math.max(0, Math.trunc(cfg.nearMaxDays));
+  const midMax = Math.max(nearMax + 1, Math.trunc(cfg.midMaxDays));
+  if (diffDays <= nearMax) return 'near';
+  if (diffDays <= midMax) return 'mid';
   return 'far';
 }
 
@@ -155,12 +164,44 @@ export default function TasksOverviewPage() {
   const [showDone, setShowDone] = useState(false);
   const [focusTodayOnly, setFocusTodayOnly] = useState(false);
   const [calendarViewMode, setCalendarViewMode] = useState<'calendar' | 'timeline'>('timeline');
+  const [dueBucketConfig, setDueBucketConfig] = useState<DueBucketConfig>(() => {
+    if (typeof window === 'undefined') return DEFAULT_DUE_BUCKET_CONFIG;
+    try {
+      const raw = window.localStorage.getItem(DUE_BUCKET_CONFIG_STORAGE_KEY);
+      if (!raw) return DEFAULT_DUE_BUCKET_CONFIG;
+      const parsed = JSON.parse(raw) as Partial<DueBucketConfig>;
+      const nearMaxDays = Number.isFinite(parsed.nearMaxDays)
+        ? Math.trunc(parsed.nearMaxDays as number)
+        : DEFAULT_DUE_BUCKET_CONFIG.nearMaxDays;
+      const midMaxDays = Number.isFinite(parsed.midMaxDays)
+        ? Math.trunc(parsed.midMaxDays as number)
+        : DEFAULT_DUE_BUCKET_CONFIG.midMaxDays;
+      return {
+        nearMaxDays: Math.max(0, nearMaxDays),
+        midMaxDays: Math.max(Math.max(0, nearMaxDays) + 1, midMaxDays),
+      };
+    } catch {
+      return DEFAULT_DUE_BUCKET_CONFIG;
+    }
+  });
   const [savingProjects, setSavingProjects] = useState<Set<string>>(new Set());
   const saveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const projectsRef = useRef<ProjectsById>({});
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        DUE_BUCKET_CONFIG_STORAGE_KEY,
+        JSON.stringify(dueBucketConfig)
+      );
+    } catch {
+      // ignore storage failures
+    }
+  }, [dueBucketConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,7 +265,7 @@ export default function TasksOverviewPage() {
       none: [],
     };
     visibleTasks.forEach((task) => {
-      const bucket = getDueBucket(task.dueDate);
+      const bucket = getDueBucket(task.dueDate, dueBucketConfig);
       buckets[bucket].push(task);
     });
     (Object.keys(buckets) as DueBucket[]).forEach((b) => {
@@ -236,7 +277,7 @@ export default function TasksOverviewPage() {
       });
     });
     return buckets;
-  }, [visibleTasks]);
+  }, [visibleTasks, dueBucketConfig]);
 
   const tasksWithDue = useMemo(
     () => visibleTasks.filter((t) => t.dueDate).sort((a, b) => {
@@ -579,36 +620,112 @@ export default function TasksOverviewPage() {
                 tasks={groupedByBucket.overdue}
                 onUpdate={updateTaskDetail}
                 onOpenProject={openProject}
+                dueBucketConfig={dueBucketConfig}
               />
               <TaskColumn
                 title="ใกล้"
-                subtitle="ภายใน 3 วัน"
+                subtitle={
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span className="text-[var(--color-text-muted)]">ภายใน</span>
+                    <div className="relative w-12 h-[14px]">
+                      <input
+                        aria-label="ใกล้ (<= กี่วัน)"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        step={1}
+                        value={dueBucketConfig.nearMaxDays}
+                        onChange={(e) => {
+                          const raw = Number(e.target.value);
+                          const nextNear = Number.isFinite(raw)
+                            ? Math.max(0, Math.trunc(raw))
+                            : DEFAULT_DUE_BUCKET_CONFIG.nearMaxDays;
+                          setDueBucketConfig((prev) => ({
+                            nearMaxDays: nextNear,
+                            midMaxDays: Math.max(prev.midMaxDays, nextNear + 1),
+                          }));
+                        }}
+                        className="w-full h-[14px] box-border text-center bg-transparent border-0 p-0 text-transparent focus:outline-none focus:ring-0 caret-[var(--color-primary)]"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-[var(--color-text)] text-[11px]">
+                        {dueBucketConfig.nearMaxDays === 1 ? 'วันนี้' : dueBucketConfig.nearMaxDays}
+                      </span>
+                    </div>
+                    {dueBucketConfig.nearMaxDays === 1 ? null : (
+                      <span className="text-[var(--color-text-muted)]">วัน</span>
+                    )}
+                  </div>
+                }
                 colorClass="border-amber-500/70"
                 headerBg="bg-amber-500/10"
                 pillBg="bg-amber-500/20 text-amber-700 dark:text-amber-300"
                 tasks={groupedByBucket.near}
                 onUpdate={updateTaskDetail}
                 onOpenProject={openProject}
+                dueBucketConfig={dueBucketConfig}
               />
               <TaskColumn
                 title="กลาง"
-                subtitle="4–14 วัน"
+                subtitle={
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span className="text-[var(--color-text-muted)]">ช่วง</span>
+                    <span className="text-[var(--color-text-muted)] tabular-nums">
+                      {dueBucketConfig.nearMaxDays + 1}
+                    </span>
+                    <span className="text-[var(--color-text-muted)]">ถึง</span>
+                    <div className="relative w-12 h-[14px]">
+                      <input
+                        aria-label="กลาง (<= กี่วัน)"
+                        type="number"
+                        inputMode="numeric"
+                        min={dueBucketConfig.nearMaxDays + 1}
+                        step={1}
+                        value={dueBucketConfig.midMaxDays}
+                        onChange={(e) => {
+                          const raw = Number(e.target.value);
+                          const nextMid = Number.isFinite(raw)
+                            ? Math.trunc(raw)
+                            : DEFAULT_DUE_BUCKET_CONFIG.midMaxDays;
+                          setDueBucketConfig((prev) => ({
+                            nearMaxDays: prev.nearMaxDays,
+                            midMaxDays: Math.max(prev.nearMaxDays + 1, nextMid),
+                          }));
+                        }}
+                        className="w-full h-[14px] box-border text-center bg-transparent border-0 p-0 text-transparent focus:outline-none focus:ring-0 caret-[var(--color-primary)]"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-[var(--color-text)] text-[11px]">
+                        {dueBucketConfig.midMaxDays}
+                      </span>
+                    </div>
+                    <span className="text-[var(--color-text-muted)]">วัน</span>
+                  </div>
+                }
                 colorClass="border-sky-500/70"
                 headerBg="bg-sky-500/10"
                 pillBg="bg-sky-500/20 text-sky-700 dark:text-sky-300"
                 tasks={groupedByBucket.mid}
                 onUpdate={updateTaskDetail}
                 onOpenProject={openProject}
+                dueBucketConfig={dueBucketConfig}
               />
               <TaskColumn
                 title="ไกล / ยังไม่กำหนด"
-                subtitle="มากกว่า 14 วัน หรือไม่มี Due date"
+                subtitle={
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span className="text-[var(--color-text-muted)]">มากกว่า</span>
+                    <span className="text-[var(--color-text)] tabular-nums">
+                      {dueBucketConfig.midMaxDays}
+                    </span>
+                    <span className="text-[var(--color-text-muted)]">วัน</span>
+                  </div>
+                }
                 colorClass="border-emerald-500/60"
                 headerBg="bg-emerald-500/10"
                 pillBg="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
                 tasks={[...groupedByBucket.far, ...groupedByBucket.none]}
                 onUpdate={updateTaskDetail}
                 onOpenProject={openProject}
+                dueBucketConfig={dueBucketConfig}
               />
             </div>
           </section>
@@ -705,13 +822,14 @@ function TimelineView({
 
 type TaskColumnProps = {
   title: string;
-  subtitle: string;
+  subtitle: React.ReactNode;
   colorClass: string;
   headerBg: string;
   pillBg: string;
   tasks: FlatTask[];
   onUpdate: (task: FlatTask, patch: Partial<SubTopicDetail>) => void;
   onOpenProject: (projectId: string) => void;
+  dueBucketConfig: DueBucketConfig;
 };
 
 function TaskColumn({
@@ -723,12 +841,19 @@ function TaskColumn({
   tasks,
   onUpdate,
   onOpenProject,
+  dueBucketConfig,
 }: TaskColumnProps) {
   return (
     <div className={`flex flex-col rounded-2xl border bg-[var(--color-surface)] shadow-[var(--shadow-card)] ${colorClass}`}>
       <div className={`px-3 py-2 border-b border-[var(--color-border)] ${headerBg}`}>
-        <h3 className="text-sm font-semibold text-[var(--color-text)]">{title}</h3>
-        <p className="text-[11px] text-[var(--color-text-muted)]">{subtitle}</p>
+        <div className="flex flex-col gap-0.5 leading-tight">
+          <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
+            {title}
+          </h3>
+          <div className="text-[11px] text-[var(--color-text)] leading-tight whitespace-nowrap flex items-center h-[14px]">
+            {subtitle}
+          </div>
+        </div>
       </div>
       <div className="flex-1 min-h-[120px] max-h-[420px] overflow-y-auto p-2 space-y-2">
         {tasks.length === 0 ? (
@@ -739,7 +864,7 @@ function TaskColumn({
           tasks.map((task) => {
             const dueLabel = formatThaiDate(task.dueDate);
             const relativeLabel = formatRelativeThaiDay(task.dueDate);
-            const bucket = getDueBucket(task.dueDate);
+            const bucket = getDueBucket(task.dueDate, dueBucketConfig);
             const accent =
               bucket === 'overdue'
                 ? 'text-rose-600 dark:text-rose-300'

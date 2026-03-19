@@ -755,12 +755,43 @@ export default function ProjectManagePage() {
     topicId: string,
     subTopicId: string,
     fromIndex: number,
-    toIndex: number
+    toIndex: number,
+    visibleDetailIndices?: number[]
   ) => {
     if (fromIndex === toIndex) return;
     updateTeams((prev) =>
       updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) =>
-        arrayMove(details, fromIndex, toIndex)
+        (() => {
+          if (!visibleDetailIndices || visibleDetailIndices.length === 0) {
+            return arrayMove(details, fromIndex, toIndex);
+          }
+
+          // Reorder only within the visible subset. Hidden items keep their original positions.
+          const safeVisibleIndices = visibleDetailIndices.filter(
+            (i) => Number.isFinite(i) && i >= 0 && i < details.length
+          );
+
+          if (safeVisibleIndices.length === 0) {
+            return arrayMove(details, fromIndex, toIndex);
+          }
+
+          const fromPos = safeVisibleIndices.indexOf(fromIndex);
+          const toPos = safeVisibleIndices.indexOf(toIndex);
+
+          if (fromPos === -1 || toPos === -1) {
+            return arrayMove(details, fromIndex, toIndex);
+          }
+
+          const visibleItems = safeVisibleIndices.map((i) => details[i]);
+          const movedVisible = arrayMove(visibleItems, fromPos, toPos);
+
+          const next = [...details];
+          safeVisibleIndices.forEach((origIdx, pos) => {
+            next[origIdx] = movedVisible[pos];
+          });
+
+          return next;
+        })()
       )
     );
   };
@@ -855,20 +886,45 @@ export default function ProjectManagePage() {
       const activeInfo = parseDetailItemId(String(active.id));
       if (!activeInfo) return;
       const overId = String(over.id);
+      const visibleDetailIndices = (active.data.current as any)?.visibleDetailIndices as number[] | undefined;
       // Dropped on "end of list" container
       if (overId.startsWith('detail-list-')) {
         const topic = team.topics.find((t) => t.id === activeInfo.topicId);
         const sub = topic?.subTopics.find((s) => s.id === activeInfo.subTopicId);
         const len = sub?.details?.length ?? 0;
-        const targetIndex = Math.max(0, len - 1);
-        reorderSubTopicDetails(teamId, activeInfo.topicId, activeInfo.subTopicId, activeInfo.index, targetIndex);
+        const safeVisibleIndices = Array.isArray(visibleDetailIndices)
+          ? visibleDetailIndices.filter(
+              (i) => Number.isFinite(i) && i >= 0 && i < len
+            )
+          : [];
+
+        const targetIndex =
+          safeVisibleIndices.length > 0
+            ? safeVisibleIndices[safeVisibleIndices.length - 1]
+            : Math.max(0, len - 1);
+
+        reorderSubTopicDetails(
+          teamId,
+          activeInfo.topicId,
+          activeInfo.subTopicId,
+          activeInfo.index,
+          targetIndex,
+          visibleDetailIndices
+        );
         return;
       }
       const overInfo = parseDetailItemId(overId);
       if (!overInfo) return;
       // Only reorder within the same subtopic (cross-subtopic move is not supported yet)
       if (overInfo.topicId !== activeInfo.topicId || overInfo.subTopicId !== activeInfo.subTopicId) return;
-      reorderSubTopicDetails(teamId, activeInfo.topicId, activeInfo.subTopicId, activeInfo.index, overInfo.index);
+      reorderSubTopicDetails(
+        teamId,
+        activeInfo.topicId,
+        activeInfo.subTopicId,
+        activeInfo.index,
+        overInfo.index,
+        visibleDetailIndices
+      );
       return;
     }
     if (active.data.current?.type === 'subtopic') {

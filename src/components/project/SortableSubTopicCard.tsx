@@ -133,17 +133,21 @@ function SortableDetailRow({
   children,
   className,
   disabled,
+  detailIndex,
+  visibleDetailIndices,
 }: {
   id: string;
   children: (args: { dragHandle: React.ReactNode; isDragging: boolean }) => React.ReactNode;
   className?: string;
   disabled?: boolean;
+  detailIndex?: number;
+  visibleDetailIndices?: number[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id,
       disabled,
-      data: { type: 'detail' as const, detailId: id },
+      data: { type: 'detail' as const, detailId: id, detailIndex, visibleDetailIndices },
     });
   const style = { transform: CSS.Transform.toString(transform), transition };
   return (
@@ -300,6 +304,7 @@ export function SortableSubTopicCard({
   const visibleDetailIds = visibleDetailEntries.map(({ index }) =>
     detailItemId(topicId, subTopic.id, index)
   );
+  const visibleDetailIndices = visibleDetailEntries.map(({ index }) => index);
   const { setNodeRef: setDetailListRef, isOver: isOverDetailList } = useDroppable({
     id: detailListId(teamId, topicId, subTopic.id),
     data: { type: 'detail-list' as const, topicId, subTopicId: subTopic.id },
@@ -455,6 +460,8 @@ export function SortableSubTopicCard({
                       <SortableDetailRow
                         key={rowId}
                         id={rowId}
+                        detailIndex={index}
+                        visibleDetailIndices={visibleDetailIndices}
                         className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                       >
                         {({ dragHandle }) => (
