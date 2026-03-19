@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Team, Topic, Status, SubTopicDetail } from '../../types';
+import type { Team, Topic, Status, SubTopic, SubTopicDetail } from '../../types';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -46,6 +46,192 @@ const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica 
 const SERIF = 'Georgia, "Times New Roman", serif';
 const statusLabel = (s: Status) => s === 'RED' ? 'Critical' : s === 'YELLOW' ? 'Manageable' : 'Normal';
 const statusColor = (s: Status) => s === 'RED' ? '#dc2626' : s === 'YELLOW' ? '#d97706' : '#16a34a';
+
+const DETAIL_CARD_THEME: Record<
+  Status,
+  {
+    border: string;
+    borderLeft: string;
+    headerBg: string;
+    headerBorder: string;
+    titleColor: string;
+    noteBorderLeft: string;
+    rowBorderBottom: string;
+  }
+> = {
+  RED: {
+    border: '1px solid #fecaca',
+    borderLeft: '3px solid #dc2626',
+    headerBg: '#fef2f2',
+    headerBorder: '1px solid #fee2e2',
+    titleColor: '#991b1b',
+    noteBorderLeft: '2px solid #e5e7eb',
+    rowBorderBottom: '1px solid #f9fafb',
+  },
+  YELLOW: {
+    border: '1px solid #fde68a',
+    borderLeft: '3px solid #f59e0b',
+    headerBg: '#fffbeb',
+    headerBorder: '1px solid #fef3c7',
+    titleColor: '#92400e',
+    noteBorderLeft: '2px solid #fde68a',
+    rowBorderBottom: '1px solid #fffbeb',
+  },
+  GREEN: {
+    border: '1px solid #bbf7d0',
+    borderLeft: '3px solid #16a34a',
+    headerBg: '#f0fdf4',
+    headerBorder: '1px solid #d1fae5',
+    titleColor: '#166534',
+    noteBorderLeft: '2px solid #bbf7d0',
+    rowBorderBottom: '1px solid #ecfdf5',
+  },
+};
+
+function DetailDescriptionNote({ description, noteBorderLeft }: { description: string; noteBorderLeft: string }) {
+  const raw = description.trim();
+  if (!raw) return null;
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const bulletLines = lines
+    .filter((l) => l.startsWith('- '))
+    .map((l) => l.slice(2).trim())
+    .filter(Boolean);
+  const textLines = lines.filter((l) => !l.startsWith('- '));
+  const noteTextRaw = textLines.join('\n');
+  const noteText = noteTextRaw.replace(/^\s*note\s*[:：-]?\s*/i, '').trim();
+  return (
+    <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>
+      <span
+        style={{
+          display: 'block',
+          paddingLeft: 10,
+          borderLeft: noteBorderLeft,
+          lineHeight: 1.65,
+          fontStyle: 'italic',
+        }}
+      >
+        <span
+          style={{
+            display: 'block',
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            color: '#9ca3af',
+            textTransform: 'uppercase',
+            marginBottom: 1,
+            fontStyle: 'normal',
+          }}
+        >
+          Note
+        </span>
+        {noteText && (
+          <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>
+            {noteText}
+          </span>
+        )}
+        {bulletLines.length > 0 && (
+          <ul style={{ margin: noteText ? '6px 0 0' : '0', padding: 0, lineHeight: 1.6, fontSize: 10, color: '#4b5563', listStyle: 'none' }}>
+            {bulletLines.map((t, i) => (
+              <li key={i}>
+                <span style={{ color: '#9ca3af' }}>- </span>
+                {t}
+              </li>
+            ))}
+          </ul>
+        )}
+      </span>
+    </span>
+  );
+}
+
+function SummarySubTopicDetailCard({ team, topic, sub }: { team: Team; topic: Topic; sub: SubTopic }) {
+  const t = DETAIL_CARD_THEME[sub.status];
+  return (
+    <div
+      className="no-break"
+      style={{
+        marginBottom: 8,
+        borderRadius: 6,
+        overflow: 'hidden',
+        border: t.border,
+        borderLeft: t.borderLeft,
+        backgroundColor: '#fff',
+      }}
+    >
+      <div
+        style={{
+          padding: '7px 12px',
+          backgroundColor: t.headerBg,
+          borderBottom: sub.details.length > 0 ? t.headerBorder : 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
+        <PdfStatusBadge status={sub.status} size={12} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 10, color: '#6b7280' }}>{team.name} → {topic.title} → </span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: t.titleColor }}>{sub.title}</span>
+        </div>
+        {sub.details.length > 0 && (
+          <span style={{ fontSize: 9, color: '#9ca3af', flexShrink: 0 }}>
+            {sub.details.filter((d) => detailEffectiveStatus(d) === 'done').length}/{sub.details.length} done
+          </span>
+        )}
+      </div>
+      {sub.details.length > 0 && (
+        <div style={{ padding: '4px 12px 6px' }}>
+          {sub.details.map((d, idx) => {
+            const st = detailEffectiveStatus(d);
+            return (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 6,
+                  padding: '3px 0',
+                  fontSize: 10,
+                  color: '#374151',
+                  borderBottom: idx < sub.details.length - 1 ? t.rowBorderBottom : 'none',
+                }}
+              >
+                <span
+                  style={{
+                    color: st === 'done' ? '#16a34a' : st === 'doing' ? '#2563eb' : '#9ca3af',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    width: 12,
+                    textAlign: 'center',
+                    lineHeight: '16px',
+                  }}
+                >
+                  {st === 'done' ? '✓' : st === 'doing' ? '●' : '○'}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    color: st === 'done' ? '#4b5563' : '#374151',
+                  }}
+                >
+                  <span>{d.text}</span>
+                  {d.description && (
+                    <DetailDescriptionNote description={d.description} noteBorderLeft={t.noteBorderLeft} />
+                  )}
+                </span>
+                {d.dueDate && (
+                  <span style={{ flexShrink: 0, fontSize: 9, color: '#6b7280' }}>
+                    {d.dueDate}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function SummaryView({
   projectName,
@@ -260,7 +446,7 @@ export function SummaryView({
           </div>
 
           {/* Brief alert at bottom of slide 1 */}
-          {hasIssues && (
+          {hasIssues ? (
             <div style={{
               padding: '8px 14px', borderRadius: 6, fontSize: 11,
               border: `1px solid ${redCount > 0 ? '#fecaca' : '#fde68a'}`,
@@ -273,9 +459,20 @@ export function SummaryView({
                 {redCount > 0 && yellowCount > 0 && ', '}
                 {yellowCount > 0 && `${yellowCount} Manageable`}
               </span>
-              <span style={{ color: '#6b7280', marginLeft: 6 }}>— รายละเอียดหน้าถัดไป</span>
+              <span style={{ color: '#6b7280', marginLeft: 6 }}>— รายละเอียดด้านล่าง</span>
             </div>
-          )}
+          ) : totalCount > 0 ? (
+            <div style={{
+              padding: '8px 14px', borderRadius: 6, fontSize: 11,
+              border: '1px solid #bbf7d0',
+              borderLeft: '3px solid #16a34a',
+              backgroundColor: '#f0fdf4',
+              color: '#166534',
+            }}>
+              <span style={{ fontWeight: 700 }}>✓ สถานะโดยรวมปกติ</span>
+              <span style={{ color: '#6b7280', marginLeft: 6 }}>— รายละเอียดรายการด้านล่าง</span>
+            </div>
+          ) : null}
         </div>
 
         {/* Section divider */}
@@ -349,109 +546,7 @@ export function SummaryView({
                   topic.subTopics
                     .filter((s) => s.status === 'RED')
                     .map((sub) => (
-                      <div key={sub.id} className="no-break" style={{
-                        marginBottom: 8, borderRadius: 6, overflow: 'hidden',
-                        border: '1px solid #fecaca', borderLeft: '3px solid #dc2626',
-                        backgroundColor: '#fff',
-                      }}>
-                        {/* Card header */}
-                        <div style={{
-                          padding: '7px 12px', backgroundColor: '#fef2f2',
-                          borderBottom: sub.details.length > 0 ? '1px solid #fee2e2' : 'none',
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}>
-                          <PdfStatusBadge status="RED" size={12} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontSize: 10, color: '#6b7280' }}>{team.name} → {topic.title} → </span>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: '#991b1b' }}>{sub.title}</span>
-                          </div>
-                          {sub.details.length > 0 && (
-                            <span style={{ fontSize: 9, color: '#9ca3af', flexShrink: 0 }}>
-                              {sub.details.filter((d) => detailEffectiveStatus(d) === 'done').length}/{sub.details.length} done
-                            </span>
-                          )}
-                        </div>
-                        {/* Detail tasks */}
-                        {sub.details.length > 0 && (
-                          <div style={{ padding: '4px 12px 6px' }}>
-                            {sub.details.map((d, idx) => {
-                              const st = detailEffectiveStatus(d);
-                              return (
-                                <div key={idx} style={{
-                                  display: 'flex', alignItems: 'flex-start', gap: 6,
-                                  padding: '3px 0', fontSize: 10, color: '#374151',
-                                  borderBottom: idx < sub.details.length - 1 ? '1px solid #f9fafb' : 'none',
-                                }}>
-                                  <span style={{
-                                    color: st === 'done' ? '#16a34a' : st === 'doing' ? '#2563eb' : '#9ca3af',
-                                    fontWeight: 700, flexShrink: 0, width: 12, textAlign: 'center',
-                                    lineHeight: '16px',
-                                  }}>
-                                    {st === 'done' ? '✓' : st === 'doing' ? '●' : '○'}
-                                  </span>
-                                  <span style={{
-                                    flex: 1,
-                                    color: st === 'done' ? '#4b5563' : '#374151',
-                                  }}>
-                                    <span>{d.text}</span>
-                                    {d.description && (() => {
-                                      const raw = d.description.trim();
-                                      if (!raw) return null;
-                                      const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-                                      const bulletLines = lines
-                                        .filter((l) => l.startsWith('- '))
-                                        .map((l) => l.slice(2).trim())
-                                        .filter(Boolean);
-                                      const textLines = lines.filter((l) => !l.startsWith('- '));
-                                      const noteTextRaw = textLines.join('\n');
-                                      const noteText = noteTextRaw.replace(/^\s*note\s*[:：-]?\s*/i, '').trim();
-                                      return (
-                                        <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>
-                                          <span
-                                            style={{
-                                              display: 'block',
-                                              paddingLeft: 10,
-                                              borderLeft: '2px solid #e5e7eb',
-                                              lineHeight: 1.65,
-                                              fontStyle: 'italic',
-                                            }}
-                                          >
-                                            <span style={{ display: 'block', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 1, fontStyle: 'normal' }}>
-                                              Note
-                                            </span>
-                                            {noteText && (
-                                              <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>
-                                                {noteText}
-                                              </span>
-                                            )}
-                                            {bulletLines.length > 0 && (
-                                              <ul style={{ margin: noteText ? '6px 0 0' : '0', padding: 0, lineHeight: 1.6, fontSize: 10, color: '#4b5563', listStyle: 'none' }}>
-                                                {bulletLines.map((t, i) => (
-                                                  <li key={i}>
-                                                    <span style={{ color: '#9ca3af' }}>- </span>
-                                                    {t}
-                                                  </li>
-                                                ))}
-                                              </ul>
-                                            )}
-                                          </span>
-                                        </span>
-                                      );
-                                    })()}
-                                  </span>
-                                  {d.dueDate && (
-                                    <span style={{
-                                      flexShrink: 0, fontSize: 9, color: '#6b7280',
-                                    }}>
-                                      {d.dueDate}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                      <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
                     ))
                 )
               )}
@@ -469,108 +564,25 @@ export function SummaryView({
                   topic.subTopics
                     .filter((s) => s.status === 'YELLOW')
                     .map((sub) => (
-                      <div key={sub.id} className="no-break" style={{
-                        marginBottom: 8, borderRadius: 6, overflow: 'hidden',
-                        border: '1px solid #fde68a', borderLeft: '3px solid #f59e0b',
-                        backgroundColor: '#fff',
-                      }}>
-                        {/* Card header */}
-                        <div style={{
-                          padding: '7px 12px', backgroundColor: '#fffbeb',
-                          borderBottom: sub.details.length > 0 ? '1px solid #fef3c7' : 'none',
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}>
-                          <PdfStatusBadge status="YELLOW" size={12} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontSize: 10, color: '#6b7280' }}>{team.name} → {topic.title} → </span>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: '#92400e' }}>{sub.title}</span>
-                          </div>
-                          {sub.details.length > 0 && (
-                            <span style={{ fontSize: 9, color: '#9ca3af', flexShrink: 0 }}>
-                              {sub.details.filter((d) => detailEffectiveStatus(d) === 'done').length}/{sub.details.length} done
-                            </span>
-                          )}
-                        </div>
+                      <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
+                    ))
+                )
+              )}
+            </div>
+          )}
 
-                        {/* Detail tasks */}
-                        {sub.details.length > 0 && (
-                          <div style={{ padding: '4px 12px 6px' }}>
-                            {sub.details.map((d, idx) => {
-                              const st = detailEffectiveStatus(d);
-                              return (
-                                <div key={idx} style={{
-                                  display: 'flex', alignItems: 'flex-start', gap: 6,
-                                  padding: '3px 0', fontSize: 10, color: '#374151',
-                                  borderBottom: idx < sub.details.length - 1 ? '1px solid #fffbeb' : 'none',
-                                }}>
-                                  <span style={{
-                                    color: st === 'done' ? '#16a34a' : st === 'doing' ? '#2563eb' : '#9ca3af',
-                                    fontWeight: 700, flexShrink: 0, width: 12, textAlign: 'center',
-                                    lineHeight: '16px',
-                                  }}>
-                                    {st === 'done' ? '✓' : st === 'doing' ? '●' : '○'}
-                                  </span>
-                                  <span style={{
-                                    flex: 1,
-                                    color: st === 'done' ? '#4b5563' : '#374151',
-                                  }}>
-                                    <span>{d.text}</span>
-                                    {d.description && (() => {
-                                      const raw = d.description.trim();
-                                      if (!raw) return null;
-                                      const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-                                      const bulletLines = lines
-                                        .filter((l) => l.startsWith('- '))
-                                        .map((l) => l.slice(2).trim())
-                                        .filter(Boolean);
-                                      const textLines = lines.filter((l) => !l.startsWith('- '));
-                                      const noteTextRaw = textLines.join('\n');
-                                      const noteText = noteTextRaw.replace(/^\s*note\s*[:：-]?\s*/i, '').trim();
-                                      return (
-                                        <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>
-                                          <span
-                                            style={{
-                                              display: 'block',
-                                              paddingLeft: 10,
-                                              borderLeft: '2px solid #fde68a',
-                                              lineHeight: 1.65,
-                                              fontStyle: 'italic',
-                                            }}
-                                          >
-                                            <span style={{ display: 'block', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 1, fontStyle: 'normal' }}>
-                                              Note
-                                            </span>
-                                            {noteText && (
-                                              <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>
-                                                {noteText}
-                                              </span>
-                                            )}
-                                            {bulletLines.length > 0 && (
-                                              <ul style={{ margin: noteText ? '6px 0 0' : '0', padding: 0, lineHeight: 1.6, fontSize: 10, color: '#4b5563', listStyle: 'none' }}>
-                                                {bulletLines.map((t, i) => (
-                                                  <li key={i}>
-                                                    <span style={{ color: '#9ca3af' }}>- </span>
-                                                    {t}
-                                                  </li>
-                                                ))}
-                                              </ul>
-                                            )}
-                                          </span>
-                                        </span>
-                                      );
-                                    })()}
-                                  </span>
-                                  {d.dueDate && (
-                                    <span style={{ flexShrink: 0, fontSize: 9, color: '#6b7280' }}>
-                                      {d.dueDate}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+          {/* Normal — แสดงรายละเอียดเหมือน Critical / Manageable */}
+          {greenCount > 0 && (
+            <div style={{ marginTop: redCount > 0 || yellowCount > 0 ? 14 : 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#166534', marginBottom: 8 }}>
+                🟢 Normal — {greenCount} รายการสถานะปกติ
+              </div>
+              {teams.flatMap((team) =>
+                team.topics.flatMap((topic) =>
+                  topic.subTopics
+                    .filter((s) => s.status === 'GREEN')
+                    .map((sub) => (
+                      <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
                     ))
                 )
               )}
