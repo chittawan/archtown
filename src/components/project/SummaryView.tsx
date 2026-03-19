@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Team, Topic, Status, SubTopic, SubTopicDetail } from '../../types';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -144,6 +144,329 @@ function DetailDescriptionNote({ description, noteBorderLeft }: { description: s
   );
 }
 
+type SummaryDetailMode = 'summary' | 'timeline';
+
+type SummaryTimelineEntry = {
+  id: string;
+  sortDate: number | null;
+  dueDateRaw: string | null;
+  team: Team;
+  topic: Topic;
+  sub: SubTopic;
+  detail?: SubTopicDetail;
+};
+
+/** กลุ่มแสดงผล: รายการ Todo ที่ due date เดียวกัน + หัวข้อย่อยเดียวกัน รวมเป็นการ์ดเดียว (แบบ Summary) */
+type SummaryTimelineDisplayGroup = {
+  id: string;
+  dueDateRaw: string | null;
+  sortDate: number | null;
+  team: Team;
+  topic: Topic;
+  sub: SubTopic;
+  details: SubTopicDetail[];
+};
+
+function mergeTimelineEntriesForSameSubSameDue(entries: SummaryTimelineEntry[]): SummaryTimelineDisplayGroup[] {
+  const groups: SummaryTimelineDisplayGroup[] = [];
+  let i = 0;
+  while (i < entries.length) {
+    const e = entries[i]!;
+    if (!e.detail) {
+      groups.push({
+        id: `solo-${e.id}`,
+        dueDateRaw: e.dueDateRaw,
+        sortDate: e.sortDate,
+        team: e.team,
+        topic: e.topic,
+        sub: e.sub,
+        details: [],
+      });
+      i++;
+      continue;
+    }
+
+    const details: SubTopicDetail[] = [e.detail];
+    let j = i + 1;
+    while (j < entries.length) {
+      const n = entries[j]!;
+      if (!n.detail) break;
+      if (n.sub.id !== e.sub.id) break;
+      if ((n.dueDateRaw ?? '') !== (e.dueDateRaw ?? '') || n.sortDate !== e.sortDate) break;
+      details.push(n.detail);
+      j++;
+    }
+    groups.push({
+      id: `merged-${e.sub.id}-${e.dueDateRaw ?? 'undated'}-${i}`,
+      dueDateRaw: e.dueDateRaw,
+      sortDate: e.sortDate,
+      team: e.team,
+      topic: e.topic,
+      sub: e.sub,
+      details,
+    });
+    i = j;
+  }
+  return groups;
+}
+
+function buildSummaryTimelineEntries(teams: Team[]): SummaryTimelineEntry[] {
+  const out: SummaryTimelineEntry[] = [];
+  for (const team of teams) {
+    for (const topic of team.topics) {
+      for (const sub of topic.subTopics) {
+        if (sub.details.length === 0) {
+          out.push({
+            id: `sub-${sub.id}`,
+            sortDate: null,
+            dueDateRaw: null,
+            team,
+            topic,
+            sub,
+          });
+        } else {
+          sub.details.forEach((detail, idx) => {
+            const raw = detail.dueDate?.trim() ?? '';
+            const ok = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+            const ts = ok
+              ? Date.UTC(Number(raw.slice(0, 4)), Number(raw.slice(5, 7)) - 1, Number(raw.slice(8, 10)))
+              : null;
+            out.push({
+              id: `sub-${sub.id}-d-${idx}`,
+              sortDate: ts,
+              dueDateRaw: ok ? raw : null,
+              team,
+              topic,
+              sub,
+              detail,
+            });
+          });
+        }
+      }
+    }
+  }
+  out.sort((a, b) => {
+    if (a.sortDate != null && b.sortDate != null) return a.sortDate - b.sortDate;
+    if (a.sortDate != null) return -1;
+    if (b.sortDate != null) return 1;
+    const ka = `${a.team.name}\t${a.topic.title}\t${a.sub.title}\t${a.detail?.text ?? ''}`;
+    const kb = `${b.team.name}\t${b.topic.title}\t${b.sub.title}\t${b.detail?.text ?? ''}`;
+    return ka.localeCompare(kb, 'th');
+  });
+  return out;
+}
+
+function formatTimelineDueLabel(dueDateRaw: string | null): string {
+  if (!dueDateRaw) return 'ไม่ระบุวันที่';
+  const [y, m, d] = dueDateRaw.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** คีย์วัน — แสดงป้ายวันครั้งเดียวเมื่อวันเดียวกันกับแถวก่อน */
+function timelineDayKey(dueDateRaw: string | null): string {
+  if (dueDateRaw) return `date:${dueDateRaw}`;
+  return 'undated';
+}
+
+function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
+  const groups = useMemo(
+    () => mergeTimelineEntriesForSameSubSameDue(buildSummaryTimelineEntries(teams)),
+    [teams],
+  );
+  const lineLeftPx = 100;
+
+  if (groups.length === 0) {
+    return (
+      <div
+        style={{
+          padding: '24px 16px',
+          textAlign: 'center',
+          fontSize: 13,
+          color: '#6b7280',
+          border: '1px dashed #e5e7eb',
+          borderRadius: 8,
+          backgroundColor: '#fafafa',
+        }}
+      >
+        ยังไม่มีรายการในสรุปโครงการ — เพิ่มหัวข้อย่อยหรือรายการ Todo พร้อม Due date
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: lineLeftPx,
+          top: 18,
+          bottom: 18,
+          width: 2,
+          backgroundColor: '#e5e7eb',
+          borderRadius: 1,
+        }}
+      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {groups.map((g, index) => {
+          const dotBorder = statusColor(g.sub.status);
+          const dk = timelineDayKey(g.dueDateRaw);
+          const prevDk = index > 0 ? timelineDayKey(groups[index - 1]!.dueDateRaw) : null;
+          const showDateLabel = prevDk === null || dk !== prevDk;
+          const t = DETAIL_CARD_THEME[g.sub.status];
+
+          return (
+            <div
+              key={g.id}
+              className="no-break"
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 0,
+                paddingBottom: 18,
+              }}
+            >
+              <div
+                style={{
+                  width: 88,
+                  flexShrink: 0,
+                  textAlign: 'right',
+                  paddingRight: 14,
+                  paddingTop: 2,
+                  fontSize: 11,
+                  fontWeight: showDateLabel && g.dueDateRaw ? 700 : showDateLabel ? 500 : 400,
+                  color: showDateLabel ? (g.dueDateRaw ? '#374151' : '#9ca3af') : undefined,
+                  lineHeight: 1.35,
+                }}
+              >
+                {showDateLabel ? formatTimelineDueLabel(g.dueDateRaw) : ''}
+              </div>
+              <div
+                style={{
+                  width: 24,
+                  flexShrink: 0,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  paddingTop: 4,
+                  position: 'relative',
+                  zIndex: 1,
+                }}
+              >
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    border: `3px solid ${dotBorder}`,
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 0 0 2px #fff',
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {g.details.length === 0 ? (
+                  <div
+                    style={{
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 8,
+                      padding: '10px 12px',
+                      backgroundColor: '#fafbfc',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <PdfStatusBadge status={g.sub.status} size={11} />
+                      <span style={{ fontSize: 10, color: '#6b7280' }}>
+                        {g.team.name} → {g.topic.title} → <span style={{ fontWeight: 600, color: '#374151' }}>{g.sub.title}</span>
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#4b5563', fontStyle: 'italic' }}>
+                      หัวข้อย่อย (ไม่มีรายการ Todo) — ติดตามสถานะหัวข้อ
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      borderRadius: 6,
+                      overflow: 'hidden',
+                      border: t.border,
+                      borderLeft: t.borderLeft,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '7px 12px',
+                        backgroundColor: t.headerBg,
+                        borderBottom: t.headerBorder,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <PdfStatusBadge status={g.sub.status} size={12} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 10, color: '#6b7280' }}>{g.team.name} → {g.topic.title} → </span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: t.titleColor }}>{g.sub.title}</span>
+                      </div>
+                      <span style={{ fontSize: 9, color: '#9ca3af', flexShrink: 0 }}>
+                        {g.details.filter((d) => detailEffectiveStatus(d) === 'done').length}/{g.details.length} done
+                      </span>
+                    </div>
+                    <div style={{ padding: '4px 12px 6px' }}>
+                      {g.details.map((d, idx) => {
+                        const st = detailEffectiveStatus(d);
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: 6,
+                              padding: '3px 0',
+                              fontSize: 10,
+                              color: '#374151',
+                              borderBottom: idx < g.details.length - 1 ? t.rowBorderBottom : 'none',
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: st === 'done' ? '#16a34a' : st === 'doing' ? '#2563eb' : '#9ca3af',
+                                fontWeight: 700,
+                                flexShrink: 0,
+                                width: 12,
+                                textAlign: 'center',
+                                lineHeight: '16px',
+                              }}
+                            >
+                              {st === 'done' ? '✓' : st === 'doing' ? '●' : '○'}
+                            </span>
+                            <span
+                              style={{
+                                flex: 1,
+                                color: st === 'done' ? '#4b5563' : '#374151',
+                              }}
+                            >
+                              <span>{d.text}</span>
+                              {d.description && (
+                                <DetailDescriptionNote description={d.description} noteBorderLeft={t.noteBorderLeft} />
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SummarySubTopicDetailCard({ team, topic, sub }: { team: Team; topic: Topic; sub: SubTopic }) {
   const t = DETAIL_CARD_THEME[sub.status];
   return (
@@ -244,6 +567,7 @@ export function SummaryView({
 }) {
   const pdfRef = useRef<HTMLDivElement>(null);
   const [isSavingPdf, setIsSavingPdf] = useState(false);
+  const [detailMode, setDetailMode] = useState<SummaryDetailMode>('summary');
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -273,7 +597,11 @@ export function SummaryView({
     if (!pdfRef.current || isSavingPdf) return;
     setIsSavingPdf(true);
     await new Promise((r) => setTimeout(r, 150));
-    const filename = `${(projectName || 'Project').replace(/[^\p{L}\p{N}\s_-]/gu, '_')}_Summary.pdf`;
+    const baseName = (projectName || 'Project').replace(/[^\p{L}\p{N}\s_-]/gu, '_');
+    const modeSuffix = detailMode === 'timeline' ? 'Timeline' : 'Summary';
+    const now = new Date();
+    const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const filename = `${baseName}_${modeSuffix}_${ymd}.pdf`;
     try {
       const el = pdfRef.current;
       const scale = 2;
@@ -302,7 +630,33 @@ export function SummaryView({
   return (
     <div className="relative">
       {/* Floating action buttons */}
-      <div className={`fixed top-5 right-5 z-[60] flex items-center gap-2 ${isSavingPdf ? 'hidden' : ''}`}>
+      <div className={`fixed top-5 right-5 z-[60] flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-2rem)] ${isSavingPdf ? 'hidden' : ''}`}>
+        <div className="flex rounded-lg border border-gray-200 bg-white/95 shadow-md overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setDetailMode('summary')}
+            className={`px-3 py-2 text-xs sm:text-sm font-medium transition-colors ${
+              detailMode === 'summary'
+                ? 'bg-[#2d4a3e] text-white'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+            title="ตารางสรุป + การ์ดรายละเอียดตามสถานะ"
+          >
+            Summary
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailMode('timeline')}
+            className={`px-3 py-2 text-xs sm:text-sm font-medium transition-colors border-l border-gray-200 ${
+              detailMode === 'timeline'
+                ? 'bg-[#2d4a3e] text-white'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+            title="เรียงตาม Due date (แนวตั้ง)"
+          >
+            Timeline
+          </button>
+        </div>
         <button
           type="button"
           onClick={handleSavePdf}
@@ -481,7 +835,7 @@ export function SummaryView({
             position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)',
             fontSize: 10, color: '#9ca3af', backgroundColor: '#fff', padding: '0 10px', whiteSpace: 'nowrap',
           }}>
-            รายละเอียด
+            {detailMode === 'summary' ? 'รายละเอียด · Summary' : 'รายละเอียด · Timeline'}
           </span>
         </div>
 
@@ -491,102 +845,115 @@ export function SummaryView({
         <div style={{ padding: '24px 32px 20px' }}>
           <div style={{ height: 2, backgroundColor: '#2d4a3e', borderRadius: 1, width: 32, marginBottom: 12 }} />
           <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#2d4a3e', marginBottom: 2 }}>
-            Detail Status
+            {detailMode === 'summary' ? 'Detail Status' : 'Timeline View'}
           </div>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1a1d1e', margin: '0 0 12px', fontFamily: SERIF }}>
-            รายละเอียดตามทีมและหัวข้อ
+            {detailMode === 'summary'
+              ? 'รายละเอียดตามทีมและหัวข้อ'
+              : 'ไทม์ไลน์ตาม Due date และลำดับหัวข้อ'}
           </h2>
+          {detailMode === 'timeline' && (
+            <p style={{ fontSize: 11, color: '#6b7280', margin: '-8px 0 16px', lineHeight: 1.5 }}>
+              แต่ละแถว = รายการ Todo (ถ้ามี) หรือหัวข้อย่อยที่ไม่มี Todo — เรียงจากวันครบกำหนด (รูปแบบ YYYY-MM-DD) ก่อน แล้วตามด้วยรายการที่ไม่ระบุวัน
+            </p>
+          )}
 
-          {/* Full topic table */}
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 18 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>ทีม</th>
-                  <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>หัวข้อใหญ่</th>
-                  <th style={{ textAlign: 'center', padding: '6px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>สถานะ</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🔴</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟡</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟢</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teams.flatMap((team) =>
-                  team.topics.map((topic, topicIndex) => ({ team, topic, topicIndex }))
-                ).map(({ team, topic, topicIndex }, rowIndex) => {
-                  const topicStatus = getTopicStatus(topic);
-                  const r = topic.subTopics.filter((s) => s.status === 'RED').length;
-                  const y = topic.subTopics.filter((s) => s.status === 'YELLOW').length;
-                  const g = topic.subTopics.filter((s) => s.status === 'GREEN').length;
-                  return (
-                    <tr key={`${team.id}-${topic.id}`} style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: rowIndex % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                      <td style={{ padding: '5px 10px', fontWeight: topicIndex === 0 ? 500 : 400, color: '#1a1d1e', fontSize: 11, verticalAlign: 'middle' }}>
-                        {topicIndex === 0 ? team.name : ''}
-                      </td>
-                      <td style={{ padding: '5px 10px', color: '#374151', fontSize: 11, verticalAlign: 'middle' }}>{topic.title}</td>
-                      <td style={{ padding: '5px 8px', textAlign: 'center', verticalAlign: 'middle', lineHeight: 0 }}><PdfStatusBadge status={topicStatus} /></td>
-                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{r}</td>
-                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{y}</td>
-                      <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{g}</td>
+          {detailMode === 'summary' ? (
+            <>
+              {/* Full topic table */}
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 18 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f1f5f9' }}>
+                      <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>ทีม</th>
+                      <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>หัวข้อใหญ่</th>
+                      <th style={{ textAlign: 'center', padding: '6px 8px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>สถานะ</th>
+                      <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🔴</th>
+                      <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟡</th>
+                      <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟢</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Critical items — In-Detail Investigation */}
-          {redCount > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991b1b', marginBottom: 8 }}>
-                🔴 Critical Issues — {redCount} รายการที่ต้องดำเนินการ
+                  </thead>
+                  <tbody>
+                    {teams.flatMap((team) =>
+                      team.topics.map((topic, topicIndex) => ({ team, topic, topicIndex }))
+                    ).map(({ team, topic, topicIndex }, rowIndex) => {
+                      const topicStatus = getTopicStatus(topic);
+                      const r = topic.subTopics.filter((s) => s.status === 'RED').length;
+                      const y = topic.subTopics.filter((s) => s.status === 'YELLOW').length;
+                      const g = topic.subTopics.filter((s) => s.status === 'GREEN').length;
+                      return (
+                        <tr key={`${team.id}-${topic.id}`} style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: rowIndex % 2 === 0 ? '#fff' : '#fafbfc' }}>
+                          <td style={{ padding: '5px 10px', fontWeight: topicIndex === 0 ? 500 : 400, color: '#1a1d1e', fontSize: 11, verticalAlign: 'middle' }}>
+                            {topicIndex === 0 ? team.name : ''}
+                          </td>
+                          <td style={{ padding: '5px 10px', color: '#374151', fontSize: 11, verticalAlign: 'middle' }}>{topic.title}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'center', verticalAlign: 'middle', lineHeight: 0 }}><PdfStatusBadge status={topicStatus} /></td>
+                          <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{r}</td>
+                          <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{y}</td>
+                          <td style={{ padding: '5px 6px', textAlign: 'center', color: '#64748b', fontSize: 11, verticalAlign: 'middle' }}>{g}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {teams.flatMap((team) =>
-                team.topics.flatMap((topic) =>
-                  topic.subTopics
-                    .filter((s) => s.status === 'RED')
-                    .map((sub) => (
-                      <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
-                    ))
-                )
-              )}
-            </div>
-          )}
 
-          {/* Manageable items */}
-          {yellowCount > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400e', marginBottom: 8 }}>
-                🟡 Manageable Issues — {yellowCount} รายการที่ต้องติดตาม
-              </div>
-              {teams.flatMap((team) =>
-                team.topics.flatMap((topic) =>
-                  topic.subTopics
-                    .filter((s) => s.status === 'YELLOW')
-                    .map((sub) => (
-                      <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
-                    ))
-                )
+              {/* Critical items — In-Detail Investigation */}
+              {redCount > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991b1b', marginBottom: 8 }}>
+                    🔴 Critical Issues — {redCount} รายการที่ต้องดำเนินการ
+                  </div>
+                  {teams.flatMap((team) =>
+                    team.topics.flatMap((topic) =>
+                      topic.subTopics
+                        .filter((s) => s.status === 'RED')
+                        .map((sub) => (
+                          <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
+                        ))
+                    )
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Normal — แสดงรายละเอียดเหมือน Critical / Manageable */}
-          {greenCount > 0 && (
-            <div style={{ marginTop: redCount > 0 || yellowCount > 0 ? 14 : 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#166534', marginBottom: 8 }}>
-                🟢 Normal — {greenCount} รายการสถานะปกติ
-              </div>
-              {teams.flatMap((team) =>
-                team.topics.flatMap((topic) =>
-                  topic.subTopics
-                    .filter((s) => s.status === 'GREEN')
-                    .map((sub) => (
-                      <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
-                    ))
-                )
+              {/* Manageable items */}
+              {yellowCount > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400e', marginBottom: 8 }}>
+                    🟡 Manageable Issues — {yellowCount} รายการที่ต้องติดตาม
+                  </div>
+                  {teams.flatMap((team) =>
+                    team.topics.flatMap((topic) =>
+                      topic.subTopics
+                        .filter((s) => s.status === 'YELLOW')
+                        .map((sub) => (
+                          <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
+                        ))
+                    )
+                  )}
+                </div>
               )}
-            </div>
+
+              {/* Normal — แสดงรายละเอียดเหมือน Critical / Manageable */}
+              {greenCount > 0 && (
+                <div style={{ marginTop: redCount > 0 || yellowCount > 0 ? 14 : 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#166534', marginBottom: 8 }}>
+                    🟢 Normal — {greenCount} รายการสถานะปกติ
+                  </div>
+                  {teams.flatMap((team) =>
+                    team.topics.flatMap((topic) =>
+                      topic.subTopics
+                        .filter((s) => s.status === 'GREEN')
+                        .map((sub) => (
+                          <SummarySubTopicDetailCard key={sub.id} team={team} topic={topic} sub={sub} />
+                        ))
+                    )
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <SummaryDetailTimeline teams={teams} />
           )}
         </div>
       </div>
