@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Team, Topic, Status, SubTopicDetail } from '../../types';
-import html2pdf from 'html2pdf.js';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 function PdfStatusBadge({ status, size = 14 }: { status: Status; size?: number }) {
   const icons: Record<Status, string> = { GREEN: '🟢', YELLOW: '🟡', RED: '🔴' };
@@ -88,17 +89,25 @@ export function SummaryView({
     await new Promise((r) => setTimeout(r, 150));
     const filename = `${(projectName || 'Project').replace(/[^\p{L}\p{N}\s_-]/gu, '_')}_Summary.pdf`;
     try {
-      await html2pdf()
-        .set({
-          margin: [8, 10, 8, 10],
-          filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-          pagebreak: { mode: ['css', 'legacy'], avoid: '.no-break' },
-        } as Record<string, unknown>)
-        .from(pdfRef.current)
-        .save();
+      const el = pdfRef.current;
+      const scale = 2;
+      const canvas = await html2canvas(el, { scale, useCORS: true });
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const marginH = 10;
+      const marginV = 8;
+      const pxToMm = 0.264583;
+      const imgWidthMm = canvas.width / scale * pxToMm;
+      const imgHeightMm = canvas.height / scale * pxToMm;
+      const pageWidth = imgWidthMm + marginH * 2;
+      const pageHeight = imgHeightMm + marginV * 2;
+
+      const pdf = new jsPDF({
+        unit: 'mm',
+        format: [pageWidth, pageHeight],
+        orientation: pageWidth > pageHeight ? 'landscape' : 'portrait',
+      });
+      pdf.addImage(imgData, 'JPEG', marginH, marginV, imgWidthMm, imgHeightMm);
+      pdf.save(filename);
     } finally {
       setIsSavingPdf(false);
     }
@@ -269,9 +278,8 @@ export function SummaryView({
           )}
         </div>
 
-        {/* ═══════════ PAGE BREAK ═══════════ */}
-        <div className="html2pdf__page-break" />
-        <div className="no-print" style={{ borderTop: '2px dashed #d1d5db', margin: '0 32px', position: 'relative' }}>
+        {/* Section divider */}
+        <div style={{ borderTop: '2px dashed #d1d5db', margin: '0 32px', position: 'relative' }}>
           <span style={{
             position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)',
             fontSize: 10, color: '#9ca3af', backgroundColor: '#fff', padding: '0 10px', whiteSpace: 'nowrap',
