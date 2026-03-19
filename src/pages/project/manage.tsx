@@ -1489,7 +1489,7 @@ export default function ProjectManagePage() {
 
       {isSummaryViewOpen && (
         <div
-          className="summary-view-modal fixed inset-0 bg-[var(--color-modal-backdrop)] backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-auto"
+          className="summary-view-modal fixed inset-0 bg-[var(--color-modal-backdrop)] backdrop-blur-sm flex items-start justify-center z-50 px-4 py-6 overflow-auto"
           onClick={(e) => e.target === e.currentTarget && setIsSummaryViewOpen(false)}
         >
           <SummaryView

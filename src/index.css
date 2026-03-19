@@ -99,6 +99,11 @@
   animation: cloud-sync-float 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+@page {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
 @media print {
   body * {
     visibility: hidden;
