@@ -9,6 +9,7 @@ import CapabilityManagePage from './pages/capability/manage';
 import GridBuilderDemo from './pages/demo/GridBuilderDemo';
 import TeamsManagePage from './pages/teams/manage';
 import TasksOverviewPage from './pages/tasks/manage';
+import AIContextPage from './pages/ai/context';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/capability" element={<CapabilityManagePage />} />
           <Route path="/grid-demo" element={<GridBuilderDemo />} />
           <Route path="/tasks" element={<TasksOverviewPage />} />
+          <Route path="/ai/context" element={<AIContextPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

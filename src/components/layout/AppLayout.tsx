@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban, User, LogOut, CloudUpload, Download, Loader2, KeyRound } from 'lucide-react';
+import { LayoutDashboard, Sun, Moon, Users, Layers, PanelRightOpen, PanelRightClose, ListTodo, BarChart3, FolderKanban, User, LogOut, CloudUpload, Download, Loader2, KeyRound, BookOpen } from 'lucide-react';
 import SummaryStatusPanel from './SummaryStatusPanel.tsx';
 import TodoPanel from './TodoPanel.tsx';
 import { ComponentSearchModal } from './ComponentSearchModal.tsx';
@@ -264,6 +264,14 @@ export default function AppLayout() {
                           Generate AI Token
                         </Link>
                       )}
+                      <Link
+                        to="/ai/context"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-overlay)] text-left"
+                      >
+                        <BookOpen className="w-4 h-4" />
+                        AI Context
+                      </Link>
                       <button
                         type="button"
                         role="menuitem"
