@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Team, Topic, Status, SubTopicDetail } from '../../types';
 import html2pdf from 'html2pdf.js';
 
@@ -57,6 +57,14 @@ export function SummaryView({
 }) {
   const pdfRef = useRef<HTMLDivElement>(null);
   const [isSavingPdf, setIsSavingPdf] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSavingPdf) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, isSavingPdf]);
 
   const allSubs = teams.flatMap((t) => t.topics.flatMap((tp) => tp.subTopics));
   const redCount = allSubs.filter((s) => s.status === 'RED').length;
@@ -268,7 +276,7 @@ export function SummaryView({
             position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)',
             fontSize: 10, color: '#9ca3af', backgroundColor: '#fff', padding: '0 10px', whiteSpace: 'nowrap',
           }}>
-            — หน้าถัดไป —
+            รายละเอียด
           </span>
         </div>
 
@@ -375,8 +383,7 @@ export function SummaryView({
                                   </span>
                                   <span style={{
                                     flex: 1,
-                                    textDecoration: st === 'done' ? 'line-through' : 'none',
-                                    color: st === 'done' ? '#9ca3af' : '#374151',
+                                    color: st === 'done' ? '#4b5563' : '#374151',
                                   }}>
                                     <span>{d.text}</span>
                                     {d.description && (() => {
@@ -445,29 +452,120 @@ export function SummaryView({
 
           {/* Manageable items */}
           {yellowCount > 0 && (
-            <div className="no-break">
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400e', marginBottom: 5 }}>
-                🟡 รายการ Manageable — {yellowCount} รายการ
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400e', marginBottom: 8 }}>
+                🟡 Manageable Issues — {yellowCount} รายการที่ต้องติดตาม
               </div>
-              <div style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #fde68a', borderLeft: '3px solid #f59e0b', backgroundColor: '#fffbeb' }}>
-                <ul style={{ margin: 0, padding: '0 0 0 14px', fontSize: 11, lineHeight: 1.8, color: '#374151' }}>
-                  {teams.flatMap((team) =>
-                    team.topics.flatMap((topic) =>
-                      topic.subTopics
-                        .filter((s) => s.status === 'YELLOW')
-                        .map((s) => (
-                          <li key={s.id}>
-                            <span style={{ fontWeight: 600 }}>{team.name}</span>
-                            <span style={{ color: '#9ca3af' }}> → </span>
-                            {topic.title}
-                            <span style={{ color: '#9ca3af' }}> → </span>
-                            <span style={{ color: '#d97706', fontWeight: 500 }}>{s.title}</span>
-                          </li>
-                        ))
-                    )
-                  )}
-                </ul>
-              </div>
+              {teams.flatMap((team) =>
+                team.topics.flatMap((topic) =>
+                  topic.subTopics
+                    .filter((s) => s.status === 'YELLOW')
+                    .map((sub) => (
+                      <div key={sub.id} className="no-break" style={{
+                        marginBottom: 8, borderRadius: 6, overflow: 'hidden',
+                        border: '1px solid #fde68a', borderLeft: '3px solid #f59e0b',
+                        backgroundColor: '#fff',
+                      }}>
+                        {/* Card header */}
+                        <div style={{
+                          padding: '7px 12px', backgroundColor: '#fffbeb',
+                          borderBottom: sub.details.length > 0 ? '1px solid #fef3c7' : 'none',
+                          display: 'flex', alignItems: 'center', gap: 6,
+                        }}>
+                          <PdfStatusBadge status="YELLOW" size={12} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontSize: 10, color: '#6b7280' }}>{team.name} → {topic.title} → </span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#92400e' }}>{sub.title}</span>
+                          </div>
+                          {sub.details.length > 0 && (
+                            <span style={{ fontSize: 9, color: '#9ca3af', flexShrink: 0 }}>
+                              {sub.details.filter((d) => detailEffectiveStatus(d) === 'done').length}/{sub.details.length} done
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Detail tasks */}
+                        {sub.details.length > 0 && (
+                          <div style={{ padding: '4px 12px 6px' }}>
+                            {sub.details.map((d, idx) => {
+                              const st = detailEffectiveStatus(d);
+                              return (
+                                <div key={idx} style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 6,
+                                  padding: '3px 0', fontSize: 10, color: '#374151',
+                                  borderBottom: idx < sub.details.length - 1 ? '1px solid #fffbeb' : 'none',
+                                }}>
+                                  <span style={{
+                                    color: st === 'done' ? '#16a34a' : st === 'doing' ? '#2563eb' : '#9ca3af',
+                                    fontWeight: 700, flexShrink: 0, width: 12, textAlign: 'center',
+                                    lineHeight: '16px',
+                                  }}>
+                                    {st === 'done' ? '✓' : st === 'doing' ? '●' : '○'}
+                                  </span>
+                                  <span style={{
+                                    flex: 1,
+                                    color: st === 'done' ? '#4b5563' : '#374151',
+                                  }}>
+                                    <span>{d.text}</span>
+                                    {d.description && (() => {
+                                      const raw = d.description.trim();
+                                      if (!raw) return null;
+                                      const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+                                      const bulletLines = lines
+                                        .filter((l) => l.startsWith('- '))
+                                        .map((l) => l.slice(2).trim())
+                                        .filter(Boolean);
+                                      const textLines = lines.filter((l) => !l.startsWith('- '));
+                                      const noteTextRaw = textLines.join('\n');
+                                      const noteText = noteTextRaw.replace(/^\s*note\s*[:：-]?\s*/i, '').trim();
+                                      return (
+                                        <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>
+                                          <span
+                                            style={{
+                                              display: 'block',
+                                              paddingLeft: 10,
+                                              borderLeft: '2px solid #fde68a',
+                                              lineHeight: 1.65,
+                                              fontStyle: 'italic',
+                                            }}
+                                          >
+                                            <span style={{ display: 'block', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 1, fontStyle: 'normal' }}>
+                                              Note
+                                            </span>
+                                            {noteText && (
+                                              <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>
+                                                {noteText}
+                                              </span>
+                                            )}
+                                            {bulletLines.length > 0 && (
+                                              <ul style={{ margin: noteText ? '6px 0 0' : '0', padding: 0, lineHeight: 1.6, fontSize: 10, color: '#4b5563', listStyle: 'none' }}>
+                                                {bulletLines.map((t, i) => (
+                                                  <li key={i}>
+                                                    <span style={{ color: '#9ca3af' }}>- </span>
+                                                    {t}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            )}
+                                          </span>
+                                        </span>
+                                      );
+                                    })()}
+                                  </span>
+                                  {d.dueDate && (
+                                    <span style={{ flexShrink: 0, fontSize: 9, color: '#6b7280' }}>
+                                      {d.dueDate}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                )
+              )}
             </div>
           )}
         </div>
