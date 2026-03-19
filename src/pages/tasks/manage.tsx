@@ -658,10 +658,13 @@ export default function TasksOverviewPage() {
                         className="w-full h-[14px] box-border text-center bg-transparent border-0 p-0 text-transparent focus:outline-none focus:ring-0 caret-[var(--color-primary)]"
                       />
                       <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-[var(--color-text)] text-[11px]">
-                        {dueBucketConfig.nearMaxDays === 1 ? 'วันนี้' : dueBucketConfig.nearMaxDays}
+                        {dueBucketConfig.nearMaxDays <= 0 ? '' : dueBucketConfig.nearMaxDays}
                       </span>
                     </div>
-                    {dueBucketConfig.nearMaxDays === 1 ? null : (
+                    {dueBucketConfig.nearMaxDays <= 0 ? (
+                      <span className="text-[var(--color-text)] text-[11px]">วันนี้</span>
+                    ) : null}
+                    {dueBucketConfig.nearMaxDays <= 0 ? null : (
                       <span className="text-[var(--color-text-muted)]">วัน</span>
                     )}
                   </div>
