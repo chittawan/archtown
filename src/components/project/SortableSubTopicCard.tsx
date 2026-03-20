@@ -279,14 +279,6 @@ export function SortableSubTopicCard({
     return `อีก ${diffDays} วัน`;
   };
 
-  const isOverdue = (dueDate?: string): boolean => {
-    if (!dueDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate + 'T00:00:00');
-    return due.getTime() < today.getTime();
-  };
-
   const isOverdueAndNotDone = (dueDate?: string, done?: boolean) => {
     if (!dueDate || done) return false;
     const today = new Date();
@@ -295,7 +287,6 @@ export function SortableSubTopicCard({
     return due.getTime() < today.getTime();
   };
 
-  const detailIds = details.map((_, index) => detailItemId(topicId, subTopic.id, index));
   const visibleDetailEntries = showCompleted
     ? details.map((item, index) => ({ item, index }))
     : details
@@ -402,7 +393,7 @@ export function SortableSubTopicCard({
               )}
             </span>
           </button>
-          {type === 'todos' && doneCount > 0 && (
+          {doneCount > 0 && (
             <button
               type="button"
               onClick={(e) => {
@@ -608,10 +599,10 @@ export function SortableSubTopicCard({
                 {details.length > 0 && (
                   <div className="space-y-1.5">
                     <span className="text-[10px] font-medium text-slate-600 dark:!text-slate-200 uppercase tracking-wide">
-                      รายการติดตาม ({details.length})
+                      รายการติดตาม ({visibleDetailEntries.length})
                     </span>
-                    <SortableContext items={detailIds} strategy={verticalListSortingStrategy}>
-                      {details.map((item, index) => {
+                    <SortableContext items={visibleDetailIds} strategy={verticalListSortingStrategy}>
+                      {visibleDetailEntries.map(({ item, index }, visibleIndex) => {
                         const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
                         const statusStyle = getStatusStyles(itemStatus);
                         const rowId = detailItemId(topicId, subTopic.id, index);
@@ -636,7 +627,7 @@ export function SortableSubTopicCard({
                                             : 'text-slate-800 dark:!text-slate-100'
                                       }`}
                                     >
-                                      {index + 1}.
+                                      {visibleIndex + 1}.
                                     </span>
                                     <input
                                       type="text"
@@ -654,7 +645,7 @@ export function SortableSubTopicCard({
                                           (e.target as HTMLInputElement).blur();
                                         }
                                       }}
-                                      placeholder={`รายการ ${index + 1}`}
+                                      placeholder={`รายการ ${visibleIndex + 1}`}
                                       className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
                                         itemStatus === 'done'
                                           ? 'dark:!text-emerald-100'
@@ -684,7 +675,7 @@ export function SortableSubTopicCard({
                                         }
                                         title="Due date"
                                         className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
-                                          isOverdue(item.dueDate)
+                                          isOverdueAndNotDone(item.dueDate, isDone(item))
                                             ? 'border-red-500 !text-red-500 focus:ring-red-500 dark:!text-red-400'
                                             : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
                                         }`}

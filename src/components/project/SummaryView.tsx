@@ -671,6 +671,9 @@ export function SummaryView({
   const pdfRef = useRef<HTMLDivElement>(null);
   const [isSavingPdf, setIsSavingPdf] = useState(false);
   const [detailMode, setDetailMode] = useState<SummaryDetailMode>('summary');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [filterIncludeUndated, setFilterIncludeUndated] = useState<boolean>(true);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -680,7 +683,40 @@ export function SummaryView({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, isSavingPdf]);
 
-  const allSubs = teams.flatMap((t) => t.topics.flatMap((tp) => tp.subTopics));
+  const filteredTeams = useMemo(() => {
+    const hasStart = !!filterStartDate;
+    const hasEnd = !!filterEndDate;
+    if (!hasStart && !hasEnd && filterIncludeUndated) return teams;
+
+    const inRange = (due?: string | null): boolean => {
+      if (!due) return filterIncludeUndated;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return filterIncludeUndated;
+      const v = due;
+      if (hasStart && v < filterStartDate) return false;
+      if (hasEnd && v > filterEndDate) return false;
+      return true;
+    };
+
+    return teams
+      .map((team) => ({
+        ...team,
+        topics: team.topics
+          .map((topic) => ({
+            ...topic,
+            subTopics: topic.subTopics
+              .map((sub) => ({
+                ...sub,
+                details: sub.details.filter((d) => inRange(d.dueDate)),
+              }))
+              // คง subTopic แบบ status ไว้แม้ไม่มี detail หลังกรอง (เพราะไม่มี due-date)
+              .filter((sub) => sub.details.length > 0 || sub.subTopicType === 'status'),
+          }))
+          .filter((topic) => topic.subTopics.length > 0),
+      }))
+      .filter((team) => team.topics.length > 0);
+  }, [teams, filterStartDate, filterEndDate, filterIncludeUndated]);
+
+  const allSubs = filteredTeams.flatMap((t) => t.topics.flatMap((tp) => tp.subTopics));
   const redCount = allSubs.filter((s) => s.status === 'RED').length;
   const yellowCount = allSubs.filter((s) => s.status === 'YELLOW').length;
   const greenCount = allSubs.filter((s) => s.status === 'GREEN').length;
@@ -734,6 +770,33 @@ export function SummaryView({
     <div className="relative">
       {/* Floating action buttons */}
       <div className={`fixed top-5 right-5 z-[60] flex flex-wrap items-center justify-end gap-2 max-w-[calc(100vw-2rem)] ${isSavingPdf ? 'hidden' : ''}`}>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white/95 shadow-md px-3 py-2">
+          <span className="text-[11px] font-medium text-gray-500 whitespace-nowrap">ช่วงวันที่</span>
+          <input
+            type="date"
+            value={filterStartDate}
+            onChange={(e) => setFilterStartDate(e.target.value)}
+            className="h-8 rounded-md border border-gray-200 px-2 text-[11px] text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#2d4a3e]/40"
+            aria-label="วันที่เริ่มต้น (กรองรายงาน)"
+          />
+          <span className="text-[11px] text-gray-400">ถึง</span>
+          <input
+            type="date"
+            value={filterEndDate}
+            onChange={(e) => setFilterEndDate(e.target.value)}
+            className="h-8 rounded-md border border-gray-200 px-2 text-[11px] text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#2d4a3e]/40"
+            aria-label="วันที่สิ้นสุด (กรองรายงาน)"
+          />
+          <label className="flex items-center gap-1.5 ml-1 text-[11px] text-gray-600 whitespace-nowrap cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={filterIncludeUndated}
+              onChange={(e) => setFilterIncludeUndated(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-gray-300 text-[#2d4a3e] focus:ring-[#2d4a3e]"
+            />
+            รวมรายการไม่ระบุวัน
+          </label>
+        </div>
         <div className="flex rounded-lg border border-gray-200 bg-white/95 shadow-md overflow-hidden">
           <button
             type="button"
@@ -884,7 +947,7 @@ export function SummaryView({
                 </tr>
               </thead>
               <tbody>
-                {teams.map((team, i) => {
+                {filteredTeams.map((team, i) => {
                   const ts = getTeamStatus(team);
                   const subs = team.topics.flatMap((t) => t.subTopics);
                   return (
@@ -963,7 +1026,7 @@ export function SummaryView({
 
           {detailMode === 'summary' ? (
             <>
-              {/* Full topic table */}
+          {/* Full topic table */}
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 18 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
@@ -976,8 +1039,8 @@ export function SummaryView({
                       <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e2e8f0', fontSize: 10, verticalAlign: 'middle' }}>🟢</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {teams.flatMap((team) =>
+              <tbody>
+                {filteredTeams.flatMap((team) =>
                       team.topics.map((topic, topicIndex) => ({ team, topic, topicIndex }))
                     ).map(({ team, topic, topicIndex }, rowIndex) => {
                       const topicStatus = getTopicStatus(topic);
@@ -1001,13 +1064,13 @@ export function SummaryView({
                 </table>
               </div>
 
-              {/* Critical items — In-Detail Investigation */}
-              {redCount > 0 && (
+          {/* Critical items — In-Detail Investigation */}
+          {redCount > 0 && (
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991b1b', marginBottom: 8 }}>
                     🔴 Critical Issues — {redCount} รายการที่ต้องดำเนินการ
                   </div>
-                  {teams.flatMap((team) =>
+              {filteredTeams.flatMap((team) =>
                     team.topics.flatMap((topic) =>
                       topic.subTopics
                         .filter((s) => s.status === 'RED')
@@ -1019,13 +1082,13 @@ export function SummaryView({
                 </div>
               )}
 
-              {/* Manageable items */}
-              {yellowCount > 0 && (
+          {/* Manageable items */}
+          {yellowCount > 0 && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400e', marginBottom: 8 }}>
                     🟡 Manageable Issues — {yellowCount} รายการที่ต้องติดตาม
                   </div>
-                  {teams.flatMap((team) =>
+              {filteredTeams.flatMap((team) =>
                     team.topics.flatMap((topic) =>
                       topic.subTopics
                         .filter((s) => s.status === 'YELLOW')
@@ -1037,13 +1100,13 @@ export function SummaryView({
                 </div>
               )}
 
-              {/* Normal — แสดงรายละเอียดเหมือน Critical / Manageable */}
-              {greenCount > 0 && (
+          {/* Normal — แสดงรายละเอียดเหมือน Critical / Manageable */}
+          {greenCount > 0 && (
                 <div style={{ marginTop: redCount > 0 || yellowCount > 0 ? 14 : 0 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#166534', marginBottom: 8 }}>
                     🟢 Normal — {greenCount} รายการสถานะปกติ
                   </div>
-                  {teams.flatMap((team) =>
+              {filteredTeams.flatMap((team) =>
                     team.topics.flatMap((topic) =>
                       topic.subTopics
                         .filter((s) => s.status === 'GREEN')
@@ -1056,7 +1119,7 @@ export function SummaryView({
               )}
             </>
           ) : (
-            <SummaryDetailTimeline teams={teams} />
+            <SummaryDetailTimeline teams={filteredTeams} />
           )}
         </div>
       </div>
