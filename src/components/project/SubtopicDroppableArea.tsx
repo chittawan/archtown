@@ -79,7 +79,7 @@ export function SubtopicDroppableArea({
       className={`border-t border-[var(--color-border)] px-6 py-3 transition-colors ${isOver ? 'bg-[var(--color-primary-muted)]/50' : 'bg-[var(--color-overlay)]'}`}
     >
       {topic.subTopics.length === 0 ? (
-        <div className="pl-10 py-3 text-sm text-[var(--color-text-muted)] italic min-h-[44px]">
+        <div className="pl-6 sm:pl-10 py-3 text-sm text-[var(--color-text-muted)] italic min-h-[44px]">
           ยังไม่มีหัวข้อย่อย — ลากหัวข้อย่อยจากหัวข้ออื่นมาวางที่นี่ได้
         </div>
       ) : (
@@ -87,7 +87,7 @@ export function SubtopicDroppableArea({
           items={topic.subTopics.map((s) => `sub__${topic.id}__${s.id}`)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-2 pl-10">
+          <div className="space-y-2 pl-6 sm:pl-10">
             {topic.subTopics.map((subTopic) => (
               <SortableSubTopicCard
                 key={subTopic.id}

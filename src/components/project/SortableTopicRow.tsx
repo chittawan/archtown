@@ -83,7 +83,7 @@ export function SortableTopicRow({
             />
           ) : (
             <h3
-              className="text-base font-medium text-[var(--color-text)] cursor-text flex-1 min-w-0"
+              className="text-base font-medium text-[var(--color-text)] cursor-text flex-1 min-w-0 truncate"
               onClick={(e) => {
                 e.stopPropagation();
                 onStartEditTitle();
@@ -95,7 +95,7 @@ export function SortableTopicRow({
         </div>
         <div className="flex items-center space-x-4 flex-shrink-0">
           <div
-            className="flex items-center space-x-2 opacity-0 group-hover/topic:opacity-100 transition-opacity"
+            className="flex items-center space-x-2 opacity-100 md:opacity-0 md:group-hover/topic:opacity-100 transition-opacity"
             onClick={(e) => e.stopPropagation()}
           >
             <button

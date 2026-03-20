@@ -120,7 +120,7 @@ export function TaskRowCard({
             <option value="doing">กำลังทำ</option>
             <option value="done">เสร็จ</option>
           </select>
-          <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
+          <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[110px] sm:w-[140px] justify-start">
             <input
               type="date"
               value={dueDate ?? ''}
@@ -141,9 +141,9 @@ export function TaskRowCard({
             )}
           </div>
         </div>
-        {/* Description / Memo — ใช้ wrapper เพื่อให้ ml-7 ไม่ทำให้ความกว้างล้นขอบ */}
+        {/* Description / Memo — ลด indent บนมือถือ */}
         {(description != null && description !== '') || noteOpen ? (
-          <div className="ml-7 min-w-0 w-[calc(100%-1.75rem)]">
+          <div className="ml-4 sm:ml-7 min-w-0 w-[calc(100%-1rem)] sm:w-[calc(100%-1.75rem)]">
             <textarea
               rows={Math.min(8, Math.max(2, (description ?? '').split('\n').length))}
               value={description ?? ''}
@@ -162,7 +162,7 @@ export function TaskRowCard({
           <button
             type="button"
             onClick={() => setNoteOpen(true)}
-            className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7 shrink-0"
+            className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7 shrink-0"
             title="เพิ่ม memo / note"
           >
             <FileText className="w-3.5 h-3.5" />

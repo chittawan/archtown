@@ -172,6 +172,9 @@ const MemoizedCapCard = memo(function MemoizedCapCard({
 
 export default function CapabilityManagePage() {
   const navigate = useNavigate();
+  const [isMobileView, setIsMobileView] = useState(() =>
+    typeof window === 'undefined' ? false : window.innerWidth <= 768
+  );
   const [layout, setLayout] = useState<CapabilityLayout>(() => lastLayoutCache ?? { capOrder: [], caps: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -229,6 +232,22 @@ export default function CapabilityManagePage() {
     return () => ro.disconnect();
   }, [containerReady]);
   const gridWidth = measuredWidth > 0 ? measuredWidth : capGridWidth;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobileView(mql.matches);
+    update();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', update);
+      return () => mql.removeEventListener('change', update);
+    }
+    // Safari fallback
+    // eslint-disable-next-line deprecation/deprecation
+    mql.addListener(update);
+    // eslint-disable-next-line deprecation/deprecation
+    return () => mql.removeListener(update);
+  }, []);
 
   useEffect(() => {
     const totalCols = 12;
@@ -857,7 +876,7 @@ export default function CapabilityManagePage() {
     return (
       <div
         ref={setDropRef}
-        className="flex flex-col min-w-[220px] h-full"
+        className="flex flex-col min-w-0 md:min-w-[220px] h-full"
       >
         <div
           className={`group/cap rounded-2xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden h-full ${
@@ -867,7 +886,7 @@ export default function CapabilityManagePage() {
           <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-overlay)]">
             <button
               type="button"
-              className="cap-drag-handle p-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text)] touch-none cursor-grab active:cursor-grabbing"
+              className="cap-drag-handle hidden md:inline-flex p-1 rounded text-[var(--color-text-subtle)] hover:text-[var(--color-text)] touch-none cursor-grab active:cursor-grabbing"
               aria-label="ลากเพื่อเรียงลำดับกลุ่ม"
             title="ลากเพื่อเรียงลำดับกลุ่ม"
             >
@@ -889,7 +908,7 @@ export default function CapabilityManagePage() {
             </h3>
             <div
               className={`flex items-center gap-1.5 transition-opacity ${
-                isEditing ? 'opacity-100' : 'opacity-0 group-hover/cap:opacity-100'
+                isEditing ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover/cap:opacity-100'
               }`}
             >
               <div className="hidden sm:block">
@@ -1071,47 +1090,77 @@ export default function CapabilityManagePage() {
           onDragEnd={handleDragEnd}
         >
           <div ref={setContainerRef} className="w-full min-h-[400px]">
-            {isCapGridReady && measuredWidth > 0 && (
-              <GridLayout
-                width={gridWidth}
-                layout={capGridLayout}
-                dragConfig={{ handle: '.cap-drag-handle' }}
-                onLayoutChange={(newLayout: readonly LayoutItem[]) => {
-                  setCapGridLayout(newLayout.map((item) => ({ ...item })));
-                }}
-                onDragStop={(newLayout: readonly LayoutItem[]) => {
-                  handleCapGridLayoutChange(newLayout);
-                }}
-                onResizeStop={(newLayout: readonly LayoutItem[]) => {
-                  handleCapGridLayoutChange(newLayout);
-                }}
-                gridConfig={{ cols: 12, rowHeight: CAP_ROW_HEIGHT, margin: [24, 24], containerPadding: [0, 0] }}
-              >
+            {isMobileView ? (
+              <div className="flex flex-col gap-3 md:gap-4">
                 {layout.capOrder.map((capId) => {
                   const cap = layout.caps[capId];
                   if (!cap) return null;
                   const isEditingThisCap = editingCapId === capId;
                   const scopedEditingCapId = isEditingThisCap ? editingCapId : null;
                   const scopedCapNameInput = isEditingThisCap ? capNameInput : '';
-                return (
-                  <div key={capId} className="h-full">
-                      <MemoizedCapCard
+
+                  return (
+                    <MemoizedCapCard
+                      key={capId}
+                      capId={capId}
+                      cap={cap}
+                      editingCapId={scopedEditingCapId}
+                      capNameInput={scopedCapNameInput}
+                    >
+                      <CapCard
                         capId={capId}
                         cap={cap}
                         editingCapId={scopedEditingCapId}
                         capNameInput={scopedCapNameInput}
-                      >
-                        <CapCard
+                      />
+                    </MemoizedCapCard>
+                  );
+                })}
+              </div>
+            ) : (
+              isCapGridReady &&
+              measuredWidth > 0 && (
+                <GridLayout
+                  width={gridWidth}
+                  layout={capGridLayout}
+                  dragConfig={{ handle: '.cap-drag-handle' }}
+                  onLayoutChange={(newLayout: readonly LayoutItem[]) => {
+                    setCapGridLayout(newLayout.map((item) => ({ ...item })));
+                  }}
+                  onDragStop={(newLayout: readonly LayoutItem[]) => {
+                    handleCapGridLayoutChange(newLayout);
+                  }}
+                  onResizeStop={(newLayout: readonly LayoutItem[]) => {
+                    handleCapGridLayoutChange(newLayout);
+                  }}
+                  gridConfig={{ cols: 12, rowHeight: CAP_ROW_HEIGHT, margin: [24, 24], containerPadding: [0, 0] }}
+                >
+                  {layout.capOrder.map((capId) => {
+                    const cap = layout.caps[capId];
+                    if (!cap) return null;
+                    const isEditingThisCap = editingCapId === capId;
+                    const scopedEditingCapId = isEditingThisCap ? editingCapId : null;
+                    const scopedCapNameInput = isEditingThisCap ? capNameInput : '';
+                    return (
+                      <div key={capId} className="h-full">
+                        <MemoizedCapCard
                           capId={capId}
                           cap={cap}
                           editingCapId={scopedEditingCapId}
                           capNameInput={scopedCapNameInput}
-                        />
-                      </MemoizedCapCard>
-                    </div>
-                  );
-                })}
-              </GridLayout>
+                        >
+                          <CapCard
+                            capId={capId}
+                            cap={cap}
+                            editingCapId={scopedEditingCapId}
+                            capNameInput={scopedCapNameInput}
+                          />
+                        </MemoizedCapCard>
+                      </div>
+                    );
+                  })}
+                </GridLayout>
+              )
             )}
           </div>
         </DndContext>

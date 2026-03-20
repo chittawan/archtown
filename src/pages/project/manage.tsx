@@ -1143,7 +1143,7 @@ export default function ProjectManagePage() {
           <button
             type="button"
             onClick={() => setStatusFilter(new Set())}
-            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md text-xs font-medium border transition-colors shrink-0 ${
+            className={`inline-flex items-center justify-between w-auto sm:w-[7.5rem] h-8 px-3 rounded-md text-xs font-medium border transition-colors sm:shrink-0 shrink ${
               statusFilter.size === 0
                 ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-[var(--color-primary-muted)] text-[var(--color-primary)] border-[var(--color-primary)]'
                 : 'bg-[var(--color-overlay)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-overlay)]/80 hover:text-[var(--color-text)]'
@@ -1158,7 +1158,7 @@ export default function ProjectManagePage() {
           <button
             type="button"
             onClick={() => toggleStatusFilter('GREEN')}
-            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md border transition-colors shrink-0 ${
+            className={`inline-flex items-center justify-between w-auto sm:w-[7.5rem] h-8 px-3 rounded-md border transition-colors sm:shrink-0 shrink ${
               statusFilter.has('GREEN')
                 ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700/60'
                 : 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700/60 hover:opacity-90'
@@ -1175,7 +1175,7 @@ export default function ProjectManagePage() {
           <button
             type="button"
             onClick={() => toggleStatusFilter('YELLOW')}
-            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md border transition-colors shrink-0 ${
+            className={`inline-flex items-center justify-between w-auto sm:w-[7.5rem] h-8 px-3 rounded-md border transition-colors sm:shrink-0 shrink ${
               statusFilter.has('YELLOW')
                 ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700/60'
                 : 'bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700/60 hover:opacity-90'
@@ -1192,7 +1192,7 @@ export default function ProjectManagePage() {
           <button
             type="button"
             onClick={() => toggleStatusFilter('RED')}
-            className={`inline-flex items-center justify-between w-[7.5rem] h-8 px-3 rounded-md border transition-colors shrink-0 ${
+            className={`inline-flex items-center justify-between w-auto sm:w-[7.5rem] h-8 px-3 rounded-md border transition-colors sm:shrink-0 shrink ${
               statusFilter.has('RED')
                 ? 'ring-1.5 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-surface)] bg-rose-100 dark:bg-rose-900/40 border-rose-200 dark:border-rose-700/60'
                 : 'bg-rose-100 dark:bg-rose-900/40 border-rose-200 dark:border-rose-700/60 hover:opacity-90'

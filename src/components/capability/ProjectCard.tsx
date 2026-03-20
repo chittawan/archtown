@@ -178,7 +178,7 @@ export function SortableProjectCard({
       >
         {/* ปุ่มลอยมุมขวาบน — โชว์ตอน hover, ชิดขวาเท่ากับเนื้อหาการ์ด */}
         <div
-          className="absolute -top-[38px] right-0 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-[opacity,background-color,box-shadow] duration-150 ease-out rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] group-hover:bg-[var(--color-overlay)] group-hover:shadow-sm px-1.5 py-1"
+          className="absolute top-2 right-2 z-10 flex items-center gap-1.5 opacity-100 pointer-events-auto transition-[opacity,background-color,box-shadow] duration-150 ease-out rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] px-1.5 py-1 md:-top-[38px] md:right-0 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto md:group-hover:bg-[var(--color-overlay)] md:group-hover:shadow-sm"
           onClick={(e) => e.stopPropagation()}
         >
           <label className="sr-only" htmlFor={`project-cols-${capId}-${project.id}`}>

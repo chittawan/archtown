@@ -346,7 +346,7 @@ export function SortableSubTopicCard({
               <button
                 key={s}
                 onClick={() => onUpdateStatus(s)}
-                className={`w-[7.5rem] min-w-[7.5rem] px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                  className={`flex-1 min-w-0 px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
                   subTopic.status === s
                     ? s === 'GREEN'
                       ? 'bg-emerald-500 text-white shadow-sm'
@@ -364,7 +364,7 @@ export function SortableSubTopicCard({
               </button>
             ))}
           </div>
-          <div className="opacity-0 group-hover/subtopic:opacity-100 transition-opacity pointer-events-none group-hover/subtopic:pointer-events-auto">
+          <div className="opacity-100 pointer-events-auto transition-opacity md:opacity-0 md:pointer-events-none md:group-hover/subtopic:opacity-100 md:group-hover/subtopic:pointer-events-auto">
             <LongPressDeleteButton
               onDelete={onDelete}
               title="ลบหัวข้อย่อย"
@@ -509,7 +509,7 @@ export function SortableSubTopicCard({
                                         : '!text-slate-800 dark:!text-slate-100'
                                   }`}
                                 />
-                                <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
+                                <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[110px] sm:w-[140px] justify-start">
                                   <input
                                     type="date"
                                     value={item.dueDate ?? ''}
@@ -554,13 +554,13 @@ export function SortableSubTopicCard({
                                   }}
                                   placeholder="Memo / Note..."
                                   title="Note"
-                                  className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
+                                  className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-4 sm:ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                                 />
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => setOpenNoteIndex(index)}
-                                  className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
+                                  className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7"
                                   title="เพิ่ม memo / note"
                                 >
                                   <FileText className="w-3.5 h-3.5" />
@@ -568,7 +568,7 @@ export function SortableSubTopicCard({
                                 </button>
                               )}
                             </div>
-                            <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
+                            <div className="opacity-100 pointer-events-auto transition-opacity shrink-0 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:hover:opacity-100 md:focus-within:opacity-100 md:group-hover:pointer-events-auto md:hover:pointer-events-auto md:focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
                               <LongPressDeleteButton
                                 onDelete={() => onRemoveDetail(index)}
                                 title="ลบรายการ"
@@ -666,7 +666,7 @@ export function SortableSubTopicCard({
                                       <option value="doing">กำลังทำ</option>
                                       <option value="done">เสร็จ</option>
                                     </select>
-                                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[140px] justify-start">
+                                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[110px] sm:w-[140px] justify-start">
                                       <input
                                         type="date"
                                         value={item.dueDate ?? ''}
@@ -711,13 +711,13 @@ export function SortableSubTopicCard({
                                       }}
                                       placeholder="Memo / Note..."
                                       title="Note"
-                                      className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
+                                      className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-4 sm:ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                                     />
                                   ) : (
                                     <button
                                       type="button"
                                       onClick={() => setOpenNoteIndex(index)}
-                                      className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-7"
+                                      className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7"
                                       title="เพิ่ม memo / note"
                                     >
                                       <FileText className="w-3.5 h-3.5" />
@@ -725,7 +725,7 @@ export function SortableSubTopicCard({
                                     </button>
                                   )}
                                 </div>
-                                <div className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto hover:pointer-events-auto focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
+                                <div className="opacity-100 pointer-events-auto transition-opacity shrink-0 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:hover:opacity-100 md:focus-within:opacity-100 md:group-hover:pointer-events-auto md:hover:pointer-events-auto md:focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
                                   <LongPressDeleteButton
                                     onDelete={() => onRemoveDetail(index)}
                                     title="ลบรายการ"
