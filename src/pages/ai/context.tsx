@@ -118,6 +118,7 @@ export default function AIContextPage() {
           <Endpoint method="POST" path="/api/auth/token/login" desc="Login with Token" />
           <Endpoint method="GET" path="/api/sync/download" desc="Download backup" />
           <Endpoint method="POST" path="/api/sync/upload" desc="Upload backup" />
+          <Endpoint method="GET" path="/api/sync/version" desc="Get backup meta" />
         </div>
         <p className="mt-3 text-[10px] text-[var(--color-text-muted)]">
           Base URL: <code className="px-1 py-0.5 rounded bg-[var(--color-overlay)]">{baseUrl || 'https://your-archtown-host'}</code>

@@ -6,21 +6,22 @@ type GenerateStatus =
   | { state: 'idle' }
   | { state: 'loading' }
   | { state: 'error'; message: string }
-  | { state: 'success'; token: string; googleId: string; expiresAt: string | null };
+  | { state: 'success'; token: string; googleId: string; expiresAt: string | null; scope: 'read' | 'write' };
 
-async function generateToken(input: { googleId: string; expiresAt: string | null; adminKey?: string }): Promise<{ token: string; googleId: string; expiresAt: string | null }> {
+async function generateToken(input: { googleId: string; expiresAt: string | null; scope: 'read' | 'write'; adminKey?: string }): Promise<{ token: string; googleId: string; expiresAt: string | null; scope: 'read' | 'write' }> {
   const res = await fetch('/api/auth/token/generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(input.adminKey ? { 'X-Admin-Key': input.adminKey } : {}),
     },
-    body: JSON.stringify({ googleId: input.googleId, expiresAt: input.expiresAt }),
+    body: JSON.stringify({ googleId: input.googleId, expiresAt: input.expiresAt, scope: input.scope }),
   });
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; token?: string; googleId?: string; expiresAt?: string | null; error?: string };
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; token?: string; googleId?: string; expiresAt?: string | null; scope?: 'read' | 'write'; error?: string };
   if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
   if (!data.token || !data.googleId) throw new Error('Invalid response');
-  return { token: data.token, googleId: data.googleId, expiresAt: data.expiresAt ?? null };
+  const scope = data.scope === 'read' || data.scope === 'write' ? data.scope : 'write';
+  return { token: data.token, googleId: data.googleId, expiresAt: data.expiresAt ?? null, scope };
 }
 
 type ExpirePreset = 'no-expire' | '1w' | '1m' | '3m' | '1y';
@@ -39,6 +40,7 @@ function computeExpiresAt(preset: ExpirePreset): string | null {
 export default function GenerateTokenPage() {
   const [googleId, setGoogleId] = useState('');
   const [expirePreset, setExpirePreset] = useState<ExpirePreset>('no-expire');
+  const [scope, setScope] = useState<'read' | 'write'>('write');
   const [adminKey, setAdminKey] = useState('');
   const [needsAdminKey, setNeedsAdminKey] = useState(false);
   const [status, setStatus] = useState<GenerateStatus>({ state: 'idle' });
@@ -62,8 +64,8 @@ export default function GenerateTokenPage() {
     try {
       if (loginKind !== 'google') throw new Error('ต้องล็อกอินด้วย Google ก่อนถึงจะ Generate Token ได้');
       const expiresAt = computeExpiresAt(expirePreset);
-      const r = await generateToken({ googleId: googleId.trim(), expiresAt, adminKey: adminKey.trim() || undefined });
-      setStatus({ state: 'success', token: r.token, googleId: r.googleId, expiresAt: r.expiresAt });
+      const r = await generateToken({ googleId: googleId.trim(), expiresAt, scope, adminKey: adminKey.trim() || undefined });
+      setStatus({ state: 'success', token: r.token, googleId: r.googleId, expiresAt: r.expiresAt, scope: r.scope });
       setNeedsAdminKey(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Generate ไม่สำเร็จ';
@@ -120,6 +122,26 @@ export default function GenerateTokenPage() {
             </div>
           </div>
 
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] p-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-[var(--color-text)]">
+              <KeyRound className="w-4 h-4" />
+              Token scope
+            </div>
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              กำหนดสิทธิ์ในการ sync: <span className="font-medium">read</span> ให้ดาวน์โหลดได้, <span className="font-medium">write</span> ให้ทั้งอัปโหลดได้
+            </p>
+            <div className="mt-3">
+              <select
+                value={scope}
+                onChange={(e) => setScope(e.target.value as 'read' | 'write')}
+                className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-page)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/40"
+              >
+                <option value="read">read</option>
+                <option value="write">write</option>
+              </select>
+            </div>
+          </div>
+
           {needsAdminKey && (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] p-4">
               <label className="block text-sm font-medium text-[var(--color-text)]">Admin key</label>
@@ -170,6 +192,8 @@ export default function GenerateTokenPage() {
                     googleId: <code className="px-1 py-0.5 rounded bg-[var(--color-overlay)]">{status.googleId}</code>
                     {' · '}
                     expires: <code className="px-1 py-0.5 rounded bg-[var(--color-overlay)]">{status.expiresAt ?? 'no-expire'}</code>
+                    {' · '}
+                    scope: <code className="px-1 py-0.5 rounded bg-[var(--color-overlay)]">{status.scope}</code>
                   </div>
                 </div>
                 <button

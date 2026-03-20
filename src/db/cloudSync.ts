@@ -15,14 +15,17 @@ import {
   type EncryptedInnerPayload,
 } from './syncCrypto';
 import { exportForSync, importFromSync } from './sync';
-import { getGoogleUserId } from '../lib/googleAuth';
+import { getGoogleUserId, getTokenLoginToken } from '../lib/googleAuth';
 
 const SYNC_UPLOAD_URL = '/api/sync/upload';
 const SYNC_DOWNLOAD_URL = '/api/sync/download';
 
 function getSyncHeaders(): Record<string, string> {
   const userId = getGoogleUserId();
-  return { 'X-Google-User-Id': userId ?? 'guest' };
+  const token = getTokenLoginToken();
+  const headers: Record<string, string> = { 'X-Google-User-Id': userId ?? 'guest' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }
 
 export type CloudSyncFailure = {

@@ -7,6 +7,7 @@
  * ถ้าไม่ใช้ Cloud Sync: deploy แค่โฟลเดอร์ dist/ บน static host (Vercel, Netlify, nginx) ก็พอ
  */
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -32,12 +33,15 @@ function sanitizeGoogleId(raw: string): string {
   return safe;
 }
 
+type TokenScope = 'read' | 'write';
+
 type StoredToken = {
   id: string;
   tokenHash: string;
   googleId: string;
   createdAt: string;
   expiresAt: string | null;
+  scope: TokenScope;
 };
 
 type TokenStore = { version: 1; tokens: StoredToken[] };
@@ -48,7 +52,11 @@ function readTokenStore(): TokenStore {
     const raw = fs.readFileSync(TOKENS_FILE, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<TokenStore>;
     if (parsed.version !== 1 || !Array.isArray(parsed.tokens)) return { version: 1, tokens: [] };
-    return { version: 1, tokens: parsed.tokens as StoredToken[] };
+    const tokens = (parsed.tokens as Partial<StoredToken>[]).map((t) => {
+      const scope = t.scope === 'read' || t.scope === 'write' ? t.scope : 'write'; // back-compat with old tokens.json
+      return { ...(t as StoredToken), scope };
+    });
+    return { version: 1, tokens };
   } catch {
     return { version: 1, tokens: [] };
   }
@@ -76,6 +84,12 @@ function parseExpiresAt(expiresAt: unknown): string | null {
   const d = new Date(expiresAt);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function parseRequestedTokenScope(raw: unknown): TokenScope {
+  if (raw === undefined || raw === null || raw === '') return 'write';
+  if (raw === 'read' || raw === 'write') return raw;
+  throw new Error('Invalid token scope. Use "read" or "write".');
 }
 
 const app = express();
@@ -112,6 +126,7 @@ app.post('/api/auth/token/generate', (req, res) => {
     }
 
     const expiresAt = parseExpiresAt(req.body?.expiresAt);
+    const scope = parseRequestedTokenScope(req.body?.scope);
     const token = `atkn_${crypto.randomBytes(24).toString('base64url')}`;
     const tokenHash = sha256Hex(token);
 
@@ -122,13 +137,15 @@ app.post('/api/auth/token/generate', (req, res) => {
       googleId,
       createdAt: new Date().toISOString(),
       expiresAt,
+      scope,
     };
     store.tokens.push(record);
     writeTokenStore(store);
 
-    res.json({ ok: true, token, googleId, expiresAt });
+    res.json({ ok: true, token, googleId, expiresAt, scope });
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
+    const msg = String(e);
+    res.status(msg.toLowerCase().includes('invalid token scope') ? 400 : 500).json({ ok: false, error: msg });
   }
 });
 
@@ -159,16 +176,177 @@ app.post('/api/auth/token/login', (req, res) => {
         return;
       }
     }
-    res.json({ ok: true, googleId: match.googleId, expiresAt: match.expiresAt });
+    res.json({ ok: true, googleId: match.googleId, expiresAt: match.expiresAt, scope: match.scope });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
 
+type SyncAuth = { tokenHash: string; googleId: string; scope: TokenScope };
+
+declare global {
+  namespace Express {
+    interface Request {
+      syncAuth?: SyncAuth;
+    }
+  }
+}
+
+function extractTokenFromRequest(req: express.Request): string | null {
+  const auth = req.headers['authorization'];
+  if (typeof auth === 'string') {
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (m) return m[1].trim();
+  }
+  const x = req.headers['x-archtown-token'] ?? req.headers['x-token'];
+  if (typeof x === 'string') {
+    const t = x.trim();
+    return t ? t : null;
+  }
+  return null;
+}
+
+function verifySyncToken(token: string): SyncAuth {
+  const tokenHash = sha256Hex(token);
+  const store = readTokenStore();
+  const match = store.tokens.find((t) => {
+    try {
+      return safeEqualHex(t.tokenHash, tokenHash);
+    } catch {
+      return false;
+    }
+  });
+  if (!match) {
+    const err = new Error('invalid token');
+    (err as any).status = 401;
+    throw err;
+  }
+  if (match.expiresAt) {
+    const exp = new Date(match.expiresAt).getTime();
+    if (!Number.isNaN(exp) && Date.now() > exp) {
+      const err = new Error('token expired');
+      (err as any).status = 401;
+      throw err;
+    }
+  }
+  return { tokenHash: match.tokenHash, googleId: match.googleId, scope: match.scope };
+}
+
+const syncRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 60,
+  keyGenerator: (req) => {
+    if (req.syncAuth) return `token:${req.syncAuth.tokenHash}`;
+    const userId = getSyncUserId(req);
+    return `google:${userId}`;
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => res.status(429).json({ ok: false, error: 'rate limit exceeded' }),
+});
+
+async function readBackupVersionAndUpdatedAt(
+  backupFile: string,
+): Promise<{ version: number; updated_at: string | null } | null> {
+  return await new Promise((resolve, reject) => {
+    if (!fs.existsSync(backupFile)) return resolve(null);
+
+    const stream = fs.createReadStream(backupFile, { encoding: 'utf8', highWaterMark: 64 * 1024 });
+    let buf = '';
+    let version: number | null = null;
+    let updatedAtFound = false;
+    let updated_at: string | null = null;
+
+    const cleanup = () => {
+      try {
+        stream.destroy();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const tryExtract = () => {
+      if (version == null) {
+        const m = buf.match(/"version"\s*:\s*(\d+)/);
+        if (m) version = Number(m[1]);
+      }
+      if (!updatedAtFound) {
+        // Match either "updated_at":"..." or "updated_at":null
+        const mNull = buf.match(/"updated_at"\s*:\s*null/);
+        if (mNull) {
+          updated_at = null;
+          updatedAtFound = true;
+        }
+        const mStr = buf.match(/"updated_at"\s*:\s*"([^"]*)"/);
+        if (mStr) {
+          updated_at = mStr[1];
+          updatedAtFound = true;
+        }
+      }
+      if (version != null && updatedAtFound) {
+        cleanup();
+        resolve({ version: version ?? 0, updated_at });
+        return true;
+      }
+      return false;
+    };
+
+    stream.on('data', (chunk) => {
+      buf += chunk;
+      // keep memory bounded; metadata should be near the top
+      if (buf.length > 300_000) buf = buf.slice(0, 150_000);
+      tryExtract();
+    });
+    stream.on('error', (err) => reject(err));
+    stream.on('end', () => {
+      if (version == null) resolve(null);
+      else resolve({ version: version ?? 0, updated_at: updatedAtFound ? updated_at : null });
+    });
+  });
+}
+
+// Optional token auth (token scope + token-key for rate limiting).
+app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version'], (req, res, next) => {
+  const token = extractTokenFromRequest(req);
+  if (!token) return next();
+  try {
+    req.syncAuth = verifySyncToken(token);
+    return next();
+  } catch (e) {
+    const status = (e as any)?.status ?? 401;
+    const msg = String((e as any)?.message ?? e);
+    return res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version'], syncRateLimiter);
+
 // --- Cloud Sync API (เก็บ/ดึง backup ต่อ user: data/sync/{googleId}/backup.json) ---
+app.get('/api/sync/version', async (req, res) => {
+  try {
+    const tokenAuth = req.syncAuth;
+    // download/version are read operations; both read/write scopes are allowed
+    if (tokenAuth && tokenAuth.scope !== 'read' && tokenAuth.scope !== 'write') {
+      res.status(403).json({ ok: false, error: 'insufficient scope' });
+      return;
+    }
+    const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+    const backupFile = getSyncBackupPath(userId);
+    const meta = await readBackupVersionAndUpdatedAt(backupFile);
+    if (!meta) {
+      res.status(404).json({ error: 'ยังไม่มีข้อมูลบน Cloud' });
+      return;
+    }
+    res.json({ version: meta.version, updated_at: meta.updated_at });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.get('/api/sync/download', (req, res) => {
   try {
-    const userId = getSyncUserId(req);
+    const tokenAuth = req.syncAuth;
+    const userId = tokenAuth?.googleId ?? getSyncUserId(req);
     const backupFile = getSyncBackupPath(userId);
     if (!fs.existsSync(backupFile)) {
       res.status(404).json({ error: 'ยังไม่มีข้อมูลบน Cloud' });
@@ -191,7 +369,11 @@ app.post('/api/sync/upload', (req, res) => {
       res.status(400).json({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' });
       return;
     }
-    const userId = getSyncUserId(req);
+    if (req.syncAuth && req.syncAuth.scope !== 'write') {
+      res.status(403).json({ ok: false, error: 'insufficient scope' });
+      return;
+    }
+    const userId = req.syncAuth?.googleId ?? getSyncUserId(req);
     const backupFile = getSyncBackupPath(userId);
     const force = req.query.force === '1' || req.query.force === 'true' || payload.force === true;
 
@@ -251,6 +433,7 @@ function buildAIContextMarkdown(baseUrl: string): string {
 | POST | /api/auth/token/login | Login with Token → get userId |
 | GET | /api/sync/download | Download full backup (JSON) |
 | POST | /api/sync/upload | Upload backup (JSON) |
+| GET | /api/sync/version | Get backup meta (version, updated_at) |
 | GET | /api/ai/context | This document (Markdown) |
 
 Base URL: ${baseUrl}
@@ -266,7 +449,7 @@ For AI agents, use Token to identify and access Cloud Sync.
 1. Admin generates Token via \`POST /api/auth/token/generate\` or UI \`/admin/generate-token\`
 2. AI Agent logs in via \`POST /api/auth/token/login\`
 3. Receives \`googleId\` → use as User ID for Cloud Sync
-4. Pass \`X-Google-User-Id\` header in every Sync API call
+4. Pass \`X-Google-User-Id\` header (and \`Authorization: Bearer <token>\` to enforce token scope + per-token rate limit) in every Sync API call
 
 ### POST /api/auth/token/generate
 
@@ -278,7 +461,8 @@ Request:
 
   {
     "googleId": "107508959445697114581",
-    "expiresAt": "2026-12-31T23:59:59Z"   // or null for no-expire
+    "expiresAt": "2026-12-31T23:59:59Z",   // or null for no-expire
+    "scope": "read" | "write"          // optional, default "write"
   }
 
 Response 200:
@@ -327,6 +511,21 @@ Cloud Sync backs up/restores all data from browser SQLite to server as JSON per 
 - User ID: header \`X-Google-User-Id\` or query \`?userId=\`, fallback \`guest\`
 - Version conflict: server compares \`version\` — rejects if client ≤ server (409)
 - Optional AES-GCM encryption (client-side)
+
+### GET /api/sync/version
+
+\`\`\`
+Request:
+  GET ${baseUrl}/api/sync/version
+  X-Google-User-Id: YOUR_USER_ID
+  Authorization: Bearer <token>   // optional (recommended for per-token rate limit + scope)
+
+Response 200:
+  { "version": 74, "updated_at": "2026-03-19T04:57:11.866Z" }
+
+Error 404:
+  { "error": "ยังไม่มีข้อมูลบน Cloud" }
+\`\`\`
 
 ### GET /api/sync/download
 
@@ -390,7 +589,7 @@ Force upload (ignore conflict):
 \`\`\`
 
 ### Version Check Flow (Architect Check)
-1. \`GET /api/sync/download\` — check \`version\` and \`updated_at\`
+1. \`GET /api/sync/version\` — check \`version\` and \`updated_at\`
 2. Compare with local — if remote > local, there is a new update
 3. To upload: set version = remote version + 1
 4. On 409 conflict: use \`?force=1\` to overwrite (caution: data loss)

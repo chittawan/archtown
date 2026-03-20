@@ -41,7 +41,7 @@ export default function LoginPage() {
     setStatus({ state: 'loading', progress: 0, label: 'กำลังตรวจสอบ Token...' });
     try {
       const result = await loginWithToken(t);
-      setTokenLoginIdentity({ googleId: result.googleId });
+      setTokenLoginIdentity({ googleId: result.googleId, token: t });
       await prepareAfterLogin((s) => setStatus({ state: 'loading', progress: s.progress, label: s.label }));
       setStatus({ state: 'success' });
       window.location.href = '/capability';

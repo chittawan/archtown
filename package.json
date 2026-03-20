@@ -27,6 +27,7 @@
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.3.1",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
     "js-yaml": "^4.1.1",

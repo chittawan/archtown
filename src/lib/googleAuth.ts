@@ -1,6 +1,7 @@
 export const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
 const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
 const TOKEN_LOGIN_USER_ID_KEY = 'archtown_token_google_user_id';
+const TOKEN_LOGIN_TOKEN_KEY = 'archtown_token_login_token';
 const TOKEN_LOGIN_EMAIL_KEY = 'archtown_token_email';
 const TOKEN_LOGIN_PICTURE_KEY = 'archtown_token_picture';
 
@@ -39,6 +40,7 @@ export function logoutGoogle(): void {
   if (typeof window === 'undefined') return;
   sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_USER_ID_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_TOKEN_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_PICTURE_KEY);
 }
@@ -84,15 +86,28 @@ export function getGoogleUserInfo(): { picture?: string; email?: string } {
   return { picture: payload.picture, email: payload.email };
 }
 
-export function setTokenLoginIdentity(input: { googleId: string; email?: string; picture?: string }): void {
+export function setTokenLoginIdentity(input: { googleId: string; token?: string; email?: string; picture?: string }): void {
   if (typeof window === 'undefined') return;
   const googleId = (input.googleId || '').trim();
   if (!googleId) throw new Error('googleId is required');
   sessionStorage.setItem(TOKEN_LOGIN_USER_ID_KEY, googleId);
+  // Keep the raw token so Cloud Sync can enforce rate limiting + scope on server-side.
+  if ('token' in input && typeof input.token === 'string' && input.token.trim()) {
+    sessionStorage.setItem(TOKEN_LOGIN_TOKEN_KEY, input.token.trim());
+  } else {
+    sessionStorage.removeItem(TOKEN_LOGIN_TOKEN_KEY);
+  }
   if (input.email) sessionStorage.setItem(TOKEN_LOGIN_EMAIL_KEY, input.email);
   else sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
   if (input.picture) sessionStorage.setItem(TOKEN_LOGIN_PICTURE_KEY, input.picture);
   else sessionStorage.removeItem(TOKEN_LOGIN_PICTURE_KEY);
+}
+
+export function getTokenLoginToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const t = sessionStorage.getItem(TOKEN_LOGIN_TOKEN_KEY);
+  if (!t) return null;
+  return t.trim() || null;
 }
 
 export function getLoginKind(): 'google' | 'token' | 'guest' {
