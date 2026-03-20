@@ -120,7 +120,18 @@ capability_order + caps + cap_projects (dashboard grid)
 
 ---
 
-## 4. Quick Start
+## 4. Project Manage — Summary View & PDF (UI)
+
+- หน้า **Project Manage** → ปุ่ม **Summary View** (modal); **ไม่มี API แยก**
+- **Summary**: สรุปผู้บริหาร + ตาราง + การ์ด Critical / Manageable / Normal
+- **Timeline**: ไทม์ไลน์ตาม \`due_date\` (YYYY-MM-DD); รวมหลาย Todo วันเดียวกัน + หัวข้อย่อยเดียวกันเป็นการ์ดเดียว
+- **กรองรายงาน**: วันที่เริ่ม–สิ้นสุด + checkbox **รวมรายการไม่ระบุวัน** (กรองเฉพาะ \`project_sub_topic_details\` ตามช่วง due); มีผลทั้งสรุป, Timeline และ PDF
+- **Save PDF**: client-side (html2canvas + jsPDF) หนึ่งหน้ายาว; ชื่อไฟล์ \`{projectName}_{Summary|Timeline}_{YYYYMMDD}.pdf\`
+- AI ที่ใช้แค่ API: \`GET /api/sync/download\` แล้วประกอบรายงานแบบเดียวกันได้
+
+---
+
+## 5. Quick Start
 1. Login: POST /api/auth/token/login → get googleId
 2. Check version: GET /api/sync/download → check version/updated_at
 3. Read data: parse tables from sync payload

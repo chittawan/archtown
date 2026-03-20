@@ -441,7 +441,32 @@ capability_order (display order of caps)
 
 ---
 
-## 4. Sync Payload Format
+## 4. Project Manage — Summary View & PDF Export (browser UI)
+
+ฟีเจอร์นี้อยู่ที่หน้า **Project Manage** ปุ่ม **Summary View** (modal) — **ไม่มี REST endpoint แยก**; ดึงข้อมูลจาก state โปรเจกต์ในเบราว์เซอร์ (SQLite WASM / sync) เหมือนส่วนอื่นของแอป
+
+### โหมดแสดงผล
+- **Summary**: Executive summary + ตารางสรุปทีม/หัวข้อ + การ์ดรายละเอียดแยก Critical / Manageable / Normal (รวม Todo ในแต่ละหัวข้อย่อย)
+- **Timeline**: ไทม์ไลน์แนวตั้ง เรียงตาม \`due_date\` (รูปแบบ **YYYY-MM-DD**) ของแถวใน \`project_sub_topic_details\` — รวมหลาย Todo **วันเดียวกัน + หัวข้อย่อยเดียวกัน** เป็นการ์ดเดียว (เหมือนการ์ดในโหมด Summary)
+
+### กรองช่วงวันที่ (Report filter)
+ที่แถบมุมขวาบนของ modal:
+- **วันที่เริ่มต้น** / **วันที่สิ้นสุด** — กรองเฉพาะรายการ detail ที่มี \`due_date\` อยู่ในช่วม \[start, end\] (เทียบสตริงวันที่)
+- **รวมรายการไม่ระบุวัน** (checkbox, เปิดค่าเริ่มต้น) — ถ้าเปิด: รายการที่ไม่มี \`due_date\` หรือรูปแบบไม่ใช่ YYYY-MM-DD ยังถูกรวม; ถ้าปิด: รายการเหล่านั้นถูกตัดออกจากรายงาน
+- การกรองมีผลกับทั้ง **ตัวเลขสรุปด้านบน**, เนื้อหา **Summary**, **Timeline** และ **ไฟล์ PDF** ที่ส่งออกในขณะนั้น
+
+### Save PDF
+- ปุ่ม **Save PDF** สร้างไฟล์ฝั่ง client (\`html2canvas\` + \`jsPDF\`) เป็นหน้า PDF **ยาวต่อเนื่องหนึ่งหน้า** (ไม่ตัดเล่ม fixed A4 หลายหน้า)
+- **ชื่อไฟล์**: \`{ชื่อโปรเจกต์}_{Summary|Timeline}_{YYYYMMDD}.pdf\`
+  - \`Summary\` / \`Timeline\` ตามแท็บที่เลือกอยู่
+  - \`YYYYMMDD\` = วันที่บนเครื่องผู้ใช้ตอนกดบันทึก
+
+### สำหรับ AI ที่อ่านได้เฉพาะ API
+ใช้ \`GET /api/sync/download\` แล้วนำ \`project_sub_topics\` + \`project_sub_topic_details\` ไปจัดช่วงวันที่ / สรุป / ไทม์ไลน์ได้แนวเดียวกับ UI
+
+---
+
+## 5. Sync Payload Format
 
 \`\`\`json
 {
@@ -476,7 +501,7 @@ Encrypted payload (optional, client-side AES-GCM):
 
 ---
 
-## 5. Quick Start Workflow for AI Agent
+## 6. Quick Start Workflow for AI Agent
 
 ### Step 1: Login
 \`\`\`bash
