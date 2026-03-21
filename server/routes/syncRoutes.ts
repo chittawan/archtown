@@ -3,7 +3,7 @@ import type express from 'express';
 import { Router } from 'express';
 import { readBackupVersionAndUpdatedAt } from '../services/backupMetaService';
 import { getSyncBackupPath } from '../services/paths';
-import { getSyncUserId } from '../services/syncUser';
+import { getResolvedSyncUserId } from '../services/tokenService';
 import { runSyncPatch } from '../services/patchService';
 import { runSyncUpload } from '../services/uploadService';
 
@@ -17,7 +17,7 @@ export function createSyncRouter(): express.Router {
         res.status(403).json({ ok: false, error: 'insufficient scope' });
         return;
       }
-      const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+      const userId = getResolvedSyncUserId(req);
       const backupFile = getSyncBackupPath(userId);
       const meta = await readBackupVersionAndUpdatedAt(backupFile);
       if (!meta) {
@@ -33,7 +33,7 @@ export function createSyncRouter(): express.Router {
   r.get('/download', (req, res) => {
     try {
       const tokenAuth = req.syncAuth;
-      const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+      const userId = getResolvedSyncUserId(req);
       const backupFile = getSyncBackupPath(userId);
       if (!fs.existsSync(backupFile)) {
         res.status(404).json({ error: 'ยังไม่มีข้อมูลบน Cloud' });
@@ -50,7 +50,7 @@ export function createSyncRouter(): express.Router {
   r.patch('/patch', (req, res) => {
     try {
       const tokenAuth = req.syncAuth;
-      const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+      const userId = getResolvedSyncUserId(req);
       const payload = req.body;
       const result = runSyncPatch({
         userId,
@@ -73,7 +73,7 @@ export function createSyncRouter(): express.Router {
       const payload = req.body;
       const force =
         req.query.force === '1' || req.query.force === 'true' || (payload && typeof payload === 'object' && payload.force === true);
-      const userId = req.syncAuth?.googleId ?? getSyncUserId(req);
+      const userId = getResolvedSyncUserId(req);
       const out = runSyncUpload({ userId, syncAuth: req.syncAuth, payload, force });
       if (out.ok === false) {
         res.status(out.status).json(out.body);

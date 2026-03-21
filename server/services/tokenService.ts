@@ -1,8 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import type { IncomingHttpHeaders } from 'http';
 import type express from 'express';
 import type { SyncAuth, TokenScope } from '../types/syncAuth';
+import { getSyncUserId, getSyncUserIdFromIncoming } from './syncUser';
 import { TOKENS_FILE } from './paths';
 
 type StoredToken = {
@@ -107,18 +109,36 @@ export function loginWithTokenBody(token: string): LoginTokenResult {
   return { ok: true, googleId: match.googleId, expiresAt: match.expiresAt, scope: match.scope };
 }
 
-export function extractTokenFromRequest(req: Pick<express.Request, 'headers'>): string | null {
-  const auth = req.headers['authorization'];
-  if (typeof auth === 'string') {
+function headerString(
+  headers: express.Request['headers'] | IncomingHttpHeaders,
+  name: string
+): string {
+  const h = headers as Record<string, string | string[] | undefined>;
+  const v = h[name.toLowerCase()] ?? h[name];
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v[0] ?? '';
+  return '';
+}
+
+/** อ่าน Bearer / x-archtown-token จาก headers (Express หรือ Node IncomingMessage). */
+export function extractTokenFromHeaders(
+  headers: express.Request['headers'] | IncomingHttpHeaders
+): string | null {
+  const auth = headerString(headers, 'authorization');
+  if (auth) {
     const m = auth.match(/^Bearer\s+(.+)$/i);
     if (m) return m[1].trim();
   }
-  const x = req.headers['x-archtown-token'] ?? req.headers['x-token'];
-  if (typeof x === 'string') {
+  const x = headerString(headers, 'x-archtown-token') || headerString(headers, 'x-token');
+  if (x) {
     const t = x.trim();
-    return t ? t : null;
+    return t || null;
   }
   return null;
+}
+
+export function extractTokenFromRequest(req: Pick<express.Request, 'headers'>): string | null {
+  return extractTokenFromHeaders(req.headers);
 }
 
 export function verifySyncToken(token: string): SyncAuth {
@@ -146,4 +166,26 @@ export function verifySyncToken(token: string): SyncAuth {
   }
   const tokenId = typeof match.id === 'string' && match.id ? match.id : `h_${match.tokenHash.slice(0, 12)}`;
   return { tokenHash: match.tokenHash, tokenId, googleId: match.googleId, scope: match.scope };
+}
+
+/**
+ * เลือก user สำหรับ sync/audit: มี token ที่ถูกต้อง → googleId จาก store; ไม่มี → header/query; token ผิด → throw (status 401).
+ * ใช้ร่วมกับ Vite dev middleware ที่ไม่มี req.syncAuth
+ */
+export function resolveSyncUserFromIncomingLike(input: {
+  headers: express.Request['headers'] | IncomingHttpHeaders;
+  query?: express.Request['query'];
+  url?: string;
+}): { userId: string; syncAuth: SyncAuth } | { userId: string; syncAuth?: undefined } {
+  const token = extractTokenFromHeaders(input.headers);
+  if (token) {
+    const syncAuth = verifySyncToken(token);
+    return { userId: syncAuth.googleId, syncAuth };
+  }
+  return { userId: getSyncUserIdFromIncoming(input) };
+}
+
+/** หลัง optionalSyncTokenMiddleware: user สำหรับไฟล์ backup (โทเค็นชนะ header). */
+export function getResolvedSyncUserId(req: express.Request): string {
+  return req.syncAuth?.googleId ?? getSyncUserId(req);
 }

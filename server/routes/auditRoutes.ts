@@ -1,7 +1,7 @@
 import type express from 'express';
 import { Router } from 'express';
 import { queryAuditLines, performAuditUndo } from '../services/auditService';
-import { getSyncUserId } from '../services/syncUser';
+import { getResolvedSyncUserId } from '../services/tokenService';
 
 export function createAuditRouter(): express.Router {
   const r = Router();
@@ -13,7 +13,7 @@ export function createAuditRouter(): express.Router {
         res.status(403).json({ ok: false, error: 'insufficient scope' });
         return;
       }
-      const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+      const userId = getResolvedSyncUserId(req);
       const dateParam = req.query.date;
       const date =
         typeof dateParam === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
@@ -36,7 +36,7 @@ export function createAuditRouter(): express.Router {
         res.status(403).json({ ok: false, error: 'insufficient scope' });
         return;
       }
-      const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+      const userId = getResolvedSyncUserId(req);
       const reqIdUndo = req.params.req_id;
       const result = performAuditUndo(userId, reqIdUndo);
       if (result.ok === false) {

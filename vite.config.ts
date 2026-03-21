@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import type {IncomingHttpHeaders} from 'http';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {defineConfig, loadEnv} from 'vite';
@@ -10,6 +11,8 @@ import {nameToId, sanitizeId} from './src/lib/idUtils';
 import {yamlToOrgTeam, orgTeamToYaml} from './src/lib/teamYaml';
 import {yamlToCap, capToYaml, yamlToCapOrder, capOrderToYaml} from './src/lib/capabilityYaml';
 import {buildAIContextMarkdown} from './server/services/aiContextMarkdown';
+import {getSyncUserIdFromIncoming} from './server/services/syncUser';
+import {resolveSyncUserFromIncomingLike} from './server/services/tokenService';
 
 const DATA_PROJECTS_DIR = path.resolve(__dirname, 'data', 'projects');
 const DATA_TEAMS_DIR = path.resolve(__dirname, 'data', 'teams');
@@ -610,20 +613,54 @@ export default defineConfig(({mode}) => {
         name: 'sync-api',
         configureServer(server) {
           const SYNC_DIR = path.resolve(__dirname, 'data', 'sync');
-          function getSyncUserId(incomingReq: { url?: string; headers?: Record<string, string | string[] | undefined> }): string {
-            const raw = (incomingReq.headers?.['x-google-user-id'] as string) ||
-              (incomingReq.url?.includes('userId=') ? new URLSearchParams(incomingReq.url.slice(incomingReq.url.indexOf('?'))).get('userId') || '' : '');
-            const safe = String(raw).replace(/[^a-zA-Z0-9_.-]/g, '');
-            return safe || 'guest';
-          }
           function getSyncBackupPath(userId: string) {
             return path.join(SYNC_DIR, userId, 'backup.json');
+          }
+          function resolveDevSyncUserId(incomingReq: { url?: string; headers: IncomingHttpHeaders }): {
+            userId: string;
+            errorStatus?: number;
+            errorBody?: Record<string, unknown>;
+          } {
+            try {
+              const resolved = resolveSyncUserFromIncomingLike({
+                headers: incomingReq.headers,
+                url: incomingReq.url,
+              });
+              if (resolved.syncAuth) {
+                const claimed = getSyncUserIdFromIncoming({
+                  headers: incomingReq.headers,
+                  url: incomingReq.url,
+                });
+                if (claimed !== 'guest' && claimed !== resolved.syncAuth.googleId) {
+                  return {
+                    userId: '',
+                    errorStatus: 403,
+                    errorBody: {ok: false, error: 'user id does not match token'},
+                  };
+                }
+              }
+              return {userId: resolved.userId};
+            } catch (e) {
+              const status = (e as Error & {status?: number})?.status ?? 401;
+              return {
+                userId: '',
+                errorStatus: status,
+                errorBody: {ok: false, error: String((e as Error)?.message ?? e)},
+              };
+            }
           }
           server.middlewares.use(async (req, res, next) => {
             const url = req.url?.split('?')[0] ?? '';
             if (url === '/api/sync/download' && req.method === 'GET') {
               try {
-                const userId = getSyncUserId(req);
+                const out = resolveDevSyncUserId(req);
+                if (out.errorStatus != null) {
+                  res.statusCode = out.errorStatus;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(out.errorBody ?? {ok: false, error: 'unauthorized'}));
+                  return;
+                }
+                const userId = out.userId;
                 const backupFile = getSyncBackupPath(userId);
                 if (!fs.existsSync(backupFile)) {
                   res.statusCode = 404;
@@ -655,7 +692,14 @@ export default defineConfig(({mode}) => {
                     res.end(JSON.stringify({ ok: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง' }));
                     return;
                   }
-                  const userId = getSyncUserId(req);
+                  const out = resolveDevSyncUserId(req);
+                  if (out.errorStatus != null) {
+                    res.statusCode = out.errorStatus;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(out.errorBody ?? { ok: false, error: 'unauthorized' }));
+                    return;
+                  }
+                  const userId = out.userId;
                   const backupFile = getSyncBackupPath(userId);
                   const query = req.url?.includes('?') ? new URLSearchParams(req.url.slice(req.url.indexOf('?'))) : null;
                   const force = query?.get('force') === '1' || query?.get('force') === 'true' || payload.force === true;

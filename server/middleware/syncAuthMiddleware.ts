@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import type express from 'express';
 import { extractTokenFromRequest, verifySyncToken } from '../services/tokenService';
-import { getSyncUserId } from '../services/syncUser';
+import { getSyncUserId, getSyncUserIdFromIncoming } from '../services/syncUser';
 
 export function createSyncRateLimiter() {
   return rateLimit({
@@ -33,12 +33,24 @@ export function optionalSyncTokenMiddleware(req: express.Request, res: express.R
   }
 }
 
+/** ถ้ามี Bearer ที่ถูกต้อง แต่ X-Google-User-Id / userId ไม่ตรงกับ googleId ในโทเค็น → 403 */
+export function rejectClaimedSyncUserIdMismatch(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!req.syncAuth) return next();
+  const claimed = getSyncUserIdFromIncoming({ headers: req.headers, query: req.query, url: req.url });
+  if (claimed !== 'guest' && claimed !== req.syncAuth.googleId) {
+    return res.status(403).json({ ok: false, error: 'user id does not match token' });
+  }
+  return next();
+}
+
 export function mountSyncAuthAndRateLimit(app: express.Application, syncRateLimiter: ReturnType<typeof createSyncRateLimiter>) {
   app.use([...SYNC_PATHS], optionalSyncTokenMiddleware);
+  app.use([...SYNC_PATHS], rejectClaimedSyncUserIdMismatch);
   app.use([...SYNC_PATHS], syncRateLimiter);
 }
 
 export function mountAuditAuthAndRateLimit(app: express.Application, syncRateLimiter: ReturnType<typeof createSyncRateLimiter>) {
   app.use('/api/audit', optionalSyncTokenMiddleware);
+  app.use('/api/audit', rejectClaimedSyncUserIdMismatch);
   app.use('/api/audit', syncRateLimiter);
 }
