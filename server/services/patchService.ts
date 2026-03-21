@@ -194,24 +194,52 @@ export function runSyncPatch(input: {
           error: null,
         });
       } else if (opType === 'delete') {
-        const id = (rawOp as { id?: unknown })?.id;
-        if (typeof id !== 'string' || !id) throw new Error('delete requires { id:string }');
-        const idx = tableRows.findIndex((r) => r && typeof r === 'object' && (r as { id?: string }).id === id);
-        if (idx === -1) throw new Error(`Row not found (id=${id})`);
-        const beforeSnap = shallowCloneRow(tableRows[idx]);
-        tableRows.splice(idx, 1);
-        applied++;
+        const compositeId = (rawOp as { composite_id?: unknown })?.composite_id;
+        if (compositeId && typeof compositeId === 'object' && !Array.isArray(compositeId)) {
+          const compositeEntries = Object.entries(compositeId as Record<string, unknown>).filter(([k]) => isSafeFieldKey(k));
+          if (compositeEntries.length === 0) throw new Error('delete requires { composite_id:object } with safe keys');
 
-        pendingAudits.push({
-          ts,
-          op: 'delete',
-          table,
-          id,
-          before: beforeSnap,
-          after: null,
-          status: 'applied',
-          error: null,
-        });
+          const idx = tableRows.findIndex((r) => {
+            if (!r || typeof r !== 'object') return false;
+            return compositeEntries.every(([k, v]) => (r as Record<string, unknown>)[k] === v);
+          });
+          const auditId = JSON.stringify(compositeId);
+          if (idx === -1) throw new Error(`Row not found (composite_id=${auditId})`);
+
+          const beforeSnap = shallowCloneRow(tableRows[idx]);
+          tableRows.splice(idx, 1);
+          applied++;
+
+          pendingAudits.push({
+            ts,
+            op: 'delete',
+            table,
+            id: auditId,
+            before: beforeSnap,
+            after: null,
+            status: 'applied',
+            error: null,
+          });
+        } else {
+          const id = (rawOp as { id?: unknown })?.id;
+          if (typeof id !== 'string' || !id) throw new Error('delete requires { id:string }');
+          const idx = tableRows.findIndex((r) => r && typeof r === 'object' && (r as { id?: string }).id === id);
+          if (idx === -1) throw new Error(`Row not found (id=${id})`);
+          const beforeSnap = shallowCloneRow(tableRows[idx]);
+          tableRows.splice(idx, 1);
+          applied++;
+
+          pendingAudits.push({
+            ts,
+            op: 'delete',
+            table,
+            id,
+            before: beforeSnap,
+            after: null,
+            status: 'applied',
+            error: null,
+          });
+        }
       } else {
         throw new Error(`Unknown op: ${String(opType)}`);
       }

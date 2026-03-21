@@ -223,10 +223,204 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
   const name = (projectName || data.projectName || 'project').trim();
   const id = sanitizeId(data.id || nameToId(name)) || sanitizeId(nameToId(name)) || 'project';
 
-  const projectExisted = !!(await projectsTable.getById(id));
-  await enqueueProjectSubtreeDeletes(id);
+  const existingProject = await projectsTable.getById(id);
+  const projectExisted = !!existingProject;
 
-  const patchInserts: SyncPatchOp[] = [];
+  // Read existing single-PK tables for diff generation
+  const existingTeams = (
+    await client.exec<{ id: string; name: string; sort_order: number }>(`SELECT id, name, sort_order FROM project_teams WHERE project_id = ?`, [id])
+  ).resultRows ?? [];
+
+  const existingTopics = (
+    await client.exec<{ id: string; team_id: string; title: string; sort_order: number }>(
+      `SELECT pt.id, pt.team_id, pt.title, pt.sort_order
+       FROM project_topics pt
+       INNER JOIN project_teams tm ON tm.id = pt.team_id
+       WHERE tm.project_id = ?
+       ORDER BY pt.sort_order, pt.id`,
+      [id]
+    )
+  ).resultRows ?? [];
+
+  const existingSubTopics = (
+    await client.exec<{ id: string; topic_id: string; title: string; status: string; sub_topic_type: string; sort_order: number }>(
+      `SELECT st.id, st.topic_id, st.title, st.status, st.sub_topic_type, st.sort_order
+       FROM project_sub_topics st
+       INNER JOIN project_topics pt ON pt.id = st.topic_id
+       INNER JOIN project_teams tm ON tm.id = pt.team_id
+       WHERE tm.project_id = ?
+       ORDER BY st.sort_order, st.id`,
+      [id]
+    )
+  ).resultRows ?? [];
+
+  const existingDetails = (
+    await client.exec<{
+      id: string;
+      sub_topic_id: string;
+      text: string;
+      description: string | null;
+      status: string;
+      due_date: string | null;
+      sort_order: number;
+    }>(
+      `SELECT d.id, d.sub_topic_id, d.text, d.description, d.status, d.due_date, d.sort_order
+       FROM project_sub_topic_details d
+       INNER JOIN project_sub_topics st ON st.id = d.sub_topic_id
+       INNER JOIN project_topics pt ON pt.id = st.topic_id
+       INNER JOIN project_teams tm ON tm.id = pt.team_id
+       WHERE tm.project_id = ?
+       ORDER BY d.sort_order, d.id`,
+      [id]
+    )
+  ).resultRows ?? [];
+
+  const existingTeamsById = new Map(existingTeams.map((r) => [r.id, r]));
+  const existingTopicsById = new Map(existingTopics.map((r) => [r.id, r]));
+  const existingSubTopicsById = new Map(existingSubTopics.map((r) => [r.id, r]));
+  const existingDetailsById = new Map(existingDetails.map((r) => [r.id, r]));
+
+  // Materialize next rows with final ids + computed sort orders
+  let teamOrder = 0;
+  const nextTeams: Array<{ id: string; project_id: string; name: string; sort_order: number }> = [];
+  let nextTeamIds = new Set<string>();
+
+  const nextTopics: Array<{ id: string; team_id: string; title: string; sort_order: number }> = [];
+  let nextTopicIds = new Set<string>();
+
+  const nextSubTopics: Array<{
+    id: string;
+    topic_id: string;
+    title: string;
+    status: string;
+    sub_topic_type: string;
+    sort_order: number;
+  }> = [];
+  let nextSubTopicIds = new Set<string>();
+
+  const nextDetails: Array<{
+    id: string;
+    sub_topic_id: string;
+    text: string;
+    description: string | null;
+    status: string;
+    due_date: string | null;
+    sort_order: number;
+  }> = [];
+  let nextDetailIds = new Set<string>();
+
+  for (const team of data.teams ?? []) {
+    const teamId = team.id || genId('t');
+    const teamRow = { id: teamId, project_id: id, name: team.name ?? 'Team', sort_order: teamOrder++ };
+    nextTeams.push(teamRow);
+    nextTeamIds.add(teamId);
+
+    let topicOrder = 0;
+    for (const topic of team.topics ?? []) {
+      const topicId = topic.id || genId('top');
+      const topicRow = { id: topicId, team_id: teamId, title: topic.title ?? 'Topic', sort_order: topicOrder++ };
+      nextTopics.push(topicRow);
+      nextTopicIds.add(topicId);
+
+      let subOrder = 0;
+      for (const sub of topic.subTopics ?? []) {
+        const subId = sub.id || genId('sub');
+        const status = sub.status === 'RED' || sub.status === 'YELLOW' ? sub.status : 'GREEN';
+        const subType = sub.subTopicType === 'status' ? 'status' : 'todos';
+        const subRow = {
+          id: subId,
+          topic_id: topicId,
+          title: sub.title ?? 'SubTopic',
+          status,
+          sub_topic_type: subType,
+          sort_order: subOrder++,
+        };
+        nextSubTopics.push(subRow);
+        nextSubTopicIds.add(subId);
+
+        let detailOrder = 0;
+        for (const d of sub.details ?? []) {
+          const detailId = (d as { id?: string }).id || genId('d');
+          const st = d.status === 'done' || d.status === 'doing' ? d.status : 'todo';
+          const detailRow = {
+            id: detailId,
+            sub_topic_id: subId,
+            text: d.text ?? '',
+            description: d.description ?? null,
+            status: st,
+            due_date: d.dueDate ?? null,
+            sort_order: detailOrder++,
+          };
+          nextDetails.push(detailRow);
+          nextDetailIds.add(detailId);
+        }
+      }
+    }
+  }
+
+  // Generate patch ops (enqueued only after SQLite transaction success)
+  const deleteTeamIds = existingTeams.filter((t) => !nextTeamIds.has(t.id)).map((t) => t.id);
+  const deleteTopicIds = existingTopics.filter((t) => !nextTopicIds.has(t.id)).map((t) => t.id);
+  const deleteSubTopicIds = existingSubTopics.filter((s) => !nextSubTopicIds.has(s.id)).map((s) => s.id);
+  const deleteDetailIds = existingDetails.filter((d) => !nextDetailIds.has(d.id)).map((d) => d.id);
+
+  const insertTeamRows = nextTeams.filter((t) => !existingTeamsById.has(t.id));
+  const insertTopicRows = nextTopics.filter((t) => !existingTopicsById.has(t.id));
+  const insertSubTopicRows = nextSubTopics.filter((s) => !existingSubTopicsById.has(s.id));
+  const insertDetailRows = nextDetails.filter((d) => !existingDetailsById.has(d.id));
+
+  const updateTeamsFields = Array.from(nextTeamIds)
+    .filter((tid) => existingTeamsById.has(tid))
+    .map((tid) => {
+      const prev = existingTeamsById.get(tid)!;
+      const next = nextTeams.find((t) => t.id === tid)!;
+      const fields: Record<string, unknown> = {};
+      if (prev.name !== next.name) fields.name = next.name;
+      if (prev.sort_order !== next.sort_order) fields.sort_order = next.sort_order;
+      return { id: tid, fields };
+    })
+    .filter((x) => Object.keys(x.fields).length > 0);
+
+  const updateTopicsFields = Array.from(nextTopicIds)
+    .filter((tid) => existingTopicsById.has(tid))
+    .map((tid) => {
+      const prev = existingTopicsById.get(tid)!;
+      const next = nextTopics.find((t) => t.id === tid)!;
+      const fields: Record<string, unknown> = {};
+      if (prev.title !== next.title) fields.title = next.title;
+      if (prev.sort_order !== next.sort_order) fields.sort_order = next.sort_order;
+      return { id: tid, fields };
+    })
+    .filter((x) => Object.keys(x.fields).length > 0);
+
+  const updateSubTopicsFields = Array.from(nextSubTopicIds)
+    .filter((sid) => existingSubTopicsById.has(sid))
+    .map((sid) => {
+      const prev = existingSubTopicsById.get(sid)!;
+      const next = nextSubTopics.find((s) => s.id === sid)!;
+      const fields: Record<string, unknown> = {};
+      if (prev.title !== next.title) fields.title = next.title;
+      if (prev.status !== next.status) fields.status = next.status;
+      if (prev.sub_topic_type !== next.sub_topic_type) fields.sub_topic_type = next.sub_topic_type;
+      if (prev.sort_order !== next.sort_order) fields.sort_order = next.sort_order;
+      return { id: sid, fields };
+    })
+    .filter((x) => Object.keys(x.fields).length > 0);
+
+  const updateDetailFields = Array.from(nextDetailIds)
+    .filter((did) => existingDetailsById.has(did))
+    .map((did) => {
+      const prev = existingDetailsById.get(did)!;
+      const next = nextDetails.find((d) => d.id === did)!;
+      const fields: Record<string, unknown> = {};
+      if (prev.text !== next.text) fields.text = next.text;
+      if (prev.description !== next.description) fields.description = next.description;
+      if (prev.status !== next.status) fields.status = next.status;
+      if (prev.due_date !== next.due_date) fields.due_date = next.due_date;
+      if (prev.sort_order !== next.sort_order) fields.sort_order = next.sort_order;
+      return { id: did, fields };
+    })
+    .filter((x) => Object.keys(x.fields).length > 0);
 
   await client.runInTransaction(async () => {
     await projectsTable.replace({
@@ -246,59 +440,22 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
     await client.execRun('DELETE FROM project_topics WHERE team_id IN (SELECT id FROM project_teams WHERE project_id = ?)', [id]);
     await projectTeamsTable.deleteByProjectId(id);
 
-    let teamOrder = 0;
-    for (const team of data.teams ?? []) {
-      const teamId = team.id || genId('t');
-      const teamRow = { id: teamId, project_id: id, name: team.name ?? 'Team', sort_order: teamOrder++ };
-      await projectTeamsTable.insert(teamRow);
-      patchInserts.push({ op: 'insert', table: 'project_teams', row: { ...teamRow } });
-      let topicOrder = 0;
-      for (const topic of team.topics ?? []) {
-        const topicId = topic.id || genId('top');
-        const topicRow = { id: topicId, team_id: teamId, title: topic.title ?? 'Topic', sort_order: topicOrder++ };
-        await projectTopicsTable.insert(topicRow);
-        patchInserts.push({ op: 'insert', table: 'project_topics', row: { ...topicRow } });
-        let subOrder = 0;
-        for (const sub of topic.subTopics ?? []) {
-          const subId = sub.id || genId('sub');
-          const status = sub.status === 'RED' || sub.status === 'YELLOW' ? sub.status : 'GREEN';
-          const subType = sub.subTopicType === 'status' ? 'status' : 'todos';
-          const subRow = {
-            id: subId,
-            topic_id: topicId,
-            title: sub.title ?? 'SubTopic',
-            status,
-            sub_topic_type: subType,
-            sort_order: subOrder++,
-          };
-          await projectSubTopicsTable.insert(subRow);
-          patchInserts.push({ op: 'insert', table: 'project_sub_topics', row: { ...subRow } });
-          let detailOrder = 0;
-          for (const d of sub.details ?? []) {
-            const detailId = (d as { id?: string }).id || genId('d');
-            const st = d.status === 'done' || d.status === 'doing' ? d.status : 'todo';
-            const detailRow = {
-              id: detailId,
-              sub_topic_id: subId,
-              text: d.text ?? '',
-              description: d.description ?? null,
-              status: st,
-              due_date: d.dueDate ?? null,
-              sort_order: detailOrder++,
-            };
-            await projectDetailsTable.insert(detailRow);
-            patchInserts.push({ op: 'insert', table: 'project_sub_topic_details', row: { ...detailRow } });
-          }
-        }
-      }
-    }
+    for (const t of nextTeams) await projectTeamsTable.insert(t);
+    for (const t of nextTopics) await projectTopicsTable.insert(t);
+    for (const s of nextSubTopics) await projectSubTopicsTable.insert(s);
+    for (const d of nextDetails) await projectDetailsTable.insert(d);
   });
 
+  const ts = new Date().toISOString();
+
+  // projects (name, description)
   if (projectExisted) {
-    enqueuePatchUpdate('projects', id, {
-      name: data.projectName ?? name,
-      description: data.description ?? null,
-    });
+    const fields: Record<string, unknown> = {};
+    const nextName = data.projectName ?? name;
+    const nextDesc = data.description ?? null;
+    if ((existingProject?.name ?? null) !== nextName) fields.name = nextName;
+    if ((existingProject?.description ?? null) !== nextDesc) fields.description = nextDesc;
+    if (Object.keys(fields).length > 0) enqueuePatchUpdate('projects', id, fields, ts);
   } else {
     enqueuePatchInsert('projects', {
       id,
@@ -306,7 +463,24 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
       description: data.description ?? null,
     });
   }
-  enqueueSyncOpsBatch(patchInserts);
+
+  // delete removed rows first (children → parents)
+  for (const did of deleteDetailIds) enqueuePatchDelete('project_sub_topic_details', did);
+  for (const sid of deleteSubTopicIds) enqueuePatchDelete('project_sub_topics', sid);
+  for (const tid of deleteTopicIds) enqueuePatchDelete('project_topics', tid);
+  for (const tid of deleteTeamIds) enqueuePatchDelete('project_teams', tid);
+
+  // insert new rows
+  for (const row of insertTeamRows) enqueuePatchInsert('project_teams', row);
+  for (const row of insertTopicRows) enqueuePatchInsert('project_topics', row);
+  for (const row of insertSubTopicRows) enqueuePatchInsert('project_sub_topics', row);
+  for (const row of insertDetailRows) enqueuePatchInsert('project_sub_topic_details', row);
+
+  // update existing rows (field-level)
+  for (const u of updateTeamsFields) enqueuePatchUpdate('project_teams', u.id, u.fields, ts);
+  for (const u of updateTopicsFields) enqueuePatchUpdate('project_topics', u.id, u.fields, ts);
+  for (const u of updateSubTopicsFields) enqueuePatchUpdate('project_sub_topics', u.id, u.fields, ts);
+  for (const u of updateDetailFields) enqueuePatchUpdate('project_sub_topic_details', u.id, u.fields, ts);
 
   return { ok: true, id };
 }

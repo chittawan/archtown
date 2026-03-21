@@ -3,10 +3,14 @@
  * Triggered by 'archtown-data-saved' event (dispatched from archtownDb).
  */
 import { flushPendingSyncOps } from './syncManager';
+import { uploadToCloud } from './cloudSync';
+import { isSyncAvailable } from './cloudSync';
+import { clearPendingSyncOps } from './pendingSyncOps';
+import { isFullUploadPending, clearFullUploadPending } from './syncFullUploadFlag';
 
 export const AUTO_SYNC_CLOUD_KEY = 'archtown_auto_sync_cloud';
 
-const DEBOUNCE_MS = 3_000;
+const DEBOUNCE_MS = 2_000;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastFlushAt = 0;
@@ -54,8 +58,22 @@ function initListeners(): void {
 
   window.addEventListener('beforeunload', () => {
     if (!getAutoSyncEnabled()) return;
-    // best-effort: keep queue in localStorage; even if fetch doesn't finish, we'll retry next time.
-    void flushPendingSyncOps({ bestEffort: true });
+    // best-effort: keep queue/flag in localStorage; even if fetch doesn't finish, we'll retry next time.
+    if (isFullUploadPending()) {
+      void (async () => {
+        try {
+          const result = await uploadToCloud(false);
+          if (result.ok) {
+            clearPendingSyncOps();
+            clearFullUploadPending();
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    } else {
+      void flushPendingSyncOps({ bestEffort: true });
+    }
   });
 }
 
@@ -66,16 +84,11 @@ function initListeners(): void {
 export function scheduleSyncToCloud(): void {
   initListeners();
   if (!getAutoSyncEnabled()) return;
-
-  const hadPendingTimer = !!debounceTimer;
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     runSyncToCloud();
   }, DEBOUNCE_MS);
-
-  // "save" should feel immediate: if we haven't scheduled a flush yet, kick one now.
-  if (!hadPendingTimer) void runSyncToCloud();
 }
 
 async function runSyncToCloud(): Promise<void> {
@@ -91,13 +104,30 @@ async function runSyncToCloud(): Promise<void> {
 
     window.dispatchEvent(new CustomEvent('cloud-sync-started'));
     try {
-      const result = await flushPendingSyncOps();
-      if (!result.ok && result.conflict) {
-        window.dispatchEvent(
-          new CustomEvent('cloud-sync-skipped-conflict', {
-            detail: { message: 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปเดตแบบ patch' },
-          })
-        );
+      if (isFullUploadPending()) {
+        // composite PK changed -> fallback to full backup upload
+        const available = await isSyncAvailable();
+        if (!available) return;
+        const result = await uploadToCloud(false);
+        if (result.ok) {
+          clearPendingSyncOps();
+          clearFullUploadPending();
+        } else if ('conflict' in result && result.conflict) {
+          window.dispatchEvent(
+            new CustomEvent('cloud-sync-skipped-conflict', {
+              detail: { message: 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปโหลด' },
+            })
+          );
+        }
+      } else {
+        const result = await flushPendingSyncOps();
+        if (!result.ok && result.conflict) {
+          window.dispatchEvent(
+            new CustomEvent('cloud-sync-skipped-conflict', {
+              detail: { message: 'Cloud มีข้อมูลใหม่กว่า ไม่ได้อัปเดตแบบ patch' },
+            })
+          );
+        }
       }
     } finally {
       window.dispatchEvent(new CustomEvent('cloud-sync-finished'));

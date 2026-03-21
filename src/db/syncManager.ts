@@ -71,7 +71,7 @@ export async function flushPendingSyncOps(input?: { bestEffort?: boolean }): Pro
 
   let flushed = 0;
   const maxOpsPerRequest = 100;
-  const maxConflictRetries = 2;
+  const maxConflictRetries = 1;
 
   // bestEffort (beforeunload) sends at most one request.
   const shouldLoop = !bestEffort;

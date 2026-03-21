@@ -8,6 +8,8 @@ import * as capabilityOrderTable from './capability_order.repository';
 import * as capsTable from './caps.repository';
 import * as capProjectsTable from './cap_projects.repository';
 import * as projectRepo from './project.repository';
+import { markFullUploadPending } from '../syncFullUploadFlag';
+import { enqueuePatchDelete, enqueuePatchInsert, enqueuePatchUpdate } from '../pendingSyncOps';
 
 export async function getCapabilityLayout(): Promise<{ layout: CapabilityLayout }> {
   const orderRows = await capabilityOrderTable.getAll();
@@ -32,8 +34,45 @@ export async function getCapabilityLayout(): Promise<{ layout: CapabilityLayout 
   return { layout: { capOrder, caps } };
 }
 
-/** ยังไม่ใส่ pending PATCH ops: capability_order / cap_projects / org_team_children ไม่มี id เดี่ยวตามที่ server patch ต้องการ — พึ่ง full upload */
+/** Composite PK tables change -> fallback to full upload. We still enqueue `caps` updates (single PK). */
 export async function saveCapabilityLayout(layout: CapabilityLayout): Promise<{ ok: boolean }> {
+  // composite PK: capability_order + cap_projects (and implicitly changes the whole layout)
+  markFullUploadPending();
+
+  // phase2_3_1: enqueue PATCH ops for caps (single PK)
+  const existingCaps = (
+    await client.exec<{ id: string; name: string; cols: number | null; rows: number | null }>(
+      `SELECT id, name, cols, rows FROM caps ORDER BY id`
+    )
+  ).resultRows ?? [];
+  const existingCapsById = new Map(existingCaps.map((r) => [r.id, r]));
+
+  const nextCapsRows: Array<{ id: string; name: string; cols: number | null; rows: number | null }> = [];
+  for (const capId of layout.capOrder ?? []) {
+    const cap = layout.caps?.[capId];
+    nextCapsRows.push({
+      id: capId,
+      name: cap?.name ?? capId,
+      cols: cap?.cols ?? null,
+      rows: cap?.rows ?? null,
+    });
+  }
+  const nextCapsById = new Map(nextCapsRows.map((r) => [r.id, r]));
+
+  const deleteCapIds = existingCaps.filter((c) => !nextCapsById.has(c.id)).map((c) => c.id);
+  const insertCapRows = nextCapsRows.filter((c) => !existingCapsById.has(c.id));
+  const updateCaps = nextCapsRows
+    .filter((c) => existingCapsById.has(c.id))
+    .map((c) => {
+      const prev = existingCapsById.get(c.id)!;
+      const fields: Record<string, unknown> = {};
+      if (prev.name !== c.name) fields.name = c.name;
+      if (prev.cols !== c.cols) fields.cols = c.cols;
+      if (prev.rows !== c.rows) fields.rows = c.rows;
+      return { id: c.id, fields };
+    })
+    .filter((x) => Object.keys(x.fields).length > 0);
+
   await client.runInTransaction(async () => {
     await capabilityOrderTable.deleteAll();
     await capProjectsTable.deleteAll();
@@ -62,6 +101,13 @@ export async function saveCapabilityLayout(layout: CapabilityLayout): Promise<{ 
       }
     }
   });
+
+  // enqueue after SQLite transaction success
+  const ts = new Date().toISOString();
+  for (const id of deleteCapIds) enqueuePatchDelete('caps', id);
+  for (const row of insertCapRows) enqueuePatchInsert('caps', row);
+  for (const u of updateCaps) enqueuePatchUpdate('caps', u.id, u.fields, ts);
+
   return { ok: true };
 }
 

@@ -5,6 +5,7 @@
  */
 import { exportAllTables, importAllTables, SYNC_LAST_UPLOADED_KEY } from './archtownDb';
 import { clearPendingSyncOps } from './pendingSyncOps';
+import { clearFullUploadPending } from './syncFullUploadFlag';
 import {
   base64ToArrayBuffer,
   base64ToBytes,
@@ -142,6 +143,7 @@ export async function downloadFromCloud(password?: string): Promise<CloudSyncRes
         const full = mergeDecryptedWithMeta(inner, payload.version as number | undefined, payload.updated_at as string | undefined);
         await importAllTables(full);
         clearPendingSyncOps();
+        clearFullUploadPending();
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
@@ -186,6 +188,7 @@ export async function restoreFromJsonFile(buffer: ArrayBuffer, password?: string
         const full = mergeDecryptedWithMeta(inner, payload.version as number | undefined, payload.updated_at as string | undefined);
         await importAllTables(full);
         clearPendingSyncOps();
+        clearFullUploadPending();
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }

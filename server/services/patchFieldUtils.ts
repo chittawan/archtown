@@ -43,9 +43,14 @@ export function extractTableFromRawOp(raw: unknown): string {
 
 export function extractIdFromRawOp(raw: unknown): string {
   if (raw && typeof raw === 'object') {
-    const o = raw as { id?: unknown; row?: { id?: unknown } };
+    const o = raw as { id?: unknown; row?: { id?: unknown }; composite_id?: unknown };
     if (typeof o.id === 'string') return o.id;
     if (o.row && typeof o.row === 'object' && typeof o.row.id === 'string') return o.row.id;
+    if (o.composite_id && typeof o.composite_id === 'object') {
+      // Use JSON string so AuditRecord.id remains a string.
+      // (Example: { parent_id: 'x', child_id: 'y' })
+      return JSON.stringify(o.composite_id);
+    }
   }
   return '';
 }

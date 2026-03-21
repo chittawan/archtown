@@ -2,9 +2,8 @@
  * Queue of field-level sync ops for PATCH /api/sync/patch (offline-first).
  * In-memory + localStorage per Google user id (same idea as sync headers).
  */
-import { getGoogleUserId } from '../lib/googleAuth';
-
-const STORAGE_PREFIX = 'archtown_pending_sync_ops:';
+// phase2_3_1 spec: localStorage key must be exactly this.
+const STORAGE_KEY = 'archtown_pending_ops';
 /** Guardrail until flush batches to server (server max 100 per request). */
 const MAX_OPS = 2000;
 
@@ -23,8 +22,7 @@ let memoryQueue: SyncPatchOp[] = [];
 let loadedStorageKey: string | null = null;
 
 function storageKey(): string {
-  const uid = getGoogleUserId() ?? 'guest';
-  return `${STORAGE_PREFIX}${uid}`;
+  return STORAGE_KEY;
 }
 
 function ensureLoaded(): void {
