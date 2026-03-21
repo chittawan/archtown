@@ -26,9 +26,9 @@ function CodeBlock({ children, title }: { children: string; title?: string }) {
   );
 }
 
-function Endpoint({ method, path, desc }: { method: 'GET' | 'POST'; path: string; desc: string }) {
-  const color = method === 'GET' ? 'text-emerald-500' : 'text-blue-500';
-  const bg = method === 'GET' ? 'bg-emerald-500/10' : 'bg-blue-500/10';
+function Endpoint({ method, path, desc }: { method: 'GET' | 'POST' | 'PATCH'; path: string; desc: string }) {
+  const color = method === 'GET' ? 'text-emerald-500' : method === 'PATCH' ? 'text-amber-600' : 'text-blue-500';
+  const bg = method === 'GET' ? 'bg-emerald-500/10' : method === 'PATCH' ? 'bg-amber-500/10' : 'bg-blue-500/10';
   return (
     <div className="flex items-start gap-3 py-1">
       <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${color} ${bg}`}>{method}</span>
@@ -119,6 +119,7 @@ export default function AIContextPage() {
           <Endpoint method="GET" path="/api/sync/download" desc="Download backup" />
           <Endpoint method="POST" path="/api/sync/upload" desc="Upload backup" />
           <Endpoint method="GET" path="/api/sync/version" desc="Get backup meta" />
+          <Endpoint method="PATCH" path="/api/sync/patch" desc="Patch backup (field-level ops)" />
         </div>
         <p className="mt-3 text-[10px] text-[var(--color-text-muted)]">
           Base URL: <code className="px-1 py-0.5 rounded bg-[var(--color-overlay)]">{baseUrl || 'https://your-archtown-host'}</code>

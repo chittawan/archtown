@@ -306,7 +306,7 @@ async function readBackupVersionAndUpdatedAt(
 }
 
 // Optional token auth (token scope + token-key for rate limiting).
-app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version'], (req, res, next) => {
+app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version', '/api/sync/patch'], (req, res, next) => {
   const token = extractTokenFromRequest(req);
   if (!token) return next();
   try {
@@ -319,7 +319,7 @@ app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version'], (req, r
   }
 });
 
-app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version'], syncRateLimiter);
+app.use(['/api/sync/download', '/api/sync/upload', '/api/sync/version', '/api/sync/patch'], syncRateLimiter);
 
 // --- Cloud Sync API (เก็บ/ดึง backup ต่อ user: data/sync/{googleId}/backup.json) ---
 app.get('/api/sync/version', async (req, res) => {
@@ -357,6 +357,170 @@ app.get('/api/sync/download', (req, res) => {
     res.send(json);
   } catch (e) {
     res.status(500).json({ error: String(e) });
+  }
+});
+
+function normalizeIsoTimestamp(raw: unknown): string | null {
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'string') return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function isSafeFieldKey(key: string): boolean {
+  if (!key) return false;
+  if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
+  return /^[a-zA-Z0-9_]+$/.test(key);
+}
+
+type SyncPatchResponse = {
+  ok: true;
+  version: number;
+  applied: number;
+  rejected: Array<{ index: number; error: string }>;
+} | { ok: false; error: string };
+
+app.patch('/api/sync/patch', (req, res) => {
+  try {
+    const tokenAuth = req.syncAuth;
+    if (tokenAuth && tokenAuth.scope !== 'write') {
+      res.status(403).json({ ok: false, error: 'insufficient scope' });
+      return;
+    }
+
+    const payload = req.body;
+    const baseVersion = payload?.base_version;
+    const ops = payload?.ops;
+
+    if (typeof baseVersion !== 'number' || !Array.isArray(ops)) {
+      res.status(400).json({ ok: false, error: 'Invalid payload. Expect { base_version:number, ops:[] }' });
+      return;
+    }
+
+    const userId = tokenAuth?.googleId ?? getSyncUserId(req);
+    const backupFile = getSyncBackupPath(userId);
+    if (!fs.existsSync(backupFile)) {
+      res.status(404).json({ error: 'ยังไม่มีข้อมูลบน Cloud' });
+      return;
+    }
+
+    const json = fs.readFileSync(backupFile, 'utf-8');
+    let backup: any;
+    try {
+      backup = JSON.parse(json) as any;
+    } catch {
+      res.status(500).json({ ok: false, error: 'backup.json parse error' });
+      return;
+    }
+
+    const serverVersion = typeof backup?.version === 'number' ? backup.version : Number(backup?.version ?? 0);
+    if (baseVersion < serverVersion) {
+      res.status(409).json({
+        ok: false,
+        error: 'base_version is older than server version',
+        conflict: true,
+        remoteVersion: serverVersion,
+        remoteUpdatedAt: backup?.updated_at ?? null,
+      });
+      return;
+    }
+
+    const tables = (backup?.tables && typeof backup.tables === 'object') ? backup.tables : {};
+    let applied = 0;
+    const rejected: Array<{ index: number; error: string }> = [];
+
+    for (let i = 0; i < ops.length; i++) {
+      const op = ops[i];
+      try {
+        const opType = op?.op;
+        const table = op?.table;
+        if (typeof opType !== 'string' || typeof table !== 'string') {
+          throw new Error('op must include { op, table }');
+        }
+        const tableRows = tables[table];
+        if (!Array.isArray(tableRows)) {
+          throw new Error(`Unknown table: ${table}`);
+        }
+
+        if (opType === 'update') {
+          const id = op?.id;
+          const fields = op?.fields;
+          const fieldUpdatedAt = op?.field_updated_at;
+          if (typeof id !== 'string' || !fields || typeof fields !== 'object') throw new Error('update requires { id:string, fields:object }');
+          if (!fieldUpdatedAt || typeof fieldUpdatedAt !== 'object') throw new Error('update requires { field_updated_at:object }');
+
+          const rowIndex = tableRows.findIndex((r) => r && typeof r === 'object' && (r as any).id === id);
+          if (rowIndex === -1) throw new Error(`Row not found (id=${id})`);
+
+          const row = tableRows[rowIndex];
+          let changedAny = false;
+          for (const [fieldKey, fieldValue] of Object.entries(fields as Record<string, unknown>)) {
+            if (!isSafeFieldKey(fieldKey)) continue;
+            const incomingRaw = (fieldUpdatedAt as Record<string, unknown>)[fieldKey];
+            const incomingTs = normalizeIsoTimestamp(incomingRaw) ?? new Date().toISOString();
+
+            const tsKey = `${fieldKey}_updated_at`;
+            const existingRaw = (row as any)[tsKey];
+            const existingTs = normalizeIsoTimestamp(existingRaw);
+
+            // If existing field_updated_at is newer or equal, keep existing value.
+            if (existingTs && normalizeIsoTimestamp(incomingTs) && new Date(existingTs).getTime() >= new Date(incomingTs).getTime()) {
+              continue;
+            }
+
+            (row as any)[fieldKey] = fieldValue;
+            (row as any)[tsKey] = incomingTs;
+            changedAny = true;
+          }
+
+          // Consider update "applied" if row exists (even if no field changed).
+          if (changedAny || Object.keys(fields as Record<string, unknown>).length > 0) applied++;
+        } else if (opType === 'insert') {
+          const row = op?.row;
+          if (!row || typeof row !== 'object') throw new Error('insert requires { row:object }');
+          const id = (row as any).id;
+          if (typeof id !== 'string' || !id) throw new Error('insert row must include { id:string }');
+
+          const exists = tableRows.some((r) => r && typeof r === 'object' && (r as any).id === id);
+          if (exists) throw new Error(`Row already exists (id=${id})`);
+
+          tableRows.push(row);
+          applied++;
+        } else if (opType === 'delete') {
+          const id = op?.id;
+          if (typeof id !== 'string' || !id) throw new Error('delete requires { id:string }');
+          const idx = tableRows.findIndex((r) => r && typeof r === 'object' && (r as any).id === id);
+          if (idx === -1) throw new Error(`Row not found (id=${id})`);
+          tableRows.splice(idx, 1);
+          applied++;
+        } else {
+          throw new Error(`Unknown op: ${String(opType)}`);
+        }
+      } catch (e) {
+        rejected.push({ index: i, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    // bump version +1 and updated_at always when base_version is accepted
+    backup.version = (typeof backup?.version === 'number' ? backup.version : serverVersion) + 1;
+    backup.updated_at = new Date().toISOString();
+
+    fs.writeFileSync(backupFile, JSON.stringify(backup), 'utf-8');
+
+    const auditFile = path.join(SYNC_DIR, userId, 'audit.log.jsonl');
+    const auditLine = JSON.stringify({
+      userId,
+      ops,
+      timestamp: new Date().toISOString(),
+    });
+    fs.mkdirSync(path.dirname(auditFile), { recursive: true });
+    fs.appendFileSync(auditFile, auditLine + '\n', 'utf-8');
+
+    const response: SyncPatchResponse = { ok: true, version: backup.version, applied, rejected };
+    res.json(response);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -434,6 +598,7 @@ function buildAIContextMarkdown(baseUrl: string): string {
 | GET | /api/sync/download | Download full backup (JSON) |
 | POST | /api/sync/upload | Upload backup (JSON) |
 | GET | /api/sync/version | Get backup meta (version, updated_at) |
+| PATCH | /api/sync/patch | Patch backup (field-level ops) |
 | GET | /api/ai/context | This document (Markdown) |
 
 Base URL: ${baseUrl}
@@ -593,6 +758,38 @@ Force upload (ignore conflict):
 2. Compare with local — if remote > local, there is a new update
 3. To upload: set version = remote version + 1
 4. On 409 conflict: use \`?force=1\` to overwrite (caution: data loss)
+
+### PATCH /api/sync/patch
+
+\`\`\`
+Request:
+  PATCH ${baseUrl}/api/sync/patch
+  Content-Type: application/json
+  X-Google-User-Id: YOUR_USER_ID
+  Authorization: Bearer <token>   // optional (recommended)
+
+{
+  "base_version": 74,
+  "ops": [
+    { "op": "update", "table": "project_sub_topic_details",
+      "id": "xxx", "fields": { "status": "done" },
+      "field_updated_at": { "status": "2026-03-20T10:00:00Z" } },
+    { "op": "insert", "table": "project_sub_topic_details",
+      "row": { "id": "...", "status": "todo", "sort_order": 0 } },
+    { "op": "delete", "table": "project_sub_topic_details", "id": "yyy" }
+  ]
+}
+\`\`\`
+
+Merge rule (field-level):
+- For each updated field \`X\`, server compares \`X_updated_at\` (newer wins)
+- If incoming is newer, server sets both \`X\` and \`X_updated_at\`
+
+Response 200:
+  { "ok": true, "version": 75, "applied": N, "rejected": [] }
+
+Error 409:
+  { "ok": false, "error": "...", "conflict": true, "remoteVersion": <serverVersion> }
 
 ---
 
