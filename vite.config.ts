@@ -194,9 +194,21 @@ export default defineConfig(({mode}) => {
                       return;
                     }
                   }
+                  const tokenId =
+                    typeof match.id === 'string' && match.id ? match.id : `h_${match.tokenHash.slice(0, 12)}`;
+                  const scopeRaw = (match as { scope?: string }).scope;
+                  const scope = scopeRaw === 'read' ? 'read' : 'write';
                   res.statusCode = 200;
                   res.setHeader('Content-Type', 'application/json');
-                  res.end(JSON.stringify({ ok: true, googleId: match.googleId, expiresAt: match.expiresAt }));
+                  res.end(
+                    JSON.stringify({
+                      ok: true,
+                      googleId: match.googleId,
+                      expiresAt: match.expiresAt,
+                      scope,
+                      tokenId,
+                    }),
+                  );
                 } catch (e) {
                   res.statusCode = 500;
                   res.setHeader('Content-Type', 'application/json');

@@ -50,6 +50,11 @@ function safeEqualHex(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aa, bb);
 }
 
+/** Same id as audit/SSE \`actor\` prefix for AI tokens: \`ai:<tokenId>\`. */
+export function syncTokenIdFromStoredRecord(record: Pick<StoredToken, 'id' | 'tokenHash'>): string {
+  return typeof record.id === 'string' && record.id ? record.id : `h_${record.tokenHash.slice(0, 12)}`;
+}
+
 export function sanitizeGoogleId(raw: string): string {
   return (raw || '').replace(/[^a-zA-Z0-9_.-]/g, '');
 }
@@ -86,7 +91,7 @@ export function generateAIToken(googleId: string, expiresAt: string | null, scop
 }
 
 export type LoginTokenResult =
-  | { ok: true; googleId: string; expiresAt: string | null; scope: TokenScope }
+  | { ok: true; googleId: string; expiresAt: string | null; scope: TokenScope; tokenId: string }
   | { ok: false; status: number; error: string };
 
 export function loginWithTokenBody(token: string): LoginTokenResult {
@@ -106,7 +111,13 @@ export function loginWithTokenBody(token: string): LoginTokenResult {
       return { ok: false, status: 401, error: 'token expired' };
     }
   }
-  return { ok: true, googleId: match.googleId, expiresAt: match.expiresAt, scope: match.scope };
+  return {
+    ok: true,
+    googleId: match.googleId,
+    expiresAt: match.expiresAt,
+    scope: match.scope,
+    tokenId: syncTokenIdFromStoredRecord(match),
+  };
 }
 
 function headerString(
@@ -164,7 +175,7 @@ export function verifySyncToken(token: string): SyncAuth {
       throw err;
     }
   }
-  const tokenId = typeof match.id === 'string' && match.id ? match.id : `h_${match.tokenHash.slice(0, 12)}`;
+  const tokenId = syncTokenIdFromStoredRecord(match);
   return { tokenHash: match.tokenHash, tokenId, googleId: match.googleId, scope: match.scope };
 }
 

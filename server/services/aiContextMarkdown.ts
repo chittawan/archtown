@@ -29,6 +29,7 @@ export function buildAIContextMarkdown(baseUrl: string): string {
 | GET | /api/sync/download | Full backup JSON |
 | POST | /api/sync/upload | Full backup upload (optional \`?force=1\`) |
 | PATCH | /api/sync/patch | Field-level / row ops (max 100 ops per request) |
+| GET | /api/sync/events | SSE stream — real-time ops broadcast (\`text/event-stream\`) |
 | GET | /api/audit | Audit log (query by date or table+id) |
 | POST | /api/audit/undo/:req_id | Undo one PATCH request |
 | GET | /api/ai/context | This document (Markdown) |
@@ -74,7 +75,8 @@ Content-Type: application/json
 { "token": "atkn_..." }
 \`\`\`
 
-**200** — \`{ "ok": true, "googleId": "...", "expiresAt": "..." }\`  
+**200** — \`{ "ok": true, "googleId": "...", "expiresAt": "..." | null, "scope": "read" | "write", "tokenId": "<id>" }\`  
+- \`tokenId\` is the stable id used in audit/SSE as \`actor\`: \`ai:<tokenId>\`. Browsers that subscribe to \`GET /api/sync/events\` while using the same **write** token should persist \`tokenId\` and skip \`patch\` events where \`actor\` matches (already applied locally). **Read-only** tokens never PATCH → skip logic not needed.
 **401** — invalid or expired token.
 
 ---
@@ -208,6 +210,25 @@ POST ${baseUrl}/api/audit/undo/<req_id>
 X-Google-User-Id: YOUR_USER_ID
 Authorization: Bearer <token>
 \`\`\`
+
+### 2.6 GET /api/sync/events
+
+Subscribe to real-time ops stream. Reconnect with \`Last-Event-Id\` header to replay missed ops.
+
+\`\`\`http
+GET ${baseUrl}/api/sync/events
+X-Google-User-Id: YOUR_USER_ID
+Authorization: Bearer <token>   # optional; \`read\` or \`write\` scope
+\`\`\`
+
+- \`event: version\` → \`{ "version", "updated_at" }\` (on connect)
+- \`event: patch\` → \`{ "version", "ops": [], "actor", "ts" }\` (after every PATCH)
+- \`event: upload\` → \`{ "version", "ts" }\` (after full upload → re-download)
+- \`event: ping\` → \`{ "ts" }\` (every 30s keepalive)
+
+SSE \`id:\` lines use the backup \`version\` so clients can resume with \`Last-Event-Id\`.
+
+**Skip duplicate \`patch\` on the client (optional)** — \`actor\` is \`human:<googleId>\` for browser Google login, or \`ai:<tokenId>\` for API tokens. Skip apply when it matches the current session (human id or \`tokenId\` from \`POST /api/auth/token/login\`).
 
 ---
 

@@ -2,6 +2,8 @@ export const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
 const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
 const TOKEN_LOGIN_USER_ID_KEY = 'archtown_token_google_user_id';
 const TOKEN_LOGIN_TOKEN_KEY = 'archtown_token_login_token';
+/** ตรงกับ server actor \`ai:<tokenId>\` — ใช้ skip SSE patch ที่ self-issued */
+const TOKEN_LOGIN_SYNC_TOKEN_ID_KEY = 'archtown_token_login_sync_token_id';
 const TOKEN_LOGIN_EMAIL_KEY = 'archtown_token_email';
 const TOKEN_LOGIN_PICTURE_KEY = 'archtown_token_picture';
 
@@ -41,6 +43,7 @@ export function logoutGoogle(): void {
   sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_USER_ID_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_LOGIN_SYNC_TOKEN_ID_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_PICTURE_KEY);
 }
@@ -86,7 +89,14 @@ export function getGoogleUserInfo(): { picture?: string; email?: string } {
   return { picture: payload.picture, email: payload.email };
 }
 
-export function setTokenLoginIdentity(input: { googleId: string; token?: string; email?: string; picture?: string }): void {
+export function setTokenLoginIdentity(input: {
+  googleId: string;
+  token?: string;
+  /** จาก POST /api/auth/token/login — ใช้เทียบกับ SSE actor \`ai:<tokenId>\` เมื่อใช้ write token */
+  tokenId?: string | null;
+  email?: string;
+  picture?: string;
+}): void {
   if (typeof window === 'undefined') return;
   const googleId = (input.googleId || '').trim();
   if (!googleId) throw new Error('googleId is required');
@@ -94,8 +104,12 @@ export function setTokenLoginIdentity(input: { googleId: string; token?: string;
   // Keep the raw token so Cloud Sync can enforce rate limiting + scope on server-side.
   if ('token' in input && typeof input.token === 'string' && input.token.trim()) {
     sessionStorage.setItem(TOKEN_LOGIN_TOKEN_KEY, input.token.trim());
+    const tid = input.tokenId != null ? String(input.tokenId).trim() : '';
+    if (tid) sessionStorage.setItem(TOKEN_LOGIN_SYNC_TOKEN_ID_KEY, tid);
+    else sessionStorage.removeItem(TOKEN_LOGIN_SYNC_TOKEN_ID_KEY);
   } else {
     sessionStorage.removeItem(TOKEN_LOGIN_TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_LOGIN_SYNC_TOKEN_ID_KEY);
   }
   if (input.email) sessionStorage.setItem(TOKEN_LOGIN_EMAIL_KEY, input.email);
   else sessionStorage.removeItem(TOKEN_LOGIN_EMAIL_KEY);
@@ -108,6 +122,13 @@ export function getTokenLoginToken(): string | null {
   const t = sessionStorage.getItem(TOKEN_LOGIN_TOKEN_KEY);
   if (!t) return null;
   return t.trim() || null;
+}
+
+/** ค่าที่ต่อเป็น \`ai:\` ใน audit/SSE — มีเฉพาะหลัง token login ที่ API คืน tokenId */
+export function getTokenLoginSyncTokenId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const id = sessionStorage.getItem(TOKEN_LOGIN_SYNC_TOKEN_ID_KEY);
+  return id?.trim() || null;
 }
 
 export function getLoginKind(): 'google' | 'token' | 'guest' {

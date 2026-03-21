@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
 import { applyRemotePatchOpsToDb } from '../db/applyRemoteSyncPatch';
 import { downloadFromCloud, getLastSyncedAt } from '../db/cloudSync';
 import { setStoredSyncMeta } from '../db/syncManager';
-import { getGoogleUserId, getTokenLoginToken } from '../lib/googleAuth';
+import { getGoogleUserId, getTokenLoginSyncTokenId, getTokenLoginToken } from '../lib/googleAuth';
 
 const SYNC_EVENTS_URL = '/api/sync/events';
 
@@ -41,9 +41,12 @@ function writeLastEventId(userId: string, id: string): void {
 }
 
 function shouldSkipActor(actor: string | undefined): boolean {
+  if (!actor) return false;
   const uid = getGoogleUserId();
-  if (!uid || !actor) return false;
-  return actor === `human:${uid}`;
+  if (uid && actor === `human:${uid}`) return true;
+  const tokenId = getTokenLoginSyncTokenId();
+  if (tokenId && actor === `ai:${tokenId}`) return true;
+  return false;
 }
 
 type SseMessage = { id?: string; event: string; data: string };

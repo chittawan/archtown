@@ -10,16 +10,26 @@ type LoginStatus =
   | { state: 'error'; message: string }
   | { state: 'success' };
 
-async function loginWithToken(token: string): Promise<{ googleId: string; expiresAt?: string | null }> {
+async function loginWithToken(token: string): Promise<{
+  googleId: string;
+  expiresAt?: string | null;
+  tokenId?: string;
+}> {
   const res = await fetch('/api/auth/token/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
   });
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; googleId?: string; expiresAt?: string | null; error?: string };
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    googleId?: string;
+    expiresAt?: string | null;
+    tokenId?: string;
+    error?: string;
+  };
   if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
   if (!data.googleId) throw new Error('Invalid response');
-  return { googleId: data.googleId, expiresAt: data.expiresAt ?? null };
+  return { googleId: data.googleId, expiresAt: data.expiresAt ?? null, tokenId: data.tokenId };
 }
 
 export default function LoginPage() {
@@ -41,7 +51,11 @@ export default function LoginPage() {
     setStatus({ state: 'loading', progress: 0, label: 'กำลังตรวจสอบ Token...' });
     try {
       const result = await loginWithToken(t);
-      setTokenLoginIdentity({ googleId: result.googleId, token: t });
+      setTokenLoginIdentity({
+        googleId: result.googleId,
+        token: t,
+        tokenId: result.tokenId,
+      });
       await prepareAfterLogin((s) => setStatus({ state: 'loading', progress: s.progress, label: s.label }));
       setStatus({ state: 'success' });
       window.location.href = '/capability';

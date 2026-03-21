@@ -46,7 +46,13 @@ export function createAuthRouter(): express.Router {
         res.status(result.status).json({ ok: false, error: result.error });
         return;
       }
-      res.json({ ok: true, googleId: result.googleId, expiresAt: result.expiresAt, scope: result.scope });
+      res.json({
+        ok: true,
+        googleId: result.googleId,
+        expiresAt: result.expiresAt,
+        scope: result.scope,
+        tokenId: result.tokenId,
+      });
     } catch (e) {
       res.status(500).json({ ok: false, error: String(e) });
     }
