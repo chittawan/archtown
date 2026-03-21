@@ -4,6 +4,7 @@
  * เมื่อไม่ใช้ OPFS จะ fallback เก็บใน IndexedDB (sync payload) เพื่อให้รีเฟรชแล้วข้อมูลไม่หาย
  */
 import * as client from './client';
+import { clearPendingSyncOps } from './pendingSyncOps';
 import { loadSyncPayloadFromIndexedDB, saveSyncPayloadToIndexedDB } from './storage';
 import * as projectRepository from './repositories/project.repository';
 import * as orgTeamRepository from './repositories/org_team.repository';
@@ -203,6 +204,7 @@ export async function importAllTables(payload: SyncExportPayload): Promise<void>
 
 /** Clear all sync tables (for logout / user switch). Uses empty payload so all rows are deleted. */
 export async function clearAllTables(): Promise<void> {
+  clearPendingSyncOps();
   const tables: Record<string, Record<string, unknown>[]> = {};
   for (const table of SYNC_TABLES_EXPORT_ORDER) {
     tables[table] = [];

@@ -3,6 +3,7 @@
  * Format: JSON (UTF-8). Use exportForSync() to download; importFromSync() to restore.
  */
 import { exportAllTables, importAllTables } from './archtownDb';
+import { clearPendingSyncOps } from './pendingSyncOps';
 
 /**
  * Serialize the database to a portable format for backup or cloud upload.
@@ -31,4 +32,5 @@ export async function importFromSync(bytes: ArrayBuffer): Promise<void> {
   const json = new TextDecoder().decode(bytes);
   const payload = JSON.parse(json) as Parameters<typeof importAllTables>[0];
   await importAllTables(payload);
+  clearPendingSyncOps();
 }

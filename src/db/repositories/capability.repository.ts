@@ -32,6 +32,7 @@ export async function getCapabilityLayout(): Promise<{ layout: CapabilityLayout 
   return { layout: { capOrder, caps } };
 }
 
+/** ยังไม่ใส่ pending PATCH ops: capability_order / cap_projects / org_team_children ไม่มี id เดี่ยวตามที่ server patch ต้องการ — พึ่ง full upload */
 export async function saveCapabilityLayout(layout: CapabilityLayout): Promise<{ ok: boolean }> {
   await client.runInTransaction(async () => {
     await capabilityOrderTable.deleteAll();

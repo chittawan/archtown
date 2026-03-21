@@ -6,6 +6,13 @@ import type { ProjectData } from '../../types';
 import type { ProjectSummary } from '../../types';
 import { nameToId, sanitizeId } from '../../lib/idUtils';
 import * as client from '../client';
+import {
+  enqueuePatchDelete,
+  enqueuePatchInsert,
+  enqueuePatchUpdate,
+  enqueueSyncOpsBatch,
+  type SyncPatchOp,
+} from '../pendingSyncOps';
 import * as projectsTable from './projects.repository';
 import * as projectTeamsTable from './project_teams.repository';
 import * as projectTopicsTable from './project_topics.repository';
@@ -14,6 +21,50 @@ import * as projectDetailsTable from './project_sub_topic_details.repository';
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Collect ids still in SQLite for this project, then queue PATCH deletes (details → subs → topics → teams). */
+async function enqueueProjectSubtreeDeletes(projectId: string): Promise<void> {
+  const { resultRows: detailIds } = await client.exec<{ id: string }>(
+    `SELECT d.id FROM project_sub_topic_details d
+     INNER JOIN project_sub_topics s ON s.id = d.sub_topic_id
+     INNER JOIN project_topics t ON t.id = s.topic_id
+     INNER JOIN project_teams tm ON tm.id = t.team_id
+     WHERE tm.project_id = ?`,
+    [projectId]
+  );
+  for (const r of detailIds ?? []) {
+    enqueuePatchDelete('project_sub_topic_details', r.id);
+  }
+
+  const { resultRows: subIds } = await client.exec<{ id: string }>(
+    `SELECT s.id FROM project_sub_topics s
+     INNER JOIN project_topics t ON t.id = s.topic_id
+     INNER JOIN project_teams tm ON tm.id = t.team_id
+     WHERE tm.project_id = ?`,
+    [projectId]
+  );
+  for (const r of subIds ?? []) {
+    enqueuePatchDelete('project_sub_topics', r.id);
+  }
+
+  const { resultRows: topicIds } = await client.exec<{ id: string }>(
+    `SELECT t.id FROM project_topics t
+     INNER JOIN project_teams tm ON tm.id = t.team_id
+     WHERE tm.project_id = ?`,
+    [projectId]
+  );
+  for (const r of topicIds ?? []) {
+    enqueuePatchDelete('project_topics', r.id);
+  }
+
+  const { resultRows: teamIds } = await client.exec<{ id: string }>(
+    `SELECT id FROM project_teams WHERE project_id = ?`,
+    [projectId]
+  );
+  for (const r of teamIds ?? []) {
+    enqueuePatchDelete('project_teams', r.id);
+  }
 }
 
 export async function listProjects(): Promise<{ projects: ProjectSummary[] }> {
@@ -164,12 +215,18 @@ export async function createProject(name: string): Promise<{ ok: boolean; id?: s
   const existing = await projectsTable.getById(fileId);
   if (existing) return { ok: false, error: 'project id นี้มีอยู่แล้ว', id: fileId };
   await projectsTable.insert({ id: fileId, name: projectName, description: null });
+  enqueuePatchInsert('projects', { id: fileId, name: projectName, description: null });
   return { ok: true, id: fileId };
 }
 
 export async function saveProject(projectName: string, data: ProjectData): Promise<{ ok: boolean; id: string; error?: string }> {
   const name = (projectName || data.projectName || 'project').trim();
   const id = sanitizeId(data.id || nameToId(name)) || sanitizeId(nameToId(name)) || 'project';
+
+  const projectExisted = !!(await projectsTable.getById(id));
+  await enqueueProjectSubtreeDeletes(id);
+
+  const patchInserts: SyncPatchOp[] = [];
 
   await client.runInTransaction(async () => {
     await projectsTable.replace({
@@ -192,29 +249,35 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
     let teamOrder = 0;
     for (const team of data.teams ?? []) {
       const teamId = team.id || genId('t');
-      await projectTeamsTable.insert({ id: teamId, project_id: id, name: team.name ?? 'Team', sort_order: teamOrder++ });
+      const teamRow = { id: teamId, project_id: id, name: team.name ?? 'Team', sort_order: teamOrder++ };
+      await projectTeamsTable.insert(teamRow);
+      patchInserts.push({ op: 'insert', table: 'project_teams', row: { ...teamRow } });
       let topicOrder = 0;
       for (const topic of team.topics ?? []) {
         const topicId = topic.id || genId('top');
-        await projectTopicsTable.insert({ id: topicId, team_id: teamId, title: topic.title ?? 'Topic', sort_order: topicOrder++ });
+        const topicRow = { id: topicId, team_id: teamId, title: topic.title ?? 'Topic', sort_order: topicOrder++ };
+        await projectTopicsTable.insert(topicRow);
+        patchInserts.push({ op: 'insert', table: 'project_topics', row: { ...topicRow } });
         let subOrder = 0;
         for (const sub of topic.subTopics ?? []) {
           const subId = sub.id || genId('sub');
           const status = sub.status === 'RED' || sub.status === 'YELLOW' ? sub.status : 'GREEN';
           const subType = sub.subTopicType === 'status' ? 'status' : 'todos';
-          await projectSubTopicsTable.insert({
+          const subRow = {
             id: subId,
             topic_id: topicId,
             title: sub.title ?? 'SubTopic',
             status,
             sub_topic_type: subType,
             sort_order: subOrder++,
-          });
+          };
+          await projectSubTopicsTable.insert(subRow);
+          patchInserts.push({ op: 'insert', table: 'project_sub_topics', row: { ...subRow } });
           let detailOrder = 0;
           for (const d of sub.details ?? []) {
             const detailId = (d as { id?: string }).id || genId('d');
             const st = d.status === 'done' || d.status === 'doing' ? d.status : 'todo';
-            await projectDetailsTable.insert({
+            const detailRow = {
               id: detailId,
               sub_topic_id: subId,
               text: d.text ?? '',
@@ -222,12 +285,28 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
               status: st,
               due_date: d.dueDate ?? null,
               sort_order: detailOrder++,
-            });
+            };
+            await projectDetailsTable.insert(detailRow);
+            patchInserts.push({ op: 'insert', table: 'project_sub_topic_details', row: { ...detailRow } });
           }
         }
       }
     }
   });
+
+  if (projectExisted) {
+    enqueuePatchUpdate('projects', id, {
+      name: data.projectName ?? name,
+      description: data.description ?? null,
+    });
+  } else {
+    enqueuePatchInsert('projects', {
+      id,
+      name: data.projectName ?? name,
+      description: data.description ?? null,
+    });
+  }
+  enqueueSyncOpsBatch(patchInserts);
 
   return { ok: true, id };
 }

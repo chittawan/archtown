@@ -340,29 +340,35 @@ export function SortableSubTopicCard({
             </button>
           )}
         </div>
-        <div className="flex items-center space-x-3 flex-shrink-0">
-          <div className="flex bg-[var(--color-overlay)] p-1 rounded-lg">
-            {(['GREEN', 'YELLOW', 'RED'] as Status[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => onUpdateStatus(s)}
-                  className={`flex-1 min-w-0 px-2 py-1 text-[10px] font-medium rounded-md transition-all ${
-                  subTopic.status === s
-                    ? s === 'GREEN'
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : s === 'YELLOW'
-                        ? 'bg-amber-500 text-white shadow-sm'
-                        : 'bg-rose-500 text-white shadow-sm'
-                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-strong)]'
-                }`}
-              >
-                {s === 'GREEN'
-                  ? 'ปกติ'
-                  : s === 'YELLOW'
-                    ? 'จัดการได้'
-                    : 'ต้องการ Support'}
-              </button>
-            ))}
+        <div className="flex items-center justify-end gap-3 min-w-0">
+          <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+            <div
+              className="grid grid-cols-3 gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5 shrink-0 min-w-[16.5rem]"
+              role="group"
+              aria-label="สถานะหัวข้อย่อย"
+            >
+              {(['GREEN', 'YELLOW', 'RED'] as Status[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => onUpdateStatus(s)}
+                  className={`min-w-0 px-1.5 py-1.5 text-[10px] font-medium rounded-md whitespace-nowrap text-center inline-flex items-center justify-center transition-all ${
+                    subTopic.status === s
+                      ? s === 'GREEN'
+                        ? 'bg-emerald-500 text-white shadow-sm'
+                        : s === 'YELLOW'
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-rose-500 text-white shadow-sm'
+                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-strong)]'
+                  }`}
+                >
+                  {s === 'GREEN'
+                    ? 'ปกติ'
+                    : s === 'YELLOW'
+                      ? 'จัดการได้'
+                      : 'ต้องการ Support'}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="opacity-100 pointer-events-auto transition-opacity md:opacity-0 md:pointer-events-none md:group-hover/subtopic:opacity-100 md:group-hover/subtopic:pointer-events-auto">
             <LongPressDeleteButton

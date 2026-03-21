@@ -4,6 +4,7 @@
  */
 import type { OrgTeam } from '../../types';
 import { sanitizeId } from '../../lib/idUtils';
+import { enqueuePatchInsert, enqueuePatchUpdate } from '../pendingSyncOps';
 import * as orgTeamsTable from './org_teams.repository';
 import * as orgTeamChildrenTable from './org_team_children.repository';
 
@@ -32,12 +33,23 @@ export async function getTeam(id: string): Promise<{ id: string; data: OrgTeam }
 
 export async function saveTeam(id: string, data: OrgTeam): Promise<{ ok: boolean; id: string }> {
   const safeId = sanitizeId(id) || sanitizeId(data.id) || 'team';
-  await orgTeamsTable.replace({
+  const teamExisted = !!(await orgTeamsTable.getById(safeId));
+  const orgRow = {
     id: safeId,
     name: data.name ?? 'Team',
     owner: data.owner ?? '',
     parent_id: data.parentId ?? null,
-  });
+  };
+  await orgTeamsTable.replace(orgRow);
+  if (teamExisted) {
+    enqueuePatchUpdate('org_teams', safeId, {
+      name: orgRow.name,
+      owner: orgRow.owner,
+      parent_id: orgRow.parent_id,
+    });
+  } else {
+    enqueuePatchInsert('org_teams', { ...orgRow });
+  }
   await orgTeamChildrenTable.deleteByParentId(safeId);
   let order = 0;
   for (const cid of data.childIds ?? []) {
