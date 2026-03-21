@@ -4,8 +4,7 @@
  */
 import type { OrgTeam } from '../../types';
 import { sanitizeId } from '../../lib/idUtils';
-import { enqueuePatchInsert, enqueuePatchUpdate } from '../pendingSyncOps';
-import { markFullUploadPending } from '../syncFullUploadFlag';
+import { enqueuePatchDeleteComposite, enqueuePatchInsert, enqueuePatchUpdate } from '../pendingSyncOps';
 import * as orgTeamsTable from './org_teams.repository';
 import * as orgTeamChildrenTable from './org_team_children.repository';
 
@@ -33,10 +32,8 @@ export async function getTeam(id: string): Promise<{ id: string; data: OrgTeam }
 }
 
 export async function saveTeam(id: string, data: OrgTeam): Promise<{ ok: boolean; id: string }> {
-  // composite PK: org_team_children (parent_id, child_id)
-  markFullUploadPending();
-
   const safeId = sanitizeId(id) || sanitizeId(data.id) || 'team';
+  const oldChildren = await orgTeamChildrenTable.getByParentId(safeId);
   const teamExisted = !!(await orgTeamsTable.getById(safeId));
   const orgRow = {
     id: safeId,
@@ -55,9 +52,32 @@ export async function saveTeam(id: string, data: OrgTeam): Promise<{ ok: boolean
     enqueuePatchInsert('org_teams', { ...orgRow });
   }
   await orgTeamChildrenTable.deleteByParentId(safeId);
+  const newRows: Array<{ parent_id: string; child_id: string; sort_order: number }> = [];
   let order = 0;
   for (const cid of data.childIds ?? []) {
-    await orgTeamChildrenTable.insert({ parent_id: safeId, child_id: cid, sort_order: order++ });
+    const row = { parent_id: safeId, child_id: cid, sort_order: order++ };
+    newRows.push(row);
+    await orgTeamChildrenTable.insert(row);
   }
+
+  const childKey = (r: { parent_id: string; child_id: string }) => `${r.parent_id}|${r.child_id}`;
+  const oldByKey = new Map(oldChildren.map((r) => [childKey(r), r]));
+  const newByKey = new Map(newRows.map((r) => [childKey(r), r]));
+
+  for (const [k, o] of oldByKey) {
+    const n = newByKey.get(k);
+    if (!n) {
+      enqueuePatchDeleteComposite('org_team_children', { parent_id: o.parent_id, child_id: o.child_id });
+    } else if (n.sort_order !== o.sort_order) {
+      enqueuePatchDeleteComposite('org_team_children', { parent_id: o.parent_id, child_id: o.child_id });
+      enqueuePatchInsert('org_team_children', { parent_id: n.parent_id, child_id: n.child_id, sort_order: n.sort_order });
+    }
+  }
+  for (const [, n] of newByKey) {
+    if (!oldByKey.has(childKey(n))) {
+      enqueuePatchInsert('org_team_children', { parent_id: n.parent_id, child_id: n.child_id, sort_order: n.sort_order });
+    }
+  }
+
   return { ok: true, id: safeId };
 }

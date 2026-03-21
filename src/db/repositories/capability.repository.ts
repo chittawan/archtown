@@ -5,11 +5,11 @@
 import type { CapabilityLayout, Cap, ProjectInCap } from '../../lib/capabilityYaml';
 import * as client from '../client';
 import * as capabilityOrderTable from './capability_order.repository';
+import type { CapProjectRow } from './cap_projects.repository';
 import * as capsTable from './caps.repository';
 import * as capProjectsTable from './cap_projects.repository';
 import * as projectRepo from './project.repository';
-import { markFullUploadPending } from '../syncFullUploadFlag';
-import { enqueuePatchDelete, enqueuePatchInsert, enqueuePatchUpdate } from '../pendingSyncOps';
+import { enqueuePatchDelete, enqueuePatchDeleteComposite, enqueuePatchInsert, enqueuePatchUpdate } from '../pendingSyncOps';
 
 export async function getCapabilityLayout(): Promise<{ layout: CapabilityLayout }> {
   const orderRows = await capabilityOrderTable.getAll();
@@ -34,10 +34,14 @@ export async function getCapabilityLayout(): Promise<{ layout: CapabilityLayout 
   return { layout: { capOrder, caps } };
 }
 
-/** Composite PK tables change -> fallback to full upload. We still enqueue `caps` updates (single PK). */
 export async function saveCapabilityLayout(layout: CapabilityLayout): Promise<{ ok: boolean }> {
-  // composite PK: capability_order + cap_projects (and implicitly changes the whole layout)
-  markFullUploadPending();
+  const existingOrder = await capabilityOrderTable.getAll();
+  const existingCapProjects =
+    (
+      await client.exec<CapProjectRow>(
+        `SELECT cap_id, project_id, status, cols, sort_order FROM cap_projects ORDER BY cap_id, sort_order, project_id`
+      )
+    ).resultRows ?? [];
 
   // phase2_3_1: enqueue PATCH ops for caps (single PK)
   const existingCaps = (
@@ -73,6 +77,60 @@ export async function saveCapabilityLayout(layout: CapabilityLayout): Promise<{ 
     })
     .filter((x) => Object.keys(x.fields).length > 0);
 
+  const nextOrderRows: Array<{ sort_order: number; cap_id: string }> = [];
+  let ord = 0;
+  for (const capId of layout.capOrder ?? []) {
+    nextOrderRows.push({ sort_order: ord++, cap_id: capId });
+  }
+
+  const nextCapProjectRows: CapProjectRow[] = [];
+  for (const capId of layout.capOrder ?? []) {
+    const cap = layout.caps?.[capId];
+    if (!cap) continue;
+    let po = 0;
+    for (const proj of cap.projects ?? []) {
+      nextCapProjectRows.push({
+        cap_id: capId,
+        project_id: proj.id,
+        status: proj.status ?? null,
+        cols: proj.cols ?? null,
+        sort_order: po++,
+      });
+    }
+  }
+
+  const orderKey = (r: { sort_order: number; cap_id: string }) => `${r.sort_order}|${r.cap_id}`;
+  const projKey = (r: CapProjectRow) => `${r.cap_id}|${r.project_id}`;
+
+  const oldOrderByKey = new Map(existingOrder.map((r) => [orderKey(r), r]));
+  const newOrderByKey = new Map(nextOrderRows.map((r) => [orderKey(r), r]));
+
+  const oldProjByKey = new Map(existingCapProjects.map((r) => [projKey(r), r]));
+  const newProjByKey = new Map(nextCapProjectRows.map((r) => [projKey(r), r]));
+
+  const capProjectDeletes: Array<{ cap_id: string; project_id: string }> = [];
+  const capProjectInserts: CapProjectRow[] = [];
+  for (const [k, o] of oldProjByKey) {
+    const n = newProjByKey.get(k);
+    if (!n) capProjectDeletes.push({ cap_id: o.cap_id, project_id: o.project_id });
+    else if (n.sort_order !== o.sort_order || n.status !== o.status || n.cols !== o.cols) {
+      capProjectDeletes.push({ cap_id: o.cap_id, project_id: o.project_id });
+      capProjectInserts.push(n);
+    }
+  }
+  for (const [, n] of newProjByKey) {
+    if (!oldProjByKey.has(projKey(n))) capProjectInserts.push(n);
+  }
+
+  const orderDeletes: Array<{ sort_order: number; cap_id: string }> = [];
+  const orderInserts: Array<{ sort_order: number; cap_id: string }> = [];
+  for (const [k, o] of oldOrderByKey) {
+    if (!newOrderByKey.has(k)) orderDeletes.push({ sort_order: o.sort_order, cap_id: o.cap_id });
+  }
+  for (const [k, n] of newOrderByKey) {
+    if (!oldOrderByKey.has(k)) orderInserts.push(n);
+  }
+
   await client.runInTransaction(async () => {
     await capabilityOrderTable.deleteAll();
     await capProjectsTable.deleteAll();
@@ -104,6 +162,25 @@ export async function saveCapabilityLayout(layout: CapabilityLayout): Promise<{ 
 
   // enqueue after SQLite transaction success
   const ts = new Date().toISOString();
+  for (const d of capProjectDeletes) {
+    enqueuePatchDeleteComposite('cap_projects', { cap_id: d.cap_id, project_id: d.project_id });
+  }
+  for (const d of orderDeletes) {
+    enqueuePatchDeleteComposite('capability_order', { sort_order: d.sort_order, cap_id: d.cap_id });
+  }
+  for (const r of orderInserts) {
+    enqueuePatchInsert('capability_order', { sort_order: r.sort_order, cap_id: r.cap_id });
+  }
+  for (const r of capProjectInserts) {
+    enqueuePatchInsert('cap_projects', {
+      cap_id: r.cap_id,
+      project_id: r.project_id,
+      status: r.status,
+      cols: r.cols,
+      sort_order: r.sort_order,
+    });
+  }
+
   for (const id of deleteCapIds) enqueuePatchDelete('caps', id);
   for (const row of insertCapRows) enqueuePatchInsert('caps', row);
   for (const u of updateCaps) enqueuePatchUpdate('caps', u.id, u.fields, ts);

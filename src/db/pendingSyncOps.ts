@@ -16,7 +16,8 @@ export type SyncPatchOp =
       field_updated_at: Record<string, string>;
     }
   | { op: 'insert'; table: string; row: Record<string, unknown> }
-  | { op: 'delete'; table: string; id: string };
+  | { op: 'delete'; table: string; id: string }
+  | { op: 'delete'; table: string; composite_id: Record<string, unknown> };
 
 let memoryQueue: SyncPatchOp[] = [];
 let loadedStorageKey: string | null = null;
@@ -115,4 +116,8 @@ export function enqueuePatchInsert(table: string, row: Record<string, unknown>):
 
 export function enqueuePatchDelete(table: string, id: string): void {
   enqueueSyncOp({ op: 'delete', table, id });
+}
+
+export function enqueuePatchDeleteComposite(table: string, composite_id: Record<string, unknown>): void {
+  enqueueSyncOp({ op: 'delete', table, composite_id });
 }

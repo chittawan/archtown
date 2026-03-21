@@ -1,7 +1,7 @@
 import fs from 'fs';
 import type { SyncAuth } from '../types/syncAuth';
 import { getSyncBackupPath } from './paths';
-import { TABLE_WHITELIST } from './constants';
+import { TABLE_COMPOSITE_KEY_COLUMNS, TABLE_WHITELIST } from './constants';
 import {
   coerceAuditOpType,
   extractIdFromRawOp,
@@ -174,25 +174,63 @@ export function runSyncPatch(input: {
       } else if (opType === 'insert') {
         const row = (rawOp as { row?: unknown })?.row;
         if (!row || typeof row !== 'object') throw new Error('insert requires { row:object }');
-        const rid = (row as { id?: unknown }).id;
-        if (typeof rid !== 'string' || !rid) throw new Error('insert row must include { id:string }');
+        const rowObj = row as Record<string, unknown>;
+        const rid = rowObj.id;
+        if (typeof rid === 'string' && rid) {
+          const exists = tableRows.some((r) => r && typeof r === 'object' && (r as { id?: string }).id === rid);
+          if (exists) throw new Error(`Row already exists (id=${rid})`);
 
-        const exists = tableRows.some((r) => r && typeof r === 'object' && (r as { id?: string }).id === rid);
-        if (exists) throw new Error(`Row already exists (id=${rid})`);
+          tableRows.push(rowObj);
+          applied++;
 
-        tableRows.push(row as Record<string, unknown>);
-        applied++;
+          pendingAudits.push({
+            ts,
+            op: 'insert',
+            table,
+            id: rid,
+            before: null,
+            after: shallowCloneRow(row),
+            status: 'applied',
+            error: null,
+          });
+        } else {
+          const keys = TABLE_COMPOSITE_KEY_COLUMNS[table];
+          if (!keys) throw new Error('insert row must include { id:string }');
+          for (const k of keys) {
+            if (rowObj[k] === undefined) throw new Error(`insert row missing required field: ${k}`);
+          }
+          const exists = tableRows.some((r) => {
+            if (!r || typeof r !== 'object') return false;
+            return keys.every((k) => (r as Record<string, unknown>)[k] === rowObj[k]);
+          });
+          if (exists) {
+            const auditObj = keys.reduce<Record<string, unknown>>((acc, k) => {
+              acc[k] = rowObj[k];
+              return acc;
+            }, {});
+            throw new Error(`Row already exists (${JSON.stringify(auditObj)})`);
+          }
 
-        pendingAudits.push({
-          ts,
-          op: 'insert',
-          table,
-          id: rid,
-          before: null,
-          after: shallowCloneRow(row),
-          status: 'applied',
-          error: null,
-        });
+          tableRows.push(rowObj);
+          applied++;
+          const auditId = JSON.stringify(
+            keys.reduce<Record<string, unknown>>((acc, k) => {
+              acc[k] = rowObj[k];
+              return acc;
+            }, {})
+          );
+
+          pendingAudits.push({
+            ts,
+            op: 'insert',
+            table,
+            id: auditId,
+            before: null,
+            after: shallowCloneRow(row),
+            status: 'applied',
+            error: null,
+          });
+        }
       } else if (opType === 'delete') {
         const compositeId = (rawOp as { composite_id?: unknown })?.composite_id;
         if (compositeId && typeof compositeId === 'object' && !Array.isArray(compositeId)) {

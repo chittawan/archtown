@@ -1,3 +1,5 @@
+import { TABLE_COMPOSITE_KEY_COLUMNS } from './constants';
+
 export function normalizeIsoTimestamp(raw: unknown): string | null {
   if (raw == null || raw === '') return null;
   if (typeof raw !== 'string') return null;
@@ -42,14 +44,22 @@ export function extractTableFromRawOp(raw: unknown): string {
 }
 
 export function extractIdFromRawOp(raw: unknown): string {
-  if (raw && typeof raw === 'object') {
-    const o = raw as { id?: unknown; row?: { id?: unknown }; composite_id?: unknown };
-    if (typeof o.id === 'string') return o.id;
-    if (o.row && typeof o.row === 'object' && typeof o.row.id === 'string') return o.row.id;
-    if (o.composite_id && typeof o.composite_id === 'object') {
-      // Use JSON string so AuditRecord.id remains a string.
-      // (Example: { parent_id: 'x', child_id: 'y' })
-      return JSON.stringify(o.composite_id);
+  if (!raw || typeof raw !== 'object') return '';
+  const o = raw as { id?: unknown; table?: unknown; row?: unknown; composite_id?: unknown };
+  if (typeof o.id === 'string' && o.id) return o.id;
+  if (o.composite_id && typeof o.composite_id === 'object') {
+    return JSON.stringify(o.composite_id);
+  }
+  if (o.row && typeof o.row === 'object') {
+    const r = o.row as Record<string, unknown>;
+    if (typeof r.id === 'string' && r.id) return r.id;
+    if (typeof o.table === 'string') {
+      const keys = TABLE_COMPOSITE_KEY_COLUMNS[o.table];
+      if (keys) {
+        const picked: Record<string, unknown> = {};
+        for (const k of keys) picked[k] = r[k];
+        if (keys.every((k) => picked[k] !== undefined)) return JSON.stringify(picked);
+      }
     }
   }
   return '';
