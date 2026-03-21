@@ -120,6 +120,8 @@ export default function AIContextPage() {
           <Endpoint method="POST" path="/api/sync/upload" desc="Upload backup" />
           <Endpoint method="GET" path="/api/sync/version" desc="Get backup meta" />
           <Endpoint method="PATCH" path="/api/sync/patch" desc="Patch backup (field-level ops)" />
+          <Endpoint method="GET" path="/api/audit" desc="Audit log (date or table+id)" />
+          <Endpoint method="POST" path="/api/audit/undo/:req_id" desc="Undo one PATCH by req_id" />
         </div>
         <p className="mt-3 text-[10px] text-[var(--color-text-muted)]">
           Base URL: <code className="px-1 py-0.5 rounded bg-[var(--color-overlay)]">{baseUrl || 'https://your-archtown-host'}</code>
