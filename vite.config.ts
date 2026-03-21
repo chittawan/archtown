@@ -9,6 +9,7 @@ import {yamlToProject, projectToYaml} from './src/lib/projectYaml';
 import {nameToId, sanitizeId} from './src/lib/idUtils';
 import {yamlToOrgTeam, orgTeamToYaml} from './src/lib/teamYaml';
 import {yamlToCap, capToYaml, yamlToCapOrder, capOrderToYaml} from './src/lib/capabilityYaml';
+import {buildAIContextMarkdown} from './server/services/aiContextMarkdown';
 
 const DATA_PROJECTS_DIR = path.resolve(__dirname, 'data', 'projects');
 const DATA_TEAMS_DIR = path.resolve(__dirname, 'data', 'teams');
@@ -37,109 +38,6 @@ function resolveProjectPath(projId: string): { path: string; ext: 'yaml' } | nul
     }
   }
   return null;
-}
-
-function buildDevAIContextMarkdown(baseUrl: string): string {
-  return `# ArchTown — Open Claw AI Context
-
-> API Reference & Learning Context for ArchTown
-> Use this document to quickly access project data via API.
-
----
-
-## Quick Reference — All Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | /api/auth/token/generate | Generate AI Login Token |
-| POST | /api/auth/token/login | Login with Token → get userId |
-| GET | /api/sync/download | Download full backup (JSON) |
-| POST | /api/sync/upload | Upload backup (JSON) |
-| GET | /api/ai/context | This document (Markdown) |
-
-Base URL: ${baseUrl}
-
----
-
-## 1. Authentication — Token Login
-
-### POST /api/auth/token/generate
-\`\`\`
-Request:
-  POST ${baseUrl}/api/auth/token/generate
-  Content-Type: application/json
-  X-Admin-Key: <optional>
-
-  { "googleId": "USER_ID", "expiresAt": "2026-12-31T23:59:59Z" }
-
-Response 200:
-  { "ok": true, "token": "atkn_...", "googleId": "USER_ID", "expiresAt": "..." }
-\`\`\`
-
-### POST /api/auth/token/login
-\`\`\`
-Request:
-  POST ${baseUrl}/api/auth/token/login
-  Content-Type: application/json
-
-  { "token": "atkn_..." }
-
-Response 200:
-  { "ok": true, "googleId": "USER_ID", "expiresAt": "..." }
-\`\`\`
-
----
-
-## 2. Cloud Sync
-
-### GET /api/sync/download
-\`\`\`
-Headers: X-Google-User-Id: YOUR_USER_ID
-
-Response 200:
-  { "schema_version": 1, "version": N, "updated_at": "ISO8601", "tables": { ...10 tables... } }
-\`\`\`
-
-### POST /api/sync/upload
-\`\`\`
-Headers: Content-Type: application/json, X-Google-User-Id: YOUR_USER_ID
-Body: { "schema_version": 1, "version": N+1, "updated_at": "ISO8601", "tables": { ... } }
-
-Response 200: { "ok": true }
-Error 409: { "ok": false, "conflict": true, "remoteVersion": N }
-Force: POST /api/sync/upload?force=1
-\`\`\`
-
----
-
-## 3. Data Models (10 tables)
-
-projects → project_teams → project_topics → project_sub_topics (RED/YELLOW/GREEN) → project_sub_topic_details (todo/doing/done + due_date)
-org_teams + org_team_children (parent/child hierarchy)
-capability_order + caps + cap_projects (dashboard grid)
-
----
-
-## 4. Project Manage — Summary View & PDF (UI)
-
-- หน้า **Project Manage** → ปุ่ม **Summary View** (modal); **ไม่มี API แยก**
-- **Summary**: สรุปผู้บริหาร + ตาราง + การ์ด Critical / Manageable / Normal
-- **Timeline**: ไทม์ไลน์ตาม \`due_date\` (YYYY-MM-DD); รวมหลาย Todo วันเดียวกัน + หัวข้อย่อยเดียวกันเป็นการ์ดเดียว
-- **กรองรายงาน**: วันที่เริ่ม–สิ้นสุด + checkbox **รวมรายการไม่ระบุวัน** (กรองเฉพาะ \`project_sub_topic_details\` ตามช่วง due); มีผลทั้งสรุป, Timeline และ PDF
-- **Save PDF**: client-side (html2canvas + jsPDF) หนึ่งหน้ายาว; ชื่อไฟล์ \`{projectName}_{Summary|Timeline}_{YYYYMMDD}.pdf\`
-- AI ที่ใช้แค่ API: \`GET /api/sync/download\` แล้วประกอบรายงานแบบเดียวกันได้
-
----
-
-## 5. Quick Start
-1. Login: POST /api/auth/token/login → get googleId
-2. Check version: GET /api/sync/download → check version/updated_at
-3. Read data: parse tables from sync payload
-4. Update: modify tables, increment version, POST /api/sync/upload
-
----
-*ArchTown — Open Claw AI Context v1*
-`;
 }
 
 export default defineConfig(({mode}) => {
@@ -810,7 +708,7 @@ export default defineConfig(({mode}) => {
               const host = req.headers.host || 'localhost:3000';
               const base = `http://${host}`;
               res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-              res.end(buildDevAIContextMarkdown(base));
+              res.end(buildAIContextMarkdown(base));
               return;
             }
             next();
