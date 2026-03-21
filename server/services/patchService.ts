@@ -30,6 +30,8 @@ export type SyncPatchSuccess = {
   version: number;
   applied: number;
   rejected: Array<{ index: number; error: string }>;
+  /** สำหรับ SSE broadcast — เฉพาะ ops ที่ apply สำเร็จ */
+  sseBroadcast?: { version: number; ops: unknown[]; actor: string; ts: string };
 };
 
 export type SyncPatchFailure = { ok: false; status: number; body: Record<string, unknown> };
@@ -99,6 +101,7 @@ export function runSyncPatch(input: {
   const reqId = makeReqId();
   const { actor, actor_type } = getPatchActor(userId, tokenAuth);
   const pendingAudits: PendingAudit[] = [];
+  const appliedRawOps: unknown[] = [];
 
   for (let i = 0; i < ops.length; i++) {
     const rawOp = ops[i];
@@ -171,6 +174,7 @@ export function runSyncPatch(input: {
           status: 'applied',
           error: null,
         });
+        appliedRawOps.push(rawOp);
       } else if (opType === 'insert') {
         const row = (rawOp as { row?: unknown })?.row;
         if (!row || typeof row !== 'object') throw new Error('insert requires { row:object }');
@@ -193,6 +197,7 @@ export function runSyncPatch(input: {
             status: 'applied',
             error: null,
           });
+          appliedRawOps.push(rawOp);
         } else {
           const keys = TABLE_COMPOSITE_KEY_COLUMNS[table];
           if (!keys) throw new Error('insert row must include { id:string }');
@@ -230,6 +235,7 @@ export function runSyncPatch(input: {
             status: 'applied',
             error: null,
           });
+          appliedRawOps.push(rawOp);
         }
       } else if (opType === 'delete') {
         const compositeId = (rawOp as { composite_id?: unknown })?.composite_id;
@@ -258,6 +264,7 @@ export function runSyncPatch(input: {
             status: 'applied',
             error: null,
           });
+          appliedRawOps.push(rawOp);
         } else {
           const id = (rawOp as { id?: unknown })?.id;
           if (typeof id !== 'string' || !id) throw new Error('delete requires { id:string }');
@@ -277,6 +284,7 @@ export function runSyncPatch(input: {
             status: 'applied',
             error: null,
           });
+          appliedRawOps.push(rawOp);
         }
       } else {
         throw new Error(`Unknown op: ${String(opType)}`);
@@ -325,10 +333,21 @@ export function runSyncPatch(input: {
     appendAuditRecord(userId, record);
   }
 
+  const sseBroadcast =
+    applied > 0 && appliedRawOps.length > 0
+      ? {
+          version: versionAfter,
+          ops: appliedRawOps,
+          actor,
+          ts: backup.updated_at ?? new Date().toISOString(),
+        }
+      : undefined;
+
   return {
     ok: true,
     version: versionAfter,
     applied,
     rejected,
+    sseBroadcast,
   };
 }

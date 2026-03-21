@@ -18,7 +18,7 @@ export function createSyncRateLimiter() {
   });
 }
 
-const SYNC_PATHS = ['/api/sync/download', '/api/sync/upload', '/api/sync/version', '/api/sync/patch'] as const;
+const SYNC_PATHS = ['/api/sync/download', '/api/sync/upload', '/api/sync/version', '/api/sync/patch', '/api/sync/events'] as const;
 
 export function optionalSyncTokenMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   const token = extractTokenFromRequest(req);

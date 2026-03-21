@@ -4,7 +4,7 @@ import type { SyncAuth } from '../types/syncAuth';
 import { getSyncBackupPath } from './paths';
 
 export type UploadResult =
-  | { ok: true }
+  | { ok: true; version: number; updated_at: string }
   | { ok: false; status: number; body: Record<string, unknown> };
 
 export function runSyncUpload(input: {
@@ -58,5 +58,9 @@ export function runSyncUpload(input: {
   fs.mkdirSync(path.dirname(backupFile), { recursive: true });
   const { force: _f, ...payloadToWrite } = payload as { force?: boolean } & Record<string, unknown>;
   fs.writeFileSync(backupFile, JSON.stringify(payloadToWrite), 'utf-8');
-  return { ok: true };
+  const written = payloadToWrite as { version?: number; updated_at?: string };
+  const version = typeof written.version === 'number' ? written.version : 0;
+  const updated_at =
+    typeof written.updated_at === 'string' && written.updated_at ? written.updated_at : new Date().toISOString();
+  return { ok: true, version, updated_at };
 }

@@ -15,6 +15,17 @@ let idbFallbackLoaded = false;
 let persistIdbTimer: ReturnType<typeof setTimeout> | null = null;
 const PERSIST_DEBOUNCE_MS = 1500;
 
+/** โหลด DB + IndexedDB fallback ก่อนเขียน SQL นอก repository (เช่น SSE patch) */
+export async function ensureArchtownDataLoaded(): Promise<void> {
+  await client.ensureDb();
+  await ensureIdbFallbackInitialized();
+}
+
+/** หลังแก้ตารางโดยตรง — debounce เขียน snapshot ลง IndexedDB เมื่อไม่ใช้ OPFS */
+export function afterExternalTableMutation(): void {
+  schedulePersistIdbFallback();
+}
+
 /** เมื่อไม่ใช้ OPFS โหลดข้อมูลจาก IndexedDB (ครั้งเดียวต่อ session) */
 async function ensureIdbFallbackInitialized(): Promise<void> {
   if (client.isOpfsUsed()) return;

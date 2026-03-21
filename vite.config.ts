@@ -13,6 +13,8 @@ import {yamlToCap, capToYaml, yamlToCapOrder, capOrderToYaml} from './src/lib/ca
 import {buildAIContextMarkdown} from './server/services/aiContextMarkdown';
 import {getSyncUserIdFromIncoming} from './server/services/syncUser';
 import {resolveSyncUserFromIncomingLike} from './server/services/tokenService';
+import {buildReplayPatchEvents} from './server/services/auditReplayService';
+import {addClient, broadcast, formatSseEvent, removeClient} from './server/services/sseRegistry';
 
 const DATA_PROJECTS_DIR = path.resolve(__dirname, 'data', 'projects');
 const DATA_TEAMS_DIR = path.resolve(__dirname, 'data', 'teams');
@@ -651,6 +653,69 @@ export default defineConfig(({mode}) => {
           }
           server.middlewares.use(async (req, res, next) => {
             const url = req.url?.split('?')[0] ?? '';
+            if (url === '/api/sync/events' && req.method === 'GET') {
+              try {
+                const out = resolveDevSyncUserId(req);
+                if (out.errorStatus != null) {
+                  res.statusCode = out.errorStatus;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(out.errorBody ?? {ok: false, error: 'unauthorized'}));
+                  return;
+                }
+                const userId = out.userId;
+                if (!userId || userId === 'guest') {
+                  res.statusCode = 401;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ok: false, error: 'login required'}));
+                  return;
+                }
+                const rawLast = req.headers['last-event-id'];
+                const parsed = parseInt(Array.isArray(rawLast) ? rawLast[0] : (rawLast ?? '0'), 10);
+                const lastEventId = Number.isFinite(parsed) ? parsed : 0;
+
+                res.setHeader('Content-Type', 'text/event-stream');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
+                res.setHeader('X-Accel-Buffering', 'no');
+                (res as {flushHeaders?: () => void}).flushHeaders?.();
+
+                const connId = addClient(userId, res, lastEventId);
+                for (const p of buildReplayPatchEvents(userId, lastEventId)) {
+                  res.write(
+                    formatSseEvent(p.version, 'patch', {
+                      version: p.version,
+                      ops: p.ops,
+                      actor: p.actor,
+                      ts: p.ts,
+                    }),
+                  );
+                }
+                const backupFile = getSyncBackupPath(userId);
+                let version = 0;
+                let updated_at = new Date().toISOString();
+                if (fs.existsSync(backupFile)) {
+                  try {
+                    const b = JSON.parse(fs.readFileSync(backupFile, 'utf-8')) as {
+                      version?: number;
+                      updated_at?: string;
+                    };
+                    version = typeof b.version === 'number' ? b.version : Number(b.version ?? 0);
+                    if (typeof b.updated_at === 'string' && b.updated_at) updated_at = b.updated_at;
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                res.write(formatSseEvent(undefined, 'version', {version, updated_at}));
+                req.on('close', () => removeClient(userId, connId));
+              } catch (e) {
+                if (!res.headersSent) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ok: false, error: String(e)}));
+                }
+              }
+              return;
+            }
             if (url === '/api/sync/download' && req.method === 'GET') {
               try {
                 const out = resolveDevSyncUserId(req);
@@ -729,6 +794,13 @@ export default defineConfig(({mode}) => {
                   fs.mkdirSync(path.dirname(backupFile), { recursive: true });
                   const { force: _f, ...payloadToWrite } = payload;
                   fs.writeFileSync(backupFile, JSON.stringify(payloadToWrite), 'utf-8');
+                  const written = payloadToWrite as { version?: number; updated_at?: string };
+                  const v = typeof written.version === 'number' ? written.version : 0;
+                  const ts =
+                    typeof written.updated_at === 'string' && written.updated_at
+                      ? written.updated_at
+                      : new Date().toISOString();
+                  broadcast(userId, 'upload', { version: v, ts }, v);
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ ok: true }));
                 } catch (e) {

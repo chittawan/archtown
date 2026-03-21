@@ -11,6 +11,7 @@ import { clearAppData } from '../../lib/clearAppData';
 import { exportForSync } from '../../db/sync';
 import { uploadToCloud, isSyncAvailable } from '../../db/cloudSync';
 import { scheduleSyncToCloud } from '../../db/cloudSyncScheduler';
+import { useSyncEvents } from '../../hooks/useSyncEvents';
 
 const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
@@ -77,7 +78,9 @@ export default function AppLayout() {
 
   useEffect(() => {
     setGoogleUser(isGoogleLoggedIn());
-  }, []);
+  }, [location.pathname]);
+
+  useSyncEvents(googleUser);
 
   useEffect(() => {
     const onDataSaved = () => scheduleSyncToCloud();

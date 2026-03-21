@@ -49,6 +49,11 @@ function setStoredBaseVersion(version: number, updatedAt: string): void {
   }
 }
 
+/** อัปเดต meta หลังรับ patch จาก SSE (ให้ base_version ตรงกับ server) */
+export function setStoredSyncMeta(version: number, updatedAt: string): void {
+  setStoredBaseVersion(version, updatedAt);
+}
+
 async function fetchRemoteVersion(): Promise<{ version: number; updated_at: string } | null> {
   const res = await fetch(SYNC_VERSION_URL, { headers: getSyncHeaders() });
   if (!res.ok) return null;
