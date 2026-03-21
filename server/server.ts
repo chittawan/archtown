@@ -381,6 +381,19 @@ type SyncPatchResponse = {
   rejected: Array<{ index: number; error: string }>;
 } | { ok: false; error: string };
 
+const TABLE_WHITELIST = new Set([
+  'projects',
+  'project_teams',
+  'project_topics',
+  'project_sub_topics',
+  'project_sub_topic_details',
+  'org_teams',
+  'org_team_children',
+  'capability_order',
+  'caps',
+  'cap_projects',
+]);
+
 app.patch('/api/sync/patch', (req, res) => {
   try {
     const tokenAuth = req.syncAuth;
@@ -395,6 +408,11 @@ app.patch('/api/sync/patch', (req, res) => {
 
     if (typeof baseVersion !== 'number' || !Array.isArray(ops)) {
       res.status(400).json({ ok: false, error: 'Invalid payload. Expect { base_version:number, ops:[] }' });
+      return;
+    }
+
+    if (ops.length > 100) {
+      res.status(400).json({ ok: false, error: 'ops limit exceeded (max 100)' });
       return;
     }
 
@@ -415,6 +433,7 @@ app.patch('/api/sync/patch', (req, res) => {
     }
 
     const serverVersion = typeof backup?.version === 'number' ? backup.version : Number(backup?.version ?? 0);
+    const versionBefore = typeof backup?.version === 'number' ? backup.version : serverVersion;
     if (baseVersion < serverVersion) {
       res.status(409).json({
         ok: false,
@@ -437,6 +456,9 @@ app.patch('/api/sync/patch', (req, res) => {
         const table = op?.table;
         if (typeof opType !== 'string' || typeof table !== 'string') {
           throw new Error('op must include { op, table }');
+        }
+        if (!TABLE_WHITELIST.has(table)) {
+          throw new Error(`Unknown table: ${table}`);
         }
         const tableRows = tables[table];
         if (!Array.isArray(tableRows)) {
@@ -502,22 +524,28 @@ app.patch('/api/sync/patch', (req, res) => {
       }
     }
 
-    // bump version +1 and updated_at always when base_version is accepted
-    backup.version = (typeof backup?.version === 'number' ? backup.version : serverVersion) + 1;
-    backup.updated_at = new Date().toISOString();
-
-    fs.writeFileSync(backupFile, JSON.stringify(backup), 'utf-8');
+    if (applied > 0) {
+      backup.version = versionBefore + 1;
+      backup.updated_at = new Date().toISOString();
+      fs.writeFileSync(backupFile, JSON.stringify(backup), 'utf-8');
+    }
 
     const auditFile = path.join(SYNC_DIR, userId, 'audit.log.jsonl');
     const auditLine = JSON.stringify({
       userId,
       ops,
       timestamp: new Date().toISOString(),
+      result: { applied, rejected },
     });
     fs.mkdirSync(path.dirname(auditFile), { recursive: true });
     fs.appendFileSync(auditFile, auditLine + '\n', 'utf-8');
 
-    const response: SyncPatchResponse = { ok: true, version: backup.version, applied, rejected };
+    const response: SyncPatchResponse = {
+      ok: true,
+      version: applied > 0 ? backup.version : versionBefore,
+      applied,
+      rejected,
+    };
     res.json(response);
   } catch (e) {
     res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -785,8 +813,16 @@ Merge rule (field-level):
 - For each updated field \`X\`, server compares \`X_updated_at\` (newer wins)
 - If incoming is newer, server sets both \`X\` and \`X_updated_at\`
 
+Rules:
+- \`table\` must be one of the 10 sync tables (whitelist); otherwise op is rejected
+- Max 100 ops per request; otherwise \`400\` \`ops limit exceeded (max 100)\`
+- \`version\` / \`updated_at\` bump and disk save only when \`applied > 0\`
+
 Response 200:
   { "ok": true, "version": 75, "applied": N, "rejected": [] }
+
+Error 400:
+  { "ok": false, "error": "ops limit exceeded (max 100)" }
 
 Error 409:
   { "ok": false, "error": "...", "conflict": true, "remoteVersion": <serverVersion> }
