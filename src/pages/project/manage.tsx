@@ -27,6 +27,7 @@ import { useSubTopicModal } from './hooks/useSubTopicModal';
 import { TeamModal } from './TeamModal';
 import { TopicModal } from './TopicModal';
 import { SubTopicModal } from './SubTopicModal';
+import { ReferenceIdChip } from '../../components/ui/ReferenceIdChip';
 
 const INITIAL_DATA: Team[] = [];
 
@@ -992,6 +993,8 @@ export default function ProjectManagePage() {
     }
   };
 
+  const displayProjectId = projectId ?? projectIdFromUrl;
+
   return (
     <div className="max-w-6xl mx-auto">
       {projectLoadState === 'loading' && (
@@ -1043,6 +1046,15 @@ export default function ProjectManagePage() {
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
             ลากวางเพื่อจัดเรียง · Import/Export · Summary View พิมพ์ PDF ได้
           </p>
+          {displayProjectId ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <ReferenceIdChip kind="project_id" value={displayProjectId} />
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--color-text-subtle)]">
+              บันทึกโปรเจกต์เพื่อให้ได้ <span className="font-mono">project_id</span> สำหรับอ้างอิง
+            </p>
+          )}
         </div>
 
         {/* ขวา: Save status + ปุ่ม */}
@@ -1288,17 +1300,20 @@ export default function ProjectManagePage() {
               onDragEnd={handleDragEnd(team.id)}
             >
               <div className="group/team bg-[var(--color-surface)] rounded-2xl border-2 border-[var(--color-border)] overflow-hidden shadow-[var(--shadow-card)] transition-all">
-                <div className="bg-[var(--color-overlay)] px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      teamModal.openForEdit(team.id, team.name);
-                    }}
-                    className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded-lg px-1 -mx-1 py-0.5 transition-colors text-left w-fit"
-                  >
-                    <Users className="w-5 h-5 mr-2 text-[var(--color-text-muted)] flex-shrink-0" />
-                    {team.name}
-                  </button>
+                <div className="bg-[var(--color-overlay)] px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex flex-col gap-1.5 items-start">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        teamModal.openForEdit(team.id, team.name);
+                      }}
+                      className="text-lg font-semibold text-[var(--color-text)] flex items-center hover:bg-[var(--color-overlay)] rounded-lg px-1 -mx-1 py-0.5 transition-colors text-left w-fit"
+                    >
+                      <Users className="w-5 h-5 mr-2 text-[var(--color-text-muted)] flex-shrink-0" />
+                      {team.name}
+                    </button>
+                    <ReferenceIdChip kind="team_id" value={team.id} />
+                  </div>
                   <div className="flex items-center gap-2 opacity-0 group-hover/team:opacity-100 transition-opacity">
                     <button
                       onClick={() => topicModal.open(team.id)}

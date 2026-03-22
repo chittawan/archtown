@@ -5,6 +5,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Topic, Status } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { LongPressDeleteButton } from '../ui/LongPressDeleteButton';
+import { ReferenceIdChip } from '../ui/ReferenceIdChip';
 
 type SortableTopicRowProps = {
   teamId: string;
@@ -47,53 +48,58 @@ export function SortableTopicRow({
       className={`flex flex-col ${isDragging ? 'opacity-60 z-20' : ''}`}
     >
       <div
-        className={`group/topic px-6 py-4 flex items-center justify-between hover:bg-[var(--color-overlay)] transition-colors cursor-pointer border-l-4 border-l-transparent ${isExpanded ? 'bg-[var(--color-overlay)] border-l-[var(--color-primary)]' : ''}`}
+        className={`group/topic px-6 py-4 flex items-start justify-between gap-3 hover:bg-[var(--color-overlay)] transition-colors cursor-pointer border-l-4 border-l-transparent ${isExpanded ? 'bg-[var(--color-overlay)] border-l-[var(--color-primary)]' : ''}`}
         onClick={onToggle}
       >
-        <div className="flex items-center flex-1 min-w-0">
-          <button
-            className="p-1 mr-2 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing"
-            onClick={(e) => e.stopPropagation()}
-            {...attributes}
-            {...listeners}
-            aria-label="ลากเพื่อเรียงลำดับ"
-          >
-            <GripVertical className="w-5 h-5" />
-          </button>
-          <button className="p-1 mr-2 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded">
-            {isExpanded ? (
-              <ChevronDown className="w-5 h-5" />
-            ) : (
-              <ChevronRight className="w-5 h-5" />
-            )}
-          </button>
-          {isEditingTitle ? (
-            <input
-              type="text"
-              value={editTitleValue}
-              onChange={(e) => onEditTitleChange(e.target.value)}
-              onBlur={() => onSaveEditTitle()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onSaveEditTitle();
-                if (e.key === 'Escape') onCancelEditTitle();
-              }}
+        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+          <div className="flex items-center min-w-0">
+            <button
+              className="p-1 mr-2 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing"
               onClick={(e) => e.stopPropagation()}
-              className="text-base font-medium text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded px-2 py-0.5 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              autoFocus
-            />
-          ) : (
-            <h3
-              className="text-base font-medium text-[var(--color-text)] cursor-text flex-1 min-w-0 truncate"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartEditTitle();
-              }}
+              {...attributes}
+              {...listeners}
+              aria-label="ลากเพื่อเรียงลำดับ"
             >
-              {topic.title}
-            </h3>
-          )}
+              <GripVertical className="w-5 h-5" />
+            </button>
+            <button className="p-1 mr-2 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded">
+              {isExpanded ? (
+                <ChevronDown className="w-5 h-5" />
+              ) : (
+                <ChevronRight className="w-5 h-5" />
+              )}
+            </button>
+            {isEditingTitle ? (
+              <input
+                type="text"
+                value={editTitleValue}
+                onChange={(e) => onEditTitleChange(e.target.value)}
+                onBlur={() => onSaveEditTitle()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onSaveEditTitle();
+                  if (e.key === 'Escape') onCancelEditTitle();
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="text-base font-medium text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] rounded px-2 py-0.5 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                autoFocus
+              />
+            ) : (
+              <h3
+                className="text-base font-medium text-[var(--color-text)] cursor-text flex-1 min-w-0 truncate"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartEditTitle();
+                }}
+              >
+                {topic.title}
+              </h3>
+            )}
+          </div>
+          <div className="pl-10 sm:pl-12" onClick={(e) => e.stopPropagation()}>
+            <ReferenceIdChip kind="topic_id" value={topic.id} />
+          </div>
         </div>
-        <div className="flex items-center space-x-4 flex-shrink-0">
+        <div className="flex items-center space-x-4 flex-shrink-0 pt-0.5">
           <div
             className="flex items-center space-x-2 opacity-100 md:opacity-0 md:group-hover/topic:opacity-100 transition-opacity"
             onClick={(e) => e.stopPropagation()}

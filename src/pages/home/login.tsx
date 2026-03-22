@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, KeyRound, User } from 'lucide-react';
+import { Loader2, KeyRound } from 'lucide-react';
 import { redirectToGoogleLogin, setTokenLoginIdentity } from '../../lib/googleAuth';
 import { prepareAfterLogin } from '../../lib/prepareAfterLogin';
 
@@ -10,16 +10,31 @@ type LoginStatus =
   | { state: 'error'; message: string }
   | { state: 'success' };
 
+const TOKEN_LOGIN_FETCH_MS = 60_000;
+
 async function loginWithToken(token: string): Promise<{
   googleId: string;
   expiresAt?: string | null;
   tokenId?: string;
 }> {
-  const res = await fetch('/api/auth/token/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), TOKEN_LOGIN_FETCH_MS);
+  let res: Response;
+  try {
+    res = await fetch('/api/auth/token/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('หมดเวลาเชื่อมต่อเซิร์ฟเวอร์ — ตรวจสอบว่าแอปรันอยู่และลองใหม่');
+    }
+    throw e;
+  } finally {
+    clearTimeout(tid);
+  }
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
     googleId?: string;
@@ -60,7 +75,9 @@ export default function LoginPage() {
       setStatus({ state: 'success' });
       window.location.href = '/capability';
     } catch (err) {
-      setStatus({ state: 'error', message: err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ' });
+      const message =
+        err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
+      setStatus({ state: 'error', message });
     }
   };
 

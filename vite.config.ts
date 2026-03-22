@@ -728,13 +728,14 @@ export default defineConfig(({mode}) => {
               }
               return;
             }
-            if (url === '/api/sync/download' && req.method === 'GET') {
+            if (url === '/api/sync/download' && (req.method === 'GET' || req.method === 'HEAD')) {
               try {
                 const out = resolveDevSyncUserId(req);
                 if (out.errorStatus != null) {
                   res.statusCode = out.errorStatus;
                   res.setHeader('Content-Type', 'application/json');
-                  res.end(JSON.stringify(out.errorBody ?? {ok: false, error: 'unauthorized'}));
+                  if (req.method === 'HEAD') res.end();
+                  else res.end(JSON.stringify(out.errorBody ?? {ok: false, error: 'unauthorized'}));
                   return;
                 }
                 const userId = out.userId;
@@ -742,16 +743,20 @@ export default defineConfig(({mode}) => {
                 if (!fs.existsSync(backupFile)) {
                   res.statusCode = 404;
                   res.setHeader('Content-Type', 'application/json');
-                  res.end(JSON.stringify({ error: 'ยังไม่มีข้อมูลบน Cloud' }));
+                  if (req.method === 'HEAD') res.end();
+                  else res.end(JSON.stringify({ error: 'ยังไม่มีข้อมูลบน Cloud' }));
                   return;
                 }
                 const json = fs.readFileSync(backupFile, 'utf-8');
                 res.setHeader('Content-Type', 'application/json');
-                res.end(json);
+                res.setHeader('Content-Length', Buffer.byteLength(json, 'utf8'));
+                if (req.method === 'HEAD') res.end();
+                else res.end(json);
               } catch (e) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ error: String(e) }));
+                if (req.method === 'HEAD') res.end();
+                else res.end(JSON.stringify({ error: String(e) }));
               }
               return;
             }

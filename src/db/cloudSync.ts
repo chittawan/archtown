@@ -22,6 +22,22 @@ import { getGoogleUserId, getTokenLoginToken } from '../lib/googleAuth';
 const SYNC_UPLOAD_URL = '/api/sync/upload';
 const SYNC_DOWNLOAD_URL = '/api/sync/download';
 
+/** กัน fetch ค้างถาวร (เครือข่ายช้า / เซิร์ฟเวอร์ไม่ตอบ) */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit & { timeoutMs?: number }
+): Promise<Response> {
+  const timeoutMs = init.timeoutMs ?? 60_000;
+  const { timeoutMs: _omit, ...rest } = init;
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...rest, signal: controller.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 function getSyncHeaders(): Record<string, string> {
   const userId = getGoogleUserId();
   const token = getTokenLoginToken();
@@ -116,7 +132,10 @@ export async function uploadToCloud(force = false, password?: string): Promise<C
  */
 export async function downloadFromCloud(password?: string): Promise<CloudSyncResult> {
   try {
-    const res = await fetch(SYNC_DOWNLOAD_URL, { headers: getSyncHeaders() });
+    const res = await fetchWithTimeout(SYNC_DOWNLOAD_URL, {
+      headers: getSyncHeaders(),
+      timeoutMs: 120_000,
+    });
     if (res.status === 404) {
       return { ok: false, error: 'ยังไม่มีข้อมูลบน Cloud' };
     }
@@ -160,6 +179,10 @@ export async function downloadFromCloud(password?: string): Promise<CloudSyncRes
     }
     return { ok: true };
   } catch (e) {
+    const name = e instanceof Error ? e.name : (e as { name?: string })?.name;
+    if (name === 'AbortError') {
+      return { ok: false, error: 'หมดเวลาดาวน์โหลดจาก Cloud (ไฟล์ใหญ่หรือเครือข่ายช้า) — ลองใหม่' };
+    }
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -212,7 +235,11 @@ export async function restoreFromJsonFile(buffer: ArrayBuffer, password?: string
 /** ตรวจว่า server รองรับ sync หรือไม่ (มี API) */
 export async function isSyncAvailable(): Promise<boolean> {
   try {
-    const res = await fetch(SYNC_DOWNLOAD_URL, { method: 'HEAD', headers: getSyncHeaders() });
+    const res = await fetchWithTimeout(SYNC_DOWNLOAD_URL, {
+      method: 'HEAD',
+      headers: getSyncHeaders(),
+      timeoutMs: 20_000,
+    });
     return res.status === 200 || res.status === 404;
   } catch {
     return false;

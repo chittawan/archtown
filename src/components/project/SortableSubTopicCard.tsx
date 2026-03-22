@@ -6,6 +6,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Status, SubTopic, SubTopicType, TodoItemStatus } from '../../types';
 import { LongPressDeleteButton } from '../ui/LongPressDeleteButton';
+import { ReferenceIdChip } from '../ui/ReferenceIdChip';
 
 type SortableSubTopicCardProps = {
   teamId: string;
@@ -307,40 +308,45 @@ export function SortableSubTopicCard({
       style={style}
       className={`group/subtopic flex flex-col bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] shadow-[var(--shadow-card)] overflow-hidden ${isDragging ? 'opacity-80 shadow-lg z-10' : ''}`}
     >
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <button
-            className="p-1 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing flex-shrink-0"
-            {...attributes}
-            {...listeners}
-            aria-label="ลากเพื่อเรียงหรือย้าย"
-          >
-            <GripVertical className="w-4 h-4" />
-          </button>
-          {isEditingTitle ? (
-            <input
-              type="text"
-              value={localTitle}
-              onChange={(e) => setLocalTitle(e.target.value)}
-              onBlur={() => handleSaveEditTitle()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveEditTitle();
-                if (e.key === 'Escape') onCancelEditTitle();
-              }}
-              className="text-sm font-medium text-[var(--color-text)] bg-[var(--color-page)] border border-[var(--color-border-strong)] rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              autoFocus
-            />
-          ) : (
+      <div className="flex items-start justify-between px-4 py-3 gap-2">
+        <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
             <button
-              type="button"
-              onClick={() => onStartEditTitle()}
-              className="flex-1 min-w-0 text-sm font-medium text-[var(--color-text)] truncate text-left hover:bg-[var(--color-overlay)] rounded px-1 -mx-1 py-0.5"
+              className="p-1 text-[var(--color-text-subtle)] hover:text-[var(--color-text-muted)] rounded touch-none cursor-grab active:cursor-grabbing flex-shrink-0"
+              {...attributes}
+              {...listeners}
+              aria-label="ลากเพื่อเรียงหรือย้าย"
             >
-              {subTopic.title}
+              <GripVertical className="w-4 h-4" />
             </button>
-          )}
+            {isEditingTitle ? (
+              <input
+                type="text"
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                onBlur={() => handleSaveEditTitle()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveEditTitle();
+                  if (e.key === 'Escape') onCancelEditTitle();
+                }}
+                className="text-sm font-medium text-[var(--color-text)] bg-[var(--color-page)] border border-[var(--color-border-strong)] rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                autoFocus
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => onStartEditTitle()}
+                className="flex-1 min-w-0 text-sm font-medium text-[var(--color-text)] truncate text-left hover:bg-[var(--color-overlay)] rounded px-1 -mx-1 py-0.5"
+              >
+                {subTopic.title}
+              </button>
+            )}
+          </div>
+          <div className="pl-7" onClick={(e) => e.stopPropagation()}>
+            <ReferenceIdChip kind="sub_id" value={subTopic.id} />
+          </div>
         </div>
-        <div className="flex items-center justify-end gap-3 min-w-0">
+        <div className="flex items-center justify-end gap-3 min-w-0 shrink-0">
           <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch]">
             <div
               className="grid grid-cols-3 gap-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5 shrink-0 min-w-[16.5rem]"
@@ -479,17 +485,25 @@ export function SortableSubTopicCard({
                             <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                               {/* บรรทัดเดียว: หัวข้อ + ชื่อ task + วันที่ */}
                               <div className="flex items-center gap-2 min-h-[30px]">
-                                <span
-                                  className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                                    itemStatus === 'done'
-                                      ? 'text-emerald-500 dark:!text-emerald-100'
-                                      : itemStatus === 'doing'
-                                        ? 'text-blue-400 dark:!text-blue-100'
-                                        : 'text-slate-800 dark:!text-slate-100'
-                                  }`}
-                                >
-                                  {visibleIndex + 1}.
-                                </span>
+                                <div className="flex flex-col items-end gap-0.5 w-[4.25rem] shrink-0">
+                                  <span
+                                    className={`text-xs font-medium w-full text-right tabular-nums ${
+                                      itemStatus === 'done'
+                                        ? 'text-emerald-500 dark:!text-emerald-100'
+                                        : itemStatus === 'doing'
+                                          ? 'text-blue-400 dark:!text-blue-100'
+                                          : 'text-slate-800 dark:!text-slate-100'
+                                    }`}
+                                  >
+                                    {visibleIndex + 1}.
+                                  </span>
+                                  <ReferenceIdChip
+                                    compact
+                                    kind="detail_idx"
+                                    value={String(index)}
+                                    className="max-w-full"
+                                  />
+                                </div>
                                 <input
                                   type="text"
                                   value={getDetailDisplayValue(index, item)}
@@ -624,17 +638,25 @@ export function SortableSubTopicCard({
                                 <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                   {/* บรรทัดเดียว: หัวข้อ + ชื่อรายการ + สถานะ + วันที่ */}
                                   <div className="flex items-center gap-2 min-h-[30px]">
-                                    <span
-                                      className={`text-xs font-medium w-5 flex-shrink-0 text-right tabular-nums ${
-                                        itemStatus === 'done'
-                                          ? 'text-emerald-500 dark:!text-emerald-100'
-                                          : itemStatus === 'doing'
-                                            ? 'text-blue-400 dark:!text-blue-100'
-                                            : 'text-slate-800 dark:!text-slate-100'
-                                      }`}
-                                    >
-                                      {visibleIndex + 1}.
-                                    </span>
+                                    <div className="flex flex-col items-end gap-0.5 w-[4.25rem] shrink-0">
+                                      <span
+                                        className={`text-xs font-medium w-full text-right tabular-nums ${
+                                          itemStatus === 'done'
+                                            ? 'text-emerald-500 dark:!text-emerald-100'
+                                            : itemStatus === 'doing'
+                                              ? 'text-blue-400 dark:!text-blue-100'
+                                              : 'text-slate-800 dark:!text-slate-100'
+                                        }`}
+                                      >
+                                        {visibleIndex + 1}.
+                                      </span>
+                                      <ReferenceIdChip
+                                        compact
+                                        kind="detail_idx"
+                                        value={String(index)}
+                                        className="max-w-full"
+                                      />
+                                    </div>
                                     <input
                                       type="text"
                                       value={getDetailDisplayValue(index, item)}

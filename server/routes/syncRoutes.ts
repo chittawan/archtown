@@ -96,6 +96,23 @@ export function createSyncRouter(): express.Router {
     }
   });
 
+  r.head('/download', (req, res) => {
+    try {
+      const userId = getResolvedSyncUserId(req);
+      const backupFile = getSyncBackupPath(userId);
+      if (!fs.existsSync(backupFile)) {
+        res.status(404).end();
+        return;
+      }
+      const json = fs.readFileSync(backupFile, 'utf-8');
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Length', Buffer.byteLength(json, 'utf8'));
+      res.status(200).end();
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   r.get('/download', (req, res) => {
     try {
       const tokenAuth = req.syncAuth;
