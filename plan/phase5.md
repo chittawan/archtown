@@ -91,7 +91,7 @@ json{
     "url": "https://archtown.codewalk.myds.me/mcp",
     "headers": {
       "X-Google-User-Id": "{google_id}",
-      "Authorization": "Bearer atkn_REDACTED_USE_YOUR_TOKEN"
+      "Authorization": "Bearer atkn_<YOUR_TOKEN_FROM_ARCHTOWN_SETTINGS>"
     }
   }
 }
@@ -103,8 +103,9 @@ curl http://localhost:3000/mcp/health
 # ทดสอบ MCP call ตรงๆ
 curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "X-Google-User-Id: YOUR_GOOGLE_USER_ID" \
-  -H "Authorization: Bearer atkn_REDACTED_USE_YOUR_TOKEN" \
+  -H "Authorization: Bearer atkn_YOUR_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/list",
