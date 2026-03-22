@@ -20,3 +20,13 @@ export function sanitizeId(id: string): string {
     .replace(/^_|_$/g, '');
   return s || '';
 }
+
+/** Mirror of src/lib/idUtils.ensureUniqueId — stable id when name collides. */
+export function ensureUniqueId(baseId: string, existingIds: string[]): string {
+  const set = new Set(existingIds.map((x) => x.toLowerCase()));
+  const lower = baseId.toLowerCase();
+  if (!set.has(lower)) return baseId;
+  let n = 1;
+  while (set.has(`${lower}_${n}`)) n++;
+  return `${baseId}_${n}`;
+}

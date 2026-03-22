@@ -1,17 +1,33 @@
 import { randomBytes } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod';
-import { nameToId, sanitizeId } from '../lib/idUtils.ts';
+import { ensureUniqueId, nameToId, sanitizeId } from '../lib/idUtils.ts';
 import { fetchDownloadJson, fetchPatch, fetchUndo } from './archtownApi';
 import {
   aggregateProjects,
+  allCapIds,
+  allOrgTeamIds,
+  buildDeleteProjectOps,
+  buildDeleteSubTopicOps,
+  buildDeleteTaskOps,
+  buildDeleteTopicOps,
+  type BackupDeleteOp,
+  capExists,
+  capProjectLinkExists,
   detailExists,
   listTasksFiltered,
+  listTopicsForProject,
+  maxCapabilityOrderSort,
+  maxSortOrderCapProjects,
+  maxSortOrderForProjectTeams,
   maxSortOrderForSubTopic,
+  maxSortOrderForTeamTopics,
   maxSortOrderForTopic,
+  orgTeamExists,
   parseBackupTables,
   projectExists,
   subTopicExists,
+  teamExists,
   topicExists,
 } from './projectAggregates';
 import type { ArchtownMcpContext } from './types';
@@ -27,6 +43,24 @@ function toolErr(message: string) {
     isError: true as const,
     content: [{ type: 'text' as const, text: message }],
   };
+}
+
+async function applyPatchOpsBatches(
+  ctx: ArchtownMcpContext,
+  startVersion: number,
+  ops: BackupDeleteOp[],
+): Promise<{ ok: true; version: number; batches: number } | { ok: false; status: number; text: string }> {
+  let version = startVersion;
+  let batches = 0;
+  for (let i = 0; i < ops.length; i += 100) {
+    const batch = ops.slice(i, i + 100);
+    const patch = await fetchPatch(ctx, { base_version: version, ops: batch });
+    if (patch.ok === false) return { ok: false, status: patch.status, text: patch.text };
+    const body = patch.data as Record<string, unknown>;
+    version = typeof body.version === 'number' ? body.version : Number(body.version ?? version);
+    batches += 1;
+  }
+  return { ok: true, version, batches };
 }
 
 export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
@@ -245,6 +279,476 @@ export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
       if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
       const body = patch.data as Record<string, unknown>;
       return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'get_topics',
+    {
+      description:
+        'List project_topics for a project (via project_teams). Returns topic id, title, sort_order, team_id, team_name — use topic ids with create_sub_topic.',
+      inputSchema: {
+        project_id: z.string().describe('projects.id'),
+      },
+    },
+    async ({ project_id }) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!projectExists(parsed.tables, project_id)) {
+        return toolErr(`project not found: ${project_id}`);
+      }
+      const topics = listTopicsForProject(parsed.tables, project_id);
+      return toolJson({ topics });
+    },
+  );
+
+  server.registerTool(
+    'create_team',
+    {
+      description:
+        'Insert a project_teams row (team column within a project). Topics are created under a team via create_topic.',
+      inputSchema: {
+        project_id: z.string().describe('projects.id'),
+        name: z.string().min(1).describe('Team display name'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!projectExists(parsed.tables, params.project_id)) {
+        return toolErr(`project not found: ${params.project_id}`);
+      }
+      const id = `t-mcp-${Date.now()}-${randomBytes(3).toString('hex')}`;
+      const sort_order = maxSortOrderForProjectTeams(parsed.tables, params.project_id) + 1;
+      const row = {
+        id,
+        project_id: params.project_id,
+        name: params.name.trim(),
+        sort_order,
+      };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'insert', table: 'project_teams', row }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version, id });
+    },
+  );
+
+  server.registerTool(
+    'create_topic',
+    {
+      description: 'Insert a project_topics row under an existing project_teams row (main topic / column header).',
+      inputSchema: {
+        team_id: z.string().describe('project_teams.id'),
+        title: z.string().min(1).describe('Topic title'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!teamExists(parsed.tables, params.team_id)) {
+        return toolErr(`team not found: ${params.team_id}`);
+      }
+      const id = `top-mcp-${Date.now()}-${randomBytes(3).toString('hex')}`;
+      const sort_order = maxSortOrderForTeamTopics(parsed.tables, params.team_id) + 1;
+      const row = {
+        id,
+        team_id: params.team_id,
+        title: params.title.trim(),
+        sort_order,
+      };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'insert', table: 'project_topics', row }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version, id });
+    },
+  );
+
+  server.registerTool(
+    'create_cap',
+    {
+      description:
+        'Create a capability group (insert caps + capability_order), like adding a CAP column on the capability board.',
+      inputSchema: {
+        name: z.string().min(1).describe('CAP display name'),
+        id: z
+          .string()
+          .optional()
+          .describe('Optional caps.id; default derived from name (nameToId) with unique suffix if taken'),
+        cols: z.union([z.literal(12), z.literal(6), z.literal(4), z.literal(3)]).nullable().optional(),
+        rows: z.number().int().positive().nullable().optional().describe('Optional row count for board layout'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const displayName = params.name.trim();
+      let id: string;
+      if (params.id !== undefined && params.id.trim() !== '') {
+        id = sanitizeId(params.id.trim()) || 'cap';
+        if (capExists(parsed.tables, id)) {
+          return toolErr(`cap id already exists: ${id}`);
+        }
+      } else {
+        const base = sanitizeId(nameToId(displayName)) || 'cap';
+        id = ensureUniqueId(base, allCapIds(parsed.tables));
+      }
+      const sort_order = maxCapabilityOrderSort(parsed.tables) + 1;
+      const capsRow = {
+        id,
+        name: displayName,
+        cols: params.cols ?? null,
+        rows: params.rows ?? null,
+      };
+      const orderRow = { sort_order, cap_id: id };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [
+          { op: 'insert', table: 'caps', row: capsRow },
+          { op: 'insert', table: 'capability_order', row: orderRow },
+        ],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version, id });
+    },
+  );
+
+  server.registerTool(
+    'add_project_to_cap',
+    {
+      description:
+        'Link an existing project to a capability group (cap_projects row). Optional status/cols match the capability board cards.',
+      inputSchema: {
+        cap_id: z.string().describe('caps.id'),
+        project_id: z.string().describe('projects.id'),
+        status: z.enum(['RED', 'YELLOW', 'GREEN']).nullable().optional(),
+        cols: z.union([z.literal(12), z.literal(6), z.literal(4), z.literal(3)]).nullable().optional(),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!capExists(parsed.tables, params.cap_id)) {
+        return toolErr(`cap not found: ${params.cap_id}`);
+      }
+      if (!projectExists(parsed.tables, params.project_id)) {
+        return toolErr(`project not found: ${params.project_id}`);
+      }
+      if (capProjectLinkExists(parsed.tables, params.cap_id, params.project_id)) {
+        return toolErr(`project already linked to this cap: ${params.project_id}`);
+      }
+      const sort_order = maxSortOrderCapProjects(parsed.tables, params.cap_id) + 1;
+      const row = {
+        cap_id: params.cap_id,
+        project_id: params.project_id,
+        status: params.status ?? null,
+        cols: params.cols ?? null,
+        sort_order,
+      };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'insert', table: 'cap_projects', row }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'create_org_team',
+    {
+      description:
+        'Create an org team row (org_teams) for the team hierarchy / picker. Does not add org_team_children links; use the app or future tools for parent/child ordering.',
+      inputSchema: {
+        name: z.string().min(1).describe('Team name'),
+        id: z
+          .string()
+          .optional()
+          .describe('Optional org_teams.id; default from name (nameToId) with unique suffix if taken'),
+        owner: z.string().optional().describe('Owner label; default empty'),
+        parent_id: z.string().nullable().optional().describe('Parent org team id, or null for root'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const displayName = params.name.trim();
+      let id: string;
+      if (params.id !== undefined && params.id.trim() !== '') {
+        id = sanitizeId(params.id.trim()) || 'team';
+        if (orgTeamExists(parsed.tables, id)) {
+          return toolErr(`org team id already exists: ${id}`);
+        }
+      } else {
+        const base = sanitizeId(nameToId(displayName)) || 'team';
+        id = ensureUniqueId(base, allOrgTeamIds(parsed.tables));
+      }
+      const parent_id = params.parent_id === undefined ? null : params.parent_id;
+      if (parent_id !== null && parent_id !== undefined && parent_id !== '') {
+        if (!orgTeamExists(parsed.tables, parent_id)) {
+          return toolErr(`parent org team not found: ${parent_id}`);
+        }
+      }
+      const row = {
+        id,
+        name: displayName,
+        owner: params.owner ?? '',
+        parent_id: parent_id && parent_id !== '' ? parent_id : null,
+      };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'insert', table: 'org_teams', row }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version, id });
+    },
+  );
+
+  server.registerTool(
+    'update_project',
+    {
+      description: 'Update projects row (name, description) via PATCH sync update.',
+      inputSchema: {
+        id: z.string().describe('projects.id'),
+        name: z.string().optional(),
+        description: z.string().nullable().optional().describe('Set null to clear'),
+      },
+    },
+    async (params) => {
+      if (params.name === undefined && params.description === undefined) {
+        return toolErr('at least one of name, description is required');
+      }
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!projectExists(parsed.tables, params.id)) {
+        return toolErr(`project not found: ${params.id}`);
+      }
+      const fields: Record<string, unknown> = {};
+      const field_updated_at: Record<string, string> = {};
+      const now = new Date().toISOString();
+      if (params.name !== undefined) {
+        fields.name = params.name;
+        field_updated_at.name = now;
+      }
+      if (params.description !== undefined) {
+        fields.description = params.description;
+        field_updated_at.description = now;
+      }
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'update', table: 'projects', id: params.id, fields, field_updated_at }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'update_topic',
+    {
+      description: 'Update project_topics row (title, sort_order).',
+      inputSchema: {
+        id: z.string().describe('project_topics.id'),
+        title: z.string().optional(),
+        sort_order: z.number().int().optional(),
+      },
+    },
+    async (params) => {
+      if (params.title === undefined && params.sort_order === undefined) {
+        return toolErr('at least one of title, sort_order is required');
+      }
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!topicExists(parsed.tables, params.id)) {
+        return toolErr(`topic not found: ${params.id}`);
+      }
+      const fields: Record<string, unknown> = {};
+      const field_updated_at: Record<string, string> = {};
+      const now = new Date().toISOString();
+      if (params.title !== undefined) {
+        fields.title = params.title;
+        field_updated_at.title = now;
+      }
+      if (params.sort_order !== undefined) {
+        fields.sort_order = params.sort_order;
+        field_updated_at.sort_order = now;
+      }
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'update', table: 'project_topics', id: params.id, fields, field_updated_at }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'update_sub_topic',
+    {
+      description: 'Update project_sub_topics row (title, status, sub_topic_type, sort_order).',
+      inputSchema: {
+        id: z.string().describe('project_sub_topics.id'),
+        title: z.string().optional(),
+        status: z.enum(['GREEN', 'YELLOW', 'RED']).optional(),
+        sub_topic_type: z.enum(['todos', 'status']).optional(),
+        sort_order: z.number().int().optional(),
+      },
+    },
+    async (params) => {
+      if (
+        params.title === undefined &&
+        params.status === undefined &&
+        params.sub_topic_type === undefined &&
+        params.sort_order === undefined
+      ) {
+        return toolErr('at least one of title, status, sub_topic_type, sort_order is required');
+      }
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!subTopicExists(parsed.tables, params.id)) {
+        return toolErr(`sub_topic not found: ${params.id}`);
+      }
+      const fields: Record<string, unknown> = {};
+      const field_updated_at: Record<string, string> = {};
+      const now = new Date().toISOString();
+      if (params.title !== undefined) {
+        fields.title = params.title;
+        field_updated_at.title = now;
+      }
+      if (params.status !== undefined) {
+        fields.status = params.status;
+        field_updated_at.status = now;
+      }
+      if (params.sub_topic_type !== undefined) {
+        fields.sub_topic_type = params.sub_topic_type;
+        field_updated_at.sub_topic_type = now;
+      }
+      if (params.sort_order !== undefined) {
+        fields.sort_order = params.sort_order;
+        field_updated_at.sort_order = now;
+      }
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'update', table: 'project_sub_topics', id: params.id, fields, field_updated_at }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'delete_task',
+    {
+      description: 'Delete one project_sub_topic_details row (task) by id.',
+      inputSchema: {
+        id: z.string().describe('project_sub_topic_details id'),
+      },
+    },
+    async ({ id }) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const ops = buildDeleteTaskOps(parsed.tables, id);
+      if (!ops) return toolErr(`task not found: ${id}`);
+      const applied = await applyPatchOpsBatches(ctx, parsed.version, ops);
+      if (applied.ok === false) return toolErr(`patch failed (${applied.status}): ${applied.text}`);
+      return toolJson({ ok: true, version: applied.version, deleted: 1, patch_batches: applied.batches });
+    },
+  );
+
+  server.registerTool(
+    'delete_sub_topic',
+    {
+      description:
+        'Delete a project_sub_topics row and all nested project_sub_topic_details (cascade).',
+      inputSchema: {
+        id: z.string().describe('project_sub_topics id'),
+      },
+    },
+    async ({ id }) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const ops = buildDeleteSubTopicOps(parsed.tables, id);
+      if (!ops) return toolErr(`sub_topic not found: ${id}`);
+      const applied = await applyPatchOpsBatches(ctx, parsed.version, ops);
+      if (applied.ok === false) return toolErr(`patch failed (${applied.status}): ${applied.text}`);
+      return toolJson({ ok: true, version: applied.version, ops_applied: ops.length, patch_batches: applied.batches });
+    },
+  );
+
+  server.registerTool(
+    'delete_topic',
+    {
+      description:
+        'Delete a project_topics row and all nested sub-topics and tasks (cascade).',
+      inputSchema: {
+        id: z.string().describe('project_topics id'),
+      },
+    },
+    async ({ id }) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const ops = buildDeleteTopicOps(parsed.tables, id);
+      if (!ops) return toolErr(`topic not found: ${id}`);
+      const applied = await applyPatchOpsBatches(ctx, parsed.version, ops);
+      if (applied.ok === false) return toolErr(`patch failed (${applied.status}): ${applied.text}`);
+      return toolJson({ ok: true, version: applied.version, ops_applied: ops.length, patch_batches: applied.batches });
+    },
+  );
+
+  server.registerTool(
+    'delete_project',
+    {
+      description:
+        'Delete a project: cascades teams, topics, sub-topics, tasks, and cap_projects links, then projects row.',
+      inputSchema: {
+        id: z.string().describe('projects id'),
+      },
+    },
+    async ({ id }) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const ops = buildDeleteProjectOps(parsed.tables, id);
+      if (!ops) return toolErr(`project not found: ${id}`);
+      const applied = await applyPatchOpsBatches(ctx, parsed.version, ops);
+      if (applied.ok === false) return toolErr(`patch failed (${applied.status}): ${applied.text}`);
+      return toolJson({ ok: true, version: applied.version, ops_applied: ops.length, patch_batches: applied.batches });
     },
   );
 

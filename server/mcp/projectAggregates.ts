@@ -186,3 +186,190 @@ export function maxSortOrderForTopic(tables: BackupTables, topicId: string): num
 export function detailExists(tables: BackupTables, detailId: string): boolean {
   return !!rowById(getTableRows(tables, 'project_sub_topic_details'), detailId);
 }
+
+export function teamExists(tables: BackupTables, teamId: string): boolean {
+  return !!rowById(getTableRows(tables, 'project_teams'), teamId);
+}
+
+export function maxSortOrderForProjectTeams(tables: BackupTables, projectId: string): number {
+  const teams = getTableRows(tables, 'project_teams');
+  let max = -1;
+  for (const t of teams) {
+    if (String(t.project_id ?? '') !== projectId) continue;
+    const so = typeof t.sort_order === 'number' ? t.sort_order : Number(t.sort_order) || 0;
+    if (so > max) max = so;
+  }
+  return max;
+}
+
+export function maxSortOrderForTeamTopics(tables: BackupTables, teamId: string): number {
+  const topics = getTableRows(tables, 'project_topics');
+  let max = -1;
+  for (const t of topics) {
+    if (String(t.team_id ?? '') !== teamId) continue;
+    const so = typeof t.sort_order === 'number' ? t.sort_order : Number(t.sort_order) || 0;
+    if (so > max) max = so;
+  }
+  return max;
+}
+
+export type TopicListItem = {
+  id: string;
+  team_id: string;
+  team_name: string;
+  title: string;
+  sort_order: number;
+  project_id: string;
+};
+
+/** Topics under all project_teams for this project (joins team name). */
+export function listTopicsForProject(tables: BackupTables, projectId: string): TopicListItem[] {
+  const teams = getTableRows(tables, 'project_teams');
+  const teamIds = new Set<string>();
+  const teamName = new Map<string, string>();
+  for (const tm of teams) {
+    if (String(tm.project_id ?? '') !== projectId) continue;
+    const id = String(tm.id ?? '');
+    teamIds.add(id);
+    teamName.set(id, String(tm.name ?? ''));
+  }
+  const topics = getTableRows(tables, 'project_topics');
+  const out: TopicListItem[] = [];
+  for (const t of topics) {
+    const teamId = String(t.team_id ?? '');
+    if (!teamIds.has(teamId)) continue;
+    out.push({
+      id: String(t.id ?? ''),
+      team_id: teamId,
+      team_name: teamName.get(teamId) ?? teamId,
+      title: String(t.title ?? ''),
+      sort_order: typeof t.sort_order === 'number' ? t.sort_order : Number(t.sort_order) || 0,
+      project_id: projectId,
+    });
+  }
+  out.sort((a, b) => {
+    if (a.team_id !== b.team_id) return a.team_id.localeCompare(b.team_id);
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+    return a.id.localeCompare(b.id);
+  });
+  return out;
+}
+
+/** PATCH delete ops for cloud backup JSON (children before parents). */
+export type BackupDeleteOp =
+  | { op: 'delete'; table: 'project_sub_topic_details'; id: string }
+  | { op: 'delete'; table: 'project_sub_topics'; id: string }
+  | { op: 'delete'; table: 'project_topics'; id: string }
+  | { op: 'delete'; table: 'project_teams'; id: string }
+  | { op: 'delete'; table: 'projects'; id: string }
+  | { op: 'delete'; table: 'cap_projects'; composite_id: { cap_id: string; project_id: string } };
+
+function detailIdsForSubTopic(tables: BackupTables, subTopicId: string): string[] {
+  const details = getTableRows(tables, 'project_sub_topic_details');
+  return details.filter((d) => String(d.sub_topic_id ?? '') === subTopicId).map((d) => String(d.id ?? ''));
+}
+
+export function buildDeleteTaskOps(tables: BackupTables, detailId: string): BackupDeleteOp[] | null {
+  if (!detailExists(tables, detailId)) return null;
+  return [{ op: 'delete', table: 'project_sub_topic_details', id: detailId }];
+}
+
+export function buildDeleteTopicOps(tables: BackupTables, topicId: string): BackupDeleteOp[] | null {
+  if (!topicExists(tables, topicId)) return null;
+  const subTopics = getTableRows(tables, 'project_sub_topics').filter((s) => String(s.topic_id ?? '') === topicId);
+  const ops: BackupDeleteOp[] = [];
+  for (const s of subTopics) {
+    const sid = String(s.id ?? '');
+    for (const did of detailIdsForSubTopic(tables, sid)) {
+      ops.push({ op: 'delete', table: 'project_sub_topic_details', id: did });
+    }
+    ops.push({ op: 'delete', table: 'project_sub_topics', id: sid });
+  }
+  ops.push({ op: 'delete', table: 'project_topics', id: topicId });
+  return ops;
+}
+
+export function buildDeleteSubTopicOps(tables: BackupTables, subTopicId: string): BackupDeleteOp[] | null {
+  if (!subTopicExists(tables, subTopicId)) return null;
+  const ops: BackupDeleteOp[] = [];
+  for (const did of detailIdsForSubTopic(tables, subTopicId)) {
+    ops.push({ op: 'delete', table: 'project_sub_topic_details', id: did });
+  }
+  ops.push({ op: 'delete', table: 'project_sub_topics', id: subTopicId });
+  return ops;
+}
+
+export function buildDeleteTeamOps(tables: BackupTables, teamId: string): BackupDeleteOp[] | null {
+  if (!teamExists(tables, teamId)) return null;
+  const topics = getTableRows(tables, 'project_topics').filter((t) => String(t.team_id ?? '') === teamId);
+  const ops: BackupDeleteOp[] = [];
+  for (const t of topics) {
+    const inner = buildDeleteTopicOps(tables, String(t.id ?? ''));
+    if (inner) ops.push(...inner);
+  }
+  ops.push({ op: 'delete', table: 'project_teams', id: teamId });
+  return ops;
+}
+
+export function buildDeleteProjectOps(tables: BackupTables, projectId: string): BackupDeleteOp[] | null {
+  if (!projectExists(tables, projectId)) return null;
+  const teams = getTableRows(tables, 'project_teams').filter((t) => String(t.project_id ?? '') === projectId);
+  const ops: BackupDeleteOp[] = [];
+  for (const tm of teams) {
+    const inner = buildDeleteTeamOps(tables, String(tm.id ?? ''));
+    if (inner) ops.push(...inner);
+  }
+  const capRows = getTableRows(tables, 'cap_projects').filter((c) => String(c.project_id ?? '') === projectId);
+  for (const c of capRows) {
+    ops.push({
+      op: 'delete',
+      table: 'cap_projects',
+      composite_id: { cap_id: String(c.cap_id ?? ''), project_id: String(c.project_id ?? '') },
+    });
+  }
+  ops.push({ op: 'delete', table: 'projects', id: projectId });
+  return ops;
+}
+
+export function capExists(tables: BackupTables, capId: string): boolean {
+  return !!rowById(getTableRows(tables, 'caps'), capId);
+}
+
+export function orgTeamExists(tables: BackupTables, teamId: string): boolean {
+  return !!rowById(getTableRows(tables, 'org_teams'), teamId);
+}
+
+/** Global capability column order (capability_order.sort_order PK). */
+export function maxCapabilityOrderSort(tables: BackupTables): number {
+  const rows = getTableRows(tables, 'capability_order');
+  let max = -1;
+  for (const r of rows) {
+    const so = typeof r.sort_order === 'number' ? r.sort_order : Number(r.sort_order) || 0;
+    if (so > max) max = so;
+  }
+  return max;
+}
+
+export function maxSortOrderCapProjects(tables: BackupTables, capId: string): number {
+  const rows = getTableRows(tables, 'cap_projects').filter((c) => String(c.cap_id ?? '') === capId);
+  let max = -1;
+  for (const r of rows) {
+    const so = typeof r.sort_order === 'number' ? r.sort_order : Number(r.sort_order) || 0;
+    if (so > max) max = so;
+  }
+  return max;
+}
+
+export function capProjectLinkExists(tables: BackupTables, capId: string, projectId: string): boolean {
+  return getTableRows(tables, 'cap_projects').some(
+    (r) => String(r.cap_id ?? '') === capId && String(r.project_id ?? '') === projectId,
+  );
+}
+
+export function allCapIds(tables: BackupTables): string[] {
+  return getTableRows(tables, 'caps').map((r) => String(r.id ?? ''));
+}
+
+export function allOrgTeamIds(tables: BackupTables): string[] {
+  return getTableRows(tables, 'org_teams').map((r) => String(r.id ?? ''));
+}
