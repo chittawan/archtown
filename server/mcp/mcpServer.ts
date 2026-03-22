@@ -1,14 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod';
+import { nameToId, sanitizeId } from '../../src/lib/idUtils';
 import { fetchDownloadJson, fetchPatch, fetchUndo } from './archtownApi';
 import {
   aggregateProjects,
   detailExists,
   listTasksFiltered,
   maxSortOrderForSubTopic,
+  maxSortOrderForTopic,
   parseBackupTables,
+  projectExists,
   subTopicExists,
+  topicExists,
 } from './projectAggregates';
 import type { ArchtownMcpContext } from './types';
 
@@ -104,6 +108,80 @@ export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
       const patch = await fetchPatch(ctx, {
         base_version: parsed.version,
         ops: [{ op: 'insert', table: 'project_sub_topic_details', row }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version, id });
+    },
+  );
+
+  server.registerTool(
+    'create_project',
+    {
+      description:
+        'Insert a new row in projects via PATCH /api/sync/patch (op insert). Id is derived from name (same as app: nameToId + sanitize).',
+      inputSchema: {
+        name: z.string().min(1).describe('Project display name'),
+        description: z.string().optional().describe('Optional project description'),
+      },
+    },
+    async (params) => {
+      const projectName = params.name.trim();
+      if (!projectName) return toolErr('name is required');
+      const fileId = sanitizeId(nameToId(projectName)) || 'project';
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (projectExists(parsed.tables, fileId)) {
+        return toolErr(`project id already exists: ${fileId}`);
+      }
+      const row = { id: fileId, name: projectName, description: params.description ?? null };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'insert', table: 'projects', row }],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version, id: fileId });
+    },
+  );
+
+  server.registerTool(
+    'create_sub_topic',
+    {
+      description:
+        'Insert a new row in project_sub_topics under an existing project_topics row via PATCH /api/sync/patch (op insert).',
+      inputSchema: {
+        topic_id: z.string().describe('Parent project_topics id'),
+        title: z.string().min(1).describe('Sub-topic title'),
+        status: z.enum(['GREEN', 'YELLOW', 'RED']).optional().describe('Roll-up status; default GREEN'),
+        sub_topic_type: z.enum(['todos', 'status']).optional().describe('Default todos'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!topicExists(parsed.tables, params.topic_id)) {
+        return toolErr(`topic not found: ${params.topic_id}`);
+      }
+      const id = `st-mcp-${Date.now()}-${randomBytes(3).toString('hex')}`;
+      const sort_order = maxSortOrderForTopic(parsed.tables, params.topic_id) + 1;
+      const status = params.status ?? 'GREEN';
+      const sub_topic_type = params.sub_topic_type ?? 'todos';
+      const row = {
+        id,
+        topic_id: params.topic_id,
+        title: params.title.trim(),
+        status,
+        sub_topic_type,
+        sort_order,
+      };
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [{ op: 'insert', table: 'project_sub_topics', row }],
       });
       if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
       const body = patch.data as Record<string, unknown>;

@@ -164,6 +164,25 @@ export function subTopicExists(tables: BackupTables, subTopicId: string): boolea
   return !!rowById(getTableRows(tables, 'project_sub_topics'), subTopicId);
 }
 
+export function projectExists(tables: BackupTables, projectId: string): boolean {
+  return !!rowById(getTableRows(tables, 'projects'), projectId);
+}
+
+export function topicExists(tables: BackupTables, topicId: string): boolean {
+  return !!rowById(getTableRows(tables, 'project_topics'), topicId);
+}
+
+export function maxSortOrderForTopic(tables: BackupTables, topicId: string): number {
+  const subTopics = getTableRows(tables, 'project_sub_topics');
+  let max = -1;
+  for (const s of subTopics) {
+    if (String(s.topic_id ?? '') !== topicId) continue;
+    const so = typeof s.sort_order === 'number' ? s.sort_order : Number(s.sort_order) || 0;
+    if (so > max) max = so;
+  }
+  return max;
+}
+
 export function detailExists(tables: BackupTables, detailId: string): boolean {
   return !!rowById(getTableRows(tables, 'project_sub_topic_details'), detailId);
 }
