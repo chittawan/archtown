@@ -52,7 +52,7 @@ Content-Type: application/json
 X-Admin-Key: <required when ARCHTOWN_ADMIN_KEY is set>
 
 {
-  "googleId": "107508959445697114581",
+  "googleId": "107508…4581",
   "expiresAt": "2026-12-31T23:59:59Z",
   "scope": "read"
 }

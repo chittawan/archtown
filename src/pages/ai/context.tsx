@@ -176,7 +176,7 @@ export default function AIContextPage() {
           <h3 className="text-sm font-semibold text-[var(--color-text)] mt-4 mb-2">Generate token</h3>
           <CodeBlock title="POST /api/auth/token/generate">{`// Request
 {
-  "googleId": "107508959445697114581",
+  "googleId": "107508…4581",
   "expiresAt": "2026-12-31T23:59:59Z",
   "scope": "read"   // optional: "read" | "write" (default write)
 }
@@ -188,7 +188,7 @@ X-Admin-Key: <your-admin-key>
 {
   "ok": true,
   "token": "atkn_...",
-  "googleId": "107508959445697114581",
+  "googleId": "107508…4581",
   "expiresAt": "2026-12-31T23:59:59.000Z"
 }
 
@@ -235,10 +235,10 @@ Authorization: Bearer <token>   # optional; recommended
 // 404 — no backup yet (Thai error string possible)`}</CodeBlock>
 
           <h3 className="text-sm font-semibold text-[var(--color-text)] mt-4 mb-2">GET /api/sync/download</h3>
-          <CodeBlock title="GET /api/sync/download">{`X-Google-User-Id: 107508959445697114581
+          <CodeBlock title="GET /api/sync/download">{`X-Google-User-Id: 107508…4581
 
 // or
-GET /api/sync/download?userId=107508959445697114581
+GET /api/sync/download?userId=107508…4581
 
 // 200 — schema_version, version, updated_at, tables (10 keys)
 // 404

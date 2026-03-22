@@ -1,0 +1,23 @@
+# Reinstalled inside the image — huge context + breaks layer cache if copied from host
+node_modules
+
+# Rebuilt by `npm run build` in the image
+dist
+
+# Version control (large, irrelevant to the image)
+.git
+.gitignore
+
+# Editor / local tooling
+.cursor
+.idea
+*.swp
+*.swo
+
+# Logs and OS noise
+npm-debug.log*
+.DS_Store
+
+# Optional: keep context smaller when present
+coverage
+.nyc_output
