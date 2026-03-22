@@ -9,6 +9,7 @@ import { createAuthRouter } from './routes/authRoutes';
 import { createSyncRouter } from './routes/syncRoutes';
 import { createAuditRouter } from './routes/auditRoutes';
 import { createAiContextRouter } from './routes/aiContextRoutes';
+import { createMcpRouter } from './routes/mcpRoutes';
 import { mountStaticSpa } from './routes/staticRoutes';
 
 export function createApp(): express.Application {
@@ -30,6 +31,7 @@ export function createApp(): express.Application {
   app.use('/api/sync', createSyncRouter());
   app.use('/api/audit', createAuditRouter());
   app.use('/api/ai', createAiContextRouter());
+  app.use('/mcp', createMcpRouter());
 
   mountStaticSpa(app);
 
