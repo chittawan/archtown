@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod';
-import { nameToId, sanitizeId } from '../../src/lib/idUtils';
+import { nameToId, sanitizeId } from '../../src/lib/idUtils.ts';
 import { fetchDownloadJson, fetchPatch, fetchUndo } from './archtownApi';
 import {
   aggregateProjects,
