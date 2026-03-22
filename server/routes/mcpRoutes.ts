@@ -1,8 +1,9 @@
 import { Router } from 'express';
+import type express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { extractMcpToken } from '../mcp/mcpAuth';
 import { createArchtownMcpServer } from '../mcp/mcpServer';
 import { getSyncUserIdFromIncoming } from '../services/syncUser';
-import { extractTokenFromRequest } from '../services/tokenService';
 
 export function createMcpRouter(): Router {
   const r = Router();
@@ -11,9 +12,9 @@ export function createMcpRouter(): Router {
     res.json({ ok: true, name: 'archtown-mcp', version: '1.0.0' });
   });
 
-  r.post('/', async (req, res) => {
+  const handleMcpPost = async (req: express.Request, res: express.Response) => {
     const userId = getSyncUserIdFromIncoming({ headers: req.headers, query: req.query, url: req.url });
-    const token = extractTokenFromRequest(req);
+    const token = extractMcpToken(req);
     const authHeader = token ? `Bearer ${token}` : null;
     const baseUrl =
       (process.env.ARCHTOWN_BASE_URL && process.env.ARCHTOWN_BASE_URL.replace(/\/$/, '')) ||
@@ -43,7 +44,11 @@ export function createMcpRouter(): Router {
       await mcp.close().catch(() => {});
       await transport.close().catch(() => {});
     }
-  });
+  };
+
+  r.post('/', handleMcpPost);
+  /** e.g. POST https://host/mcp/atkn_xxx?userId=... when headers are not available */
+  r.post('/:mcpToken', handleMcpPost);
 
   return r;
 }
