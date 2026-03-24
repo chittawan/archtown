@@ -1,0 +1,15 @@
+---
+description: ArchTown MCP multi-agent task flow — get_tasks, claim_task, update_task
+alwaysApply: true
+---
+
+# ArchTown MCP workflow (multi-agent)
+
+Use a **stable `agent_name` per machine** (e.g. `cursor-a` on laptop A, `cursor-b` on desktop B). Put the same value in every `claim_task` call on that machine.
+
+1. **`get_tasks`** — e.g. `status: "todo"`. Prefer tasks whose `description` does **not** start with an active claim by another agent: first line `[archtown-claim agent=...]` or legacy `[claimed by ... at ...]`.
+2. **`claim_task`** — call with `id` and `agent_name` **immediately** before you start implementation. Sets `status` to `doing` and records the claim in `description`. If another agent already claimed and you did not pass `force: true`, the tool errors; pick a different task or retry after coordination.
+3. **Implement** according to the task text and description (below the claim line).
+4. **`update_task`** — set `status: "done"` when finished.
+
+Older workflows that skip `claim_task` still work; they simply do not get cross-agent locking. Tools `get_tasks` and `update_task` are unchanged for backward compatibility.

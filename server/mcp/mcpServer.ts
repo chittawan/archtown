@@ -15,6 +15,7 @@ import {
   capExists,
   capProjectLinkExists,
   detailExists,
+  getTableRows,
   listTasksFiltered,
   listTopicsForProject,
   maxCapabilityOrderSort,
@@ -43,6 +44,29 @@ function toolErr(message: string) {
     isError: true as const,
     content: [{ type: 'text' as const, text: message }],
   };
+}
+
+/** First line: ArchTown MCP claim marker (parseable). */
+const ARCHTOWN_CLAIM_LINE_RE = /^\[archtown-claim agent=(.+?) ts=([^\]]+)\]\s*$/;
+
+function parseLeadingClaim(firstLine: string): { agent: string } | null {
+  const m = firstLine.match(ARCHTOWN_CLAIM_LINE_RE);
+  if (m) return { agent: m[1].trim() };
+  const legacy = firstLine.match(/^\[claimed by (.+?) at /);
+  if (legacy) return { agent: legacy[1].trim() };
+  return null;
+}
+
+/** Removes one leading claim line (ArchTown or legacy) from description; returns body text and prior claimer if any. */
+function stripLeadingClaimDescription(desc: string | null | undefined): { body: string; claimedBy: string | undefined } {
+  if (desc == null || desc === '') return { body: '', claimedBy: undefined };
+  const s = String(desc);
+  const nl = s.indexOf('\n');
+  const first = nl === -1 ? s : s.slice(0, nl);
+  const rest = nl === -1 ? '' : s.slice(nl + 1);
+  const claim = parseLeadingClaim(first);
+  if (!claim) return { body: s, claimedBy: undefined };
+  return { body: rest, claimedBy: claim.agent };
 }
 
 async function applyPatchOpsBatches(
@@ -279,6 +303,89 @@ export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
       if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
       const body = patch.data as Record<string, unknown>;
       return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'claim_task',
+    {
+      description:
+        'Claim a task before starting work: sets status to doing and prefixes description with a machine-readable claim line so other agents avoid the same task. Use a stable agent_name per machine (e.g. cursor-a). If another agent already claimed and force is false, returns an error. Retries on sync version conflict (409).',
+      inputSchema: {
+        id: z.string().describe('project_sub_topic_details id'),
+        agent_name: z
+          .string()
+          .min(1)
+          .describe('Stable identifier for this Cursor session/machine, e.g. cursor-a'),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            'If true, overwrite an existing claim by another agent. Default false — refuse when already claimed by someone else.',
+          ),
+      },
+    },
+    async (params) => {
+      const agentName = params.agent_name.trim();
+      if (!agentName) return toolErr('agent_name is required');
+      const force = params.force ?? false;
+      const taskId = params.id;
+      const maxAttempts = 3;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const dl = await fetchDownloadJson(ctx);
+        if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+        const parsed = parseBackupTables(dl.data);
+        if (!parsed) return toolErr('invalid backup shape');
+        if (!detailExists(parsed.tables, taskId)) {
+          return toolErr(`task not found: ${taskId}`);
+        }
+
+        const row = getTableRows(parsed.tables, 'project_sub_topic_details').find((r) => String(r.id ?? '') === taskId);
+        if (!row) return toolErr(`task not found: ${taskId}`);
+
+        const status = String(row.status ?? 'todo');
+        if (status === 'done') {
+          return toolErr('cannot claim a task that is already done');
+        }
+
+        const rawDesc = row.description == null ? null : String(row.description);
+        const { body: bodyWithoutClaim, claimedBy } = stripLeadingClaimDescription(rawDesc);
+        if (claimedBy && claimedBy !== agentName && !force) {
+          return toolErr(
+            `task already claimed by "${claimedBy}"; pick another task or pass force=true to take over (use sparingly)`,
+          );
+        }
+
+        const now = new Date().toISOString();
+        const claimLine = `[archtown-claim agent=${agentName} ts=${now}]`;
+        const newDescription = bodyWithoutClaim === '' ? claimLine : `${claimLine}\n${bodyWithoutClaim}`;
+
+        const patch = await fetchPatch(ctx, {
+          base_version: parsed.version,
+          ops: [
+            {
+              op: 'update',
+              table: 'project_sub_topic_details',
+              id: taskId,
+              fields: { status: 'doing', description: newDescription },
+              field_updated_at: { status: now, description: now },
+            },
+          ],
+        });
+
+        if (patch.ok === true) {
+          const body = patch.data as Record<string, unknown>;
+          return toolJson({ ok: body.ok ?? true, version: body.version, claimed: true, agent_name: agentName });
+        }
+
+        if (patch.status === 409 && attempt < maxAttempts - 1) {
+          continue;
+        }
+        return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      }
+
+      return toolErr('claim failed after retries (version conflict); call get_tasks and try claim_task again');
     },
   );
 
