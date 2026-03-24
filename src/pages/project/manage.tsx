@@ -1381,6 +1381,7 @@ export default function ProjectManagePage() {
                             />
                             <SubtopicDroppableArea
                               teamId={team.id}
+                              projectId={displayProjectId ?? null}
                               topic={topic}
                               isExpanded={isExpanded}
                               openTodoSectionIds={openTodoSectionIds}

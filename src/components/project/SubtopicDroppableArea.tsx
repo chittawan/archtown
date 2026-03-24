@@ -12,6 +12,7 @@ type EditingSubTopicState = {
 
 type SubtopicDroppableAreaProps = {
   teamId: string;
+  projectId: string | null;
   topic: Topic;
   isExpanded: boolean;
   updateSubTopicStatus: (topicId: string, subTopicId: string, s: Status) => void;
@@ -46,6 +47,7 @@ type SubtopicDroppableAreaProps = {
 
 export function SubtopicDroppableArea({
   teamId,
+  projectId,
   topic,
   isExpanded,
   updateSubTopicStatus,
@@ -92,6 +94,7 @@ export function SubtopicDroppableArea({
               <SortableSubTopicCard
                 key={subTopic.id}
                 teamId={teamId}
+                projectId={projectId}
                 topicId={topic.id}
                 subTopic={subTopic}
                 subTopicType={subTopic.subTopicType ?? 'todos'}

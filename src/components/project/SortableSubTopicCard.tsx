@@ -10,6 +10,7 @@ import { ReferenceIdChip } from '../ui/ReferenceIdChip';
 
 type SortableSubTopicCardProps = {
   teamId: string;
+  projectId: string | null;
   topicId: string;
   subTopic: SubTopic;
   onUpdateStatus: (s: Status) => void;
@@ -179,6 +180,7 @@ function SortableDetailRow({
 
 export function SortableSubTopicCard({
   teamId,
+  projectId,
   topicId,
   subTopic,
   onUpdateStatus,
@@ -502,6 +504,15 @@ export function SortableSubTopicCard({
                                     kind="detail_idx"
                                     value={String(index)}
                                     className="max-w-full"
+                                    longPressReferenceChain={[
+                                      { kind: 'detail_idx', value: String(index) },
+                                      { kind: 'sub_id', value: subTopic.id },
+                                      { kind: 'topic_id', value: topicId },
+                                      { kind: 'team_id', value: teamId },
+                                      ...(projectId
+                                        ? [{ kind: 'project_id' as const, value: projectId }]
+                                        : []),
+                                    ]}
                                   />
                                 </div>
                                 <input
@@ -655,6 +666,15 @@ export function SortableSubTopicCard({
                                         kind="detail_idx"
                                         value={String(index)}
                                         className="max-w-full"
+                                        longPressReferenceChain={[
+                                          { kind: 'detail_idx', value: String(index) },
+                                          { kind: 'sub_id', value: subTopic.id },
+                                          { kind: 'topic_id', value: topicId },
+                                          { kind: 'team_id', value: teamId },
+                                          ...(projectId
+                                            ? [{ kind: 'project_id' as const, value: projectId }]
+                                            : []),
+                                        ]}
                                       />
                                     </div>
                                     <input

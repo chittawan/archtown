@@ -9,7 +9,7 @@ type LongPressDeleteButtonProps = {
   ariaLabel?: string;
 };
 
-const REMOVE_HOLD_MS = 1000;
+export const LONG_PRESS_HOLD_MS = 1000;
 
 export function LongPressDeleteButton({
   onDelete,
@@ -47,10 +47,10 @@ export function LongPressDeleteButton({
       }
       setProgress(0);
       onDelete();
-    }, REMOVE_HOLD_MS);
+    }, LONG_PRESS_HOLD_MS);
     const tick = () => {
       const elapsed = Date.now() - startRef.current;
-      const p = Math.min(100, (elapsed / REMOVE_HOLD_MS) * 100);
+      const p = Math.min(100, (elapsed / LONG_PRESS_HOLD_MS) * 100);
       setProgress(p);
       if (p < 100 && timerRef.current != null) {
         rafRef.current = requestAnimationFrame(tick);
