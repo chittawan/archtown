@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod';
 import { ensureUniqueId, nameToId, sanitizeId } from '../lib/idUtils.ts';
-import { fetchDownloadJson, fetchPatch, fetchUndo } from './archtownApi';
+import { fetchDownloadJson, fetchEaJson, fetchPatch, fetchUndo } from './archtownApi';
 import {
   aggregateProjects,
   allCapIds,
@@ -872,6 +872,46 @@ export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
       if (u.ok === false) return toolErr(`undo failed (${u.status}): ${u.text}`);
       const body = u.data as Record<string, unknown>;
       return toolJson({ ok: body.ok ?? true, version: body.version, reversed: body.reversed });
+    },
+  );
+
+  server.registerTool(
+    'create_weekly_snapshot',
+    {
+      description:
+        'Take an EA weekly snapshot for a project (POST /api/ea/:projectId/snapshot). Requires week definitions (PUT weeks) and write token scope.',
+      inputSchema: {
+        project_id: z.string().min(1).describe('Project id (same as projects.id in backup)'),
+        week_no: z.number().int().positive().describe('Week number as defined in PUT .../weeks'),
+      },
+    },
+    async ({ project_id, week_no }) => {
+      const pid = encodeURIComponent(project_id);
+      const r = await fetchEaJson(ctx, 'POST', `/api/ea/${pid}/snapshot`, { week_no });
+      if (r.ok === false) return toolErr(`create_weekly_snapshot failed (${r.status}): ${r.text}`);
+      return toolJson(r.data);
+    },
+  );
+
+  server.registerTool(
+    'get_weekly_history',
+    {
+      description:
+        'Get EA weekly snapshot history (GET /api/ea/:projectId/history) or one week (GET .../history/:week_no when week_no set).',
+      inputSchema: {
+        project_id: z.string().min(1).describe('Project id'),
+        week_no: z.number().int().positive().optional().describe('If set, return only this week (latest snapshot file for that week)'),
+      },
+    },
+    async ({ project_id, week_no }) => {
+      const pid = encodeURIComponent(project_id);
+      const path =
+        week_no !== undefined && week_no !== null
+          ? `/api/ea/${pid}/history/${encodeURIComponent(String(week_no))}`
+          : `/api/ea/${pid}/history`;
+      const r = await fetchEaJson(ctx, 'GET', path);
+      if (r.ok === false) return toolErr(`get_weekly_history failed (${r.status}): ${r.text}`);
+      return toolJson(r.data);
     },
   );
 

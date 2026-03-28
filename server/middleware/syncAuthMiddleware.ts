@@ -54,3 +54,9 @@ export function mountAuditAuthAndRateLimit(app: express.Application, syncRateLim
   app.use('/api/audit', rejectClaimedSyncUserIdMismatch);
   app.use('/api/audit', syncRateLimiter);
 }
+
+export function mountEaAuthAndRateLimit(app: express.Application, syncRateLimiter: ReturnType<typeof createSyncRateLimiter>) {
+  app.use('/api/ea', optionalSyncTokenMiddleware);
+  app.use('/api/ea', rejectClaimedSyncUserIdMismatch);
+  app.use('/api/ea', syncRateLimiter);
+}

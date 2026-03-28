@@ -73,3 +73,30 @@ export async function fetchUndo(
     return { ok: false, status: res.status, text };
   }
 }
+
+export async function fetchEaJson(
+  ctx: ArchtownMcpContext,
+  method: 'GET' | 'PUT' | 'POST',
+  pathname: string,
+  body?: unknown,
+): Promise<{ ok: true; data: unknown } | { ok: false; status: number; text: string }> {
+  const pathPart = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  const url = `${trimBase(ctx.baseUrl)}${pathPart}`;
+  const headers: Record<string, string> = { ...syncHeaders(ctx) };
+  const init: RequestInit = { method, headers };
+  if (body !== undefined && (method === 'PUT' || method === 'POST')) {
+    headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, init);
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text) as unknown;
+    if (!res.ok) {
+      return { ok: false, status: res.status, text: typeof data === 'object' && data ? JSON.stringify(data) : text };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, status: res.status, text };
+  }
+}

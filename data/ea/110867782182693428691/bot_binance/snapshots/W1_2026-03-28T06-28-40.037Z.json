@@ -1,0 +1,26 @@
+{
+  "ts": "2026-03-28T06:28:40.037Z",
+  "trigger": "end-of-week",
+  "project_id": "bot_binance",
+  "week_no": 1,
+  "week_label": "W1",
+  "week_start": "2026-03-23",
+  "week_end": "2026-03-29",
+  "weeks_revision": 1,
+  "teams": {
+    "Codewalk": {
+      "RED": [],
+      "YELLOW": [],
+      "GREEN": [
+        {
+          "subtopic_id": "sub-1773655395946-vj1tl7x",
+          "title": "งานที่ต้องทำ"
+        },
+        {
+          "subtopic_id": "sub-1774140211007",
+          "title": "งานที่ต้องทำ"
+        }
+      ]
+    }
+  }
+}

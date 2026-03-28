@@ -32,6 +32,13 @@ export function buildAIContextMarkdown(baseUrl: string): string {
 | GET | /api/sync/events | SSE stream — real-time ops broadcast (\`text/event-stream\`) |
 | GET | /api/audit | Audit log (query by date or table+id) |
 | POST | /api/audit/undo/:req_id | Undo one PATCH request |
+| GET | /api/ea/overview | Dashboard: all projects + EA week/snapshot counts + latest totals |
+| GET | /api/ea/:projectId/summary | Web summary: weeks + latest snapshot totals per team |
+| GET | /api/ea/:projectId/weeks | EA weekly definitions for a project |
+| PUT | /api/ea/:projectId/weeks | Set week date ranges (\`{ "weeks": [{ week_no, label, start, end }] }\`) |
+| POST | /api/ea/:projectId/snapshot | Take snapshot for \`week_no\` (body \`{ "week_no": number }\`) |
+| GET | /api/ea/:projectId/history | Latest snapshot per \`week_no\` for charts (default); \`?all=1\` returns every file; \`total_files\` = on-disk count |
+| GET | /api/ea/:projectId/history/:week_no | Latest snapshot for one week |
 | GET | /api/ai/context | This document (Markdown) |
 
 ---
@@ -211,7 +218,55 @@ X-Google-User-Id: YOUR_USER_ID
 Authorization: Bearer <token>
 \`\`\`
 
-### 2.6 GET /api/sync/events
+### 2.6 EA weekly status history (per project)
+
+Server-side timeline: custom week ranges per project, snapshots of subtopic RED/YELLOW/GREEN grouped by team.
+
+- Files: \`data/ea/<userId>/<projectId>/weeks.json\` and \`data/ea/<userId>/<projectId>/snapshots/W<week_no>_<ISO>.json\`.
+- **Write** token scope: \`PUT\` weeks, \`POST\` snapshot. **Read** or **write**: \`GET\` weeks/history/overview/summary.
+
+\`\`\`http
+GET ${baseUrl}/api/ea/overview
+X-Google-User-Id: YOUR_USER_ID
+Authorization: Bearer <token>   # optional
+\`\`\`
+
+**200** — \`{ "ok": true, "projects": [{ "project_id", "project_name", "weeks_defined", "snapshots_count", "latest": { "ts", "week_no", "week_label", "subtopic_totals" } }] }\`
+
+\`\`\`http
+GET ${baseUrl}/api/ea/<projectId>/summary
+X-Google-User-Id: YOUR_USER_ID
+\`\`\`
+
+**200** — \`{ "ok": true, "project_id", "project_name", "weeks", "snapshots_count", "latest": { "by_team": { "<team>": { "RED", "YELLOW", "GREEN" } }, ... } }\`
+
+\`\`\`http
+PUT ${baseUrl}/api/ea/<projectId>/weeks
+Content-Type: application/json
+X-Google-User-Id: YOUR_USER_ID
+Authorization: Bearer <token>
+
+{ "weeks": [{ "week_no": 1, "label": "W1", "start": "2026-03-01", "end": "2026-03-07" }] }
+\`\`\`
+
+\`\`\`http
+POST ${baseUrl}/api/ea/<projectId>/snapshot
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{ "week_no": 1 }
+\`\`\`
+
+\`\`\`http
+GET ${baseUrl}/api/ea/<projectId>/history
+X-Google-User-Id: YOUR_USER_ID
+\`\`\`
+
+Response includes \`snapshots\` (deduped by \`week_no\` unless \`?all=1\`), \`total_files\`, \`display_mode\`. Each PUT to weeks bumps \`weeks_revision\`; snapshots store that revision at capture time.
+
+**MCP tools:** \`create_weekly_snapshot\` (\`project_id\`, \`week_no\`), \`get_weekly_history\` (\`project_id\`, optional \`week_no\`).
+
+### 2.7 GET /api/sync/events
 
 Subscribe to real-time ops stream. Reconnect with \`Last-Event-Id\` header to replay missed ops.
 

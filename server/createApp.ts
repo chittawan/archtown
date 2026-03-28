@@ -3,12 +3,14 @@ import express from 'express';
 import {
   createSyncRateLimiter,
   mountAuditAuthAndRateLimit,
+  mountEaAuthAndRateLimit,
   mountSyncAuthAndRateLimit,
 } from './middleware/syncAuthMiddleware';
 import { createAuthRouter } from './routes/authRoutes';
 import { createSyncRouter } from './routes/syncRoutes';
 import { createAuditRouter } from './routes/auditRoutes';
 import { createAiContextRouter } from './routes/aiContextRoutes';
+import { createEaRouter } from './routes/eaRoutes';
 import { createMcpRouter } from './routes/mcpRoutes';
 import { mountStaticSpa } from './routes/staticRoutes';
 
@@ -26,10 +28,12 @@ export function createApp(): express.Application {
   const syncRateLimiter = createSyncRateLimiter();
   mountSyncAuthAndRateLimit(app, syncRateLimiter);
   mountAuditAuthAndRateLimit(app, syncRateLimiter);
+  mountEaAuthAndRateLimit(app, syncRateLimiter);
 
   app.use('/api/auth', createAuthRouter());
   app.use('/api/sync', createSyncRouter());
   app.use('/api/audit', createAuditRouter());
+  app.use('/api/ea', createEaRouter());
   app.use('/api/ai', createAiContextRouter());
   app.use('/mcp', createMcpRouter());
 

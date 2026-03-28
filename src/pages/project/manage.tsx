@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useReducer } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, Users, FolderPlus, Download, Upload, FileText, FolderKanban, Save } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Plus, ChevronDown, ChevronRight, Users, FolderPlus, Download, Upload, FileText, FolderKanban, Save, LineChart } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -28,6 +28,7 @@ import { TeamModal } from './TeamModal';
 import { TopicModal } from './TopicModal';
 import { SubTopicModal } from './SubTopicModal';
 import { ReferenceIdChip } from '../../components/ui/ReferenceIdChip';
+import { EaWeeklyTrendPanel } from '../../components/project/EaWeeklyTrendPanel';
 
 const INITIAL_DATA: Team[] = [];
 
@@ -1124,6 +1125,16 @@ export default function ProjectManagePage() {
             <FileText className="w-4 h-4 mr-1.5" />
             Summary View
           </button>
+          {displayProjectId ? (
+            <Link
+              to={`/ea/weekly?project=${encodeURIComponent(displayProjectId)}`}
+              className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-xl text-sm font-medium transition-colors"
+              title="ประวัติ EA รายสัปดาห์บนคลาวด์ — กราฟและสรุปทุกโปรเจกต์"
+            >
+              <LineChart className="w-4 h-4 mr-1.5" />
+              ประวัติ EA
+            </Link>
+          ) : null}
           <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
           <button
             onClick={() => teamModal.open()}
@@ -1146,6 +1157,8 @@ export default function ProjectManagePage() {
           className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder-[var(--color-text-subtle)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50 focus:border-[var(--color-primary)] resize-y min-h-[3.5rem] text-sm transition-colors"
         />
       </div>
+
+      <EaWeeklyTrendPanel projectId={displayProjectId} />
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-3 items-center text-sm shadow-[var(--shadow-card)]">
         <span className="font-medium text-[var(--color-text-muted)] mr-1 shrink-0">
@@ -1515,6 +1528,7 @@ export default function ProjectManagePage() {
           />
         </div>
       )}
+
     </div>
   );
 }
