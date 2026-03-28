@@ -68,16 +68,73 @@ export type EaHistorySnapshot = {
   teams: Record<string, TeamBuckets>;
 };
 
-function teamTotalsFromSnapshot(
-  s: EaHistorySnapshot,
-  teamName: string,
-): { RED: number; YELLOW: number; GREEN: number } {
-  const t = s.teams?.[teamName];
-  if (!t) return { RED: 0, YELLOW: 0, GREEN: 0 };
+function emptyTeamBuckets(): TeamBuckets {
+  return { RED: [], YELLOW: [], GREEN: [] };
+}
+
+function subtopicIdFromEaItem(item: unknown): string {
+  if (item && typeof item === 'object' && 'subtopic_id' in item) {
+    return String((item as { subtopic_id: unknown }).subtopic_id ?? '');
+  }
+  return '';
+}
+
+function pushUniqueSubtopicItem(arr: unknown[], item: unknown) {
+  const id = subtopicIdFromEaItem(item);
+  if (!id) {
+    arr.push(item);
+    return;
+  }
+  if (arr.some((x) => subtopicIdFromEaItem(x) === id)) return;
+  arr.push(item);
+}
+
+function mergeTeamBucketsInto(target: TeamBuckets, source: TeamBuckets) {
+  for (const st of ['RED', 'YELLOW', 'GREEN'] as const) {
+    for (const item of source[st] ?? []) {
+      pushUniqueSubtopicItem(target[st], item);
+    }
+  }
+}
+
+/**
+ * รวมข้อมูลทีมจาก snapshot ทุกคีย์ที่เป็นทีมเดียวกัน (เช่น ชื่อเก่า vs team id vs ชื่อปัจจุบัน)
+ * เมื่อมี subtopic→team map จะจับคู่ตาม subtopic_id จากโปรเจกต์ปัจจุบัน
+ */
+function bucketsForTeamRow(
+  snap: EaHistorySnapshot,
+  teamId: string,
+  teamDisplayName: string,
+  subtopicToTeam?: Map<string, string>,
+): TeamBuckets {
+  const out = emptyTeamBuckets();
+  const directId = snap.teams?.[teamId];
+  const directName = snap.teams?.[teamDisplayName];
+  if (directId) mergeTeamBucketsInto(out, directId);
+  if (directName) mergeTeamBucketsInto(out, directName);
+
+  if (subtopicToTeam?.size) {
+    for (const buckets of Object.values(snap.teams ?? {})) {
+      if (!buckets) continue;
+      for (const st of ['RED', 'YELLOW', 'GREEN'] as const) {
+        for (const item of buckets[st] ?? []) {
+          const sid = subtopicIdFromEaItem(item);
+          if (sid && subtopicToTeam.get(sid) === teamId) {
+            pushUniqueSubtopicItem(out[st], item);
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function teamTotalsFromBuckets(b: TeamBuckets | undefined): { RED: number; YELLOW: number; GREEN: number } {
+  if (!b) return { RED: 0, YELLOW: 0, GREEN: 0 };
   return {
-    RED: Array.isArray(t.RED) ? t.RED.length : 0,
-    YELLOW: Array.isArray(t.YELLOW) ? t.YELLOW.length : 0,
-    GREEN: Array.isArray(t.GREEN) ? t.GREEN.length : 0,
+    RED: Array.isArray(b.RED) ? b.RED.length : 0,
+    YELLOW: Array.isArray(b.YELLOW) ? b.YELLOW.length : 0,
+    GREEN: Array.isArray(b.GREEN) ? b.GREEN.length : 0,
   };
 }
 
@@ -92,6 +149,62 @@ function formatWeekRange(start?: string, end?: string): string {
   } catch {
     return `${start} – ${end}`;
   }
+}
+
+/** คีย์ YYYY-MM จาก week_start ของ snapshot (หรือจาก ts) — ใช้จัดกลุ่มหัวคอลัมน์ตามเดือน */
+function monthKeyFromEaColumn(col: { snapshot: EaHistorySnapshot }): string {
+  const start = col.snapshot.week_start?.trim();
+  if (start && /^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    return start.slice(0, 7);
+  }
+  const d = new Date(col.snapshot.ts);
+  if (Number.isNaN(d.getTime())) return 'unknown';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabelThForEa(monthKey: string, compact: boolean): string {
+  if (monthKey === 'unknown') return '—';
+  const y = Number(monthKey.slice(0, 4));
+  const m = Number(monthKey.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return monthKey;
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('th-TH', {
+    month: compact ? 'short' : 'long',
+    year: compact ? '2-digit' : 'numeric',
+  });
+}
+
+type EaWeekColumn = {
+  key: string;
+  label: string;
+  range: string;
+  titleLine: string;
+  snapshot: EaHistorySnapshot;
+};
+
+function buildEaMonthHeaderSegments(
+  cols: EaWeekColumn[],
+  compact: boolean,
+): { key: string; label: string; colSpan: number }[] {
+  if (!cols.length) return [];
+  const segments: { key: string; label: string; colSpan: number }[] = [];
+  let i = 0;
+  while (i < cols.length) {
+    const mk = monthKeyFromEaColumn(cols[i]);
+    let span = 1;
+    let j = i + 1;
+    while (j < cols.length && monthKeyFromEaColumn(cols[j]) === mk) {
+      span++;
+      j++;
+    }
+    segments.push({
+      key: `${mk}-${i}`,
+      label: monthLabelThForEa(mk, compact),
+      colSpan: span,
+    });
+    i = j;
+  }
+  return segments;
 }
 
 function weekColumnFullHeaderTitle(col: {
@@ -359,7 +472,14 @@ function rollupStatusTipClass(rollup: Exclude<SummaryRollup, 'empty'>): string {
   return 'text-emerald-700 dark:text-emerald-300';
 }
 
-/** ไอคอนสรุปภาพรวม (🔴🟡🟢) — hover/focus แบบเดียวกับช่องสี่เหลี่ยม + tooltip ผ่าน portal */
+/** โทนเดียวกับ StatusBadge compact บนหน้าโปรเจกต์ */
+function summaryRollupChipPillClass(rollup: Exclude<SummaryRollup, 'empty'>): string {
+  if (rollup === 'RED') return 'bg-red-500/10 text-red-600 dark:text-red-400';
+  if (rollup === 'YELLOW') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+  return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+}
+
+/** ไอคอนสรุปภาพรวม (🔴🟡🟢) — chip มุมโค้งคล้าย Status บนหน้าโปรเจกต์ + tooltip */
 function SummaryRollupWithTip({
   rollup,
   totals,
@@ -393,11 +513,13 @@ function SummaryRollupWithTip({
     return () => el.removeEventListener('focusout', onFocusOut);
   }, []);
 
-  const emojiCls = compact ? 'text-base leading-none' : 'text-lg leading-none';
-  const rollupHit =
-    'inline-flex min-h-[1.5rem] min-w-[1.5rem] cursor-default items-center justify-center rounded-md outline-none transition-[transform,box-shadow] duration-150 ease-out hover:z-20 hover:scale-110 hover:shadow-md hover:ring-2 hover:ring-[var(--color-primary)] hover:ring-offset-1 hover:ring-offset-[var(--color-page)] focus-visible:z-20 focus-visible:scale-110 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-page)]';
-  const rollupActive =
-    'z-20 scale-110 shadow-md ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-page)]';
+  const chipBase =
+    'inline-flex shrink-0 cursor-default items-center justify-center rounded px-1.5 py-0.5 font-medium leading-none outline-none transition-[transform,box-shadow] duration-150 ease-out hover:z-20 hover:scale-105 hover:ring-2 hover:ring-[var(--color-primary)]/35 hover:ring-offset-1 hover:ring-offset-[var(--color-page)] focus-visible:z-20 focus-visible:scale-105 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-page)]';
+  const chipSize = compact
+    ? 'min-h-[1.125rem] min-w-[1.25rem] text-[9px]'
+    : 'min-h-[1.25rem] min-w-[1.25rem] text-sm';
+  const chipActive =
+    'z-20 scale-105 shadow-sm ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-page)]';
 
   return (
     <>
@@ -414,7 +536,7 @@ function SummaryRollupWithTip({
           role="img"
           aria-label={historyModeTooltip(contextLine, totals)}
           tabIndex={0}
-          className={`${emojiCls} ${rollupHit} ${tipAnchor ? rollupActive : ''}`}
+          className={`${chipBase} ${chipSize} ${summaryRollupChipPillClass(rollup)} ${tipAnchor ? chipActive : ''}`}
           onMouseEnter={(e) => setTipAnchor(eaClampedTooltipAnchor(e.currentTarget))}
           onFocus={(e) => setTipAnchor(eaClampedTooltipAnchor(e.currentTarget))}
         >
@@ -478,9 +600,72 @@ function HistoryModeCellBlock({
   );
 }
 
-type Props = { projectId: string | null | undefined; refreshKey?: number };
+export type EaTeamOrderEntry = { id: string; name: string };
 
-export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
+type Props = {
+  projectId: string | null | undefined;
+  refreshKey?: number;
+  /** ทีมตามลำดับโปรเจกต์ (id + ชื่อปัจจุบัน) — แถวใช้ id เป็นคีย์ แสดงชื่อล่าสุด */
+  teamOrder?: readonly EaTeamOrderEntry[];
+  /** subtopic_id → team_id — รวม snapshot ที่คีย์เป็นชื่อเก่า/ทีมเดียวกันเข้าแถวเดียว */
+  subtopicToTeamId?: ReadonlyMap<string, string> | Record<string, string>;
+};
+
+function labelForTeamRow(rowKey: string, teamOrder: readonly EaTeamOrderEntry[] | undefined): string {
+  const hit = teamOrder?.find((t) => t.id === rowKey);
+  return hit?.name ?? rowKey;
+}
+
+/**
+ * ลำดับแถว: คีย์เป็น team id เมื่อมี teamOrder
+ * - มี subtopic map: เฉพาะทีมในโปรเจกต์ (ไม่แยกแถวซ้ำจากชื่อเก่า)
+ * - ไม่มี map: ต่อท้ายด้วยคีย์ใน snapshot ที่ไม่ใช่ id/ชื่อของทีมในโปรเจกต์
+ */
+function teamRowKeysSorted(
+  snapshots: EaHistorySnapshot[],
+  teamOrder: readonly EaTeamOrderEntry[] | undefined,
+  subtopicToTeam?: Map<string, string>,
+): string[] {
+  const set = new Set<string>();
+  for (const s of snapshots) {
+    for (const name of Object.keys(s.teams ?? {})) {
+      if (name) set.add(name);
+    }
+  }
+  if (!teamOrder?.length) {
+    return [...set].sort((a, b) => a.localeCompare(b, 'th'));
+  }
+  const inOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const t of teamOrder) {
+    if (!t.id || seen.has(t.id)) continue;
+    seen.add(t.id);
+    inOrder.push(t.id);
+  }
+  if (subtopicToTeam?.size) {
+    return inOrder;
+  }
+  const idSet = new Set(teamOrder.map((t) => t.id));
+  const nameSet = new Set(teamOrder.map((t) => t.name));
+  const extras: string[] = [];
+  for (const k of set) {
+    if (idSet.has(k) || nameSet.has(k)) continue;
+    extras.push(k);
+  }
+  extras.sort((a, b) => a.localeCompare(b, 'th'));
+  return [...inOrder, ...extras];
+}
+
+function toSubtopicTeamMap(
+  raw: ReadonlyMap<string, string> | Record<string, string> | undefined,
+): Map<string, string> | undefined {
+  if (!raw) return undefined;
+  if (raw instanceof Map) return raw.size ? raw : undefined;
+  const e = Object.entries(raw);
+  return e.length ? new Map(e) : undefined;
+}
+
+export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subtopicToTeamId }: Props) {
   const [snapshots, setSnapshots] = useState<EaHistorySnapshot[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -627,16 +812,12 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
     };
   }, [eaSnapshotModalOpen, projectId]);
 
-  const teamNames = useMemo(() => {
-    if (!snapshots?.length) return [];
-    const set = new Set<string>();
-    for (const s of snapshots) {
-      for (const name of Object.keys(s.teams ?? {})) {
-        if (name) set.add(name);
-      }
-    }
-    return [...set].sort((a, b) => a.localeCompare(b, 'th'));
-  }, [snapshots]);
+  const subtopicTeamMap = useMemo(() => toSubtopicTeamMap(subtopicToTeamId), [subtopicToTeamId]);
+
+  const teamRowKeys = useMemo(
+    () => (snapshots?.length ? teamRowKeysSorted(snapshots, teamOrder, subtopicTeamMap) : []),
+    [snapshots, teamOrder, subtopicTeamMap],
+  );
 
   const allWeekColumns = useMemo(() => {
     if (!snapshots?.length) return [];
@@ -661,6 +842,29 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
   }, [allWeekColumns, timelineWeekSpan]);
 
   const timelineCompact = displayWeekColumns.length >= TIMELINE_COMPACT_AT_COLUMNS;
+
+  const monthHeaderSegments = useMemo(
+    () => buildEaMonthHeaderSegments(displayWeekColumns, timelineCompact),
+    [displayWeekColumns, timelineCompact],
+  );
+
+  /** แต่ละคอลัมน์สัปดาห์อยู่แถบเดือนที่ k — ใช้สลับสีเข้ม/อ่อนให้ตรงกับหัวเดือน */
+  const weekColumnMonthStripeIndex = useMemo(() => {
+    const n = displayWeekColumns.length;
+    const out: number[] = new Array(n);
+    let seg = 0;
+    let countInSeg = 0;
+    for (let i = 0; i < n; i++) {
+      out[i] = seg;
+      countInSeg++;
+      const span = monthHeaderSegments[seg]?.colSpan ?? 1;
+      if (countInSeg >= span) {
+        seg++;
+        countInSeg = 0;
+      }
+    }
+    return out;
+  }, [displayWeekColumns, monthHeaderSegments]);
 
   const pid = projectId?.trim() ?? '';
 
@@ -818,8 +1022,8 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
         </p>
       )}
       {!loading && !error && allWeekColumns.length > 0 && (
-        <div className="mt-4 flex flex-col gap-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-page)]/30">
-          <div className="flex flex-col gap-2 border-b border-[var(--color-border)] bg-[var(--color-overlay)] px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="mt-4 flex flex-col gap-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/50 shadow-[inset_0_1px_0_0_var(--color-border)] dark:bg-[var(--color-page)]/40 dark:shadow-[inset_0_1px_0_0_var(--color-border-strong)]">
+          <div className="flex flex-col gap-2 rounded-t-[inherit] border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between dark:bg-[var(--color-surface-elevated)]/85">
             <label className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text)]">
               <span className="shrink-0 font-medium text-[var(--color-text-muted)]">ช่วงที่แสดง</span>
               <select
@@ -829,7 +1033,7 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
                   if (v === 'all') persistTimelineWeekSpan('all');
                   else persistTimelineWeekSpan(Number(v) as 8 | 13 | 26 | 52);
                 }}
-                className="max-w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs text-[var(--color-text)]"
+                className="max-w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-page)] px-2 py-1.5 text-xs text-[var(--color-text)] transition-colors dark:bg-[var(--color-surface)]"
               >
                 {TIMELINE_SPAN_OPTIONS.map((o) => (
                   <option key={String(o.value)} value={String(o.value)}>
@@ -850,18 +1054,50 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
               {' · เลื่อนแนวตั้ง/แนวนอน'}
             </p>
           </div>
-          <div className="max-h-[min(70vh,560px)] overflow-auto">
+          <div className="ea-timeline-scroll max-h-[min(70vh,560px)] min-h-0 overflow-auto overscroll-contain">
             <table className="w-max min-w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)]">
-                  <th className="sticky left-0 top-0 z-30 w-[min(28vw,11rem)] max-w-[11rem] border-r border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left align-bottom text-xs font-semibold text-[var(--color-text-muted)] shadow-[4px_0_12px_-4px_rgba(0,0,0,0.12)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)]">
+                  <th
+                    rowSpan={2}
+                    className="sticky left-0 top-0 z-[32] w-[min(28vw,11rem)] max-w-[11rem] border-r border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left align-middle text-xs font-semibold text-[var(--color-text-muted)] shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:bg-[var(--color-surface)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.45)]"
+                  >
                     ทีม / สัปดาห์
                   </th>
-                  {displayWeekColumns.map((col) => (
+                  {monthHeaderSegments.map((seg, monthIdx) => {
+                    const stripeEven = monthIdx % 2 === 0;
+                    return (
+                      <th
+                        key={seg.key}
+                        colSpan={seg.colSpan}
+                        scope="colgroup"
+                        className={`box-border border-b border-r border-[var(--color-border)] text-center align-middle font-semibold tracking-wide text-[var(--color-text-muted)] ${
+                          stripeEven
+                            ? 'bg-[var(--color-primary-muted)] dark:bg-[var(--color-surface-elevated)]'
+                            : 'bg-[var(--color-page)] dark:bg-[var(--color-surface)]'
+                        } ${
+                          timelineCompact
+                            ? 'min-h-[1.75rem] px-0.5 py-1 text-[9px] leading-tight'
+                            : 'min-h-10 px-2 py-1.5 text-[10px] leading-snug'
+                        }`}
+                      >
+                        {seg.label}
+                      </th>
+                    );
+                  })}
+                </tr>
+                <tr className="border-b border-[var(--color-border)]">
+                  {displayWeekColumns.map((col, colIdx) => {
+                    const stripeEven = (weekColumnMonthStripeIndex[colIdx] ?? 0) % 2 === 0;
+                    return (
                     <th
                       key={col.key}
                       title={weekColumnFullHeaderTitle(col)}
-                      className={`sticky top-0 z-[24] border-b border-[var(--color-border)] bg-[var(--color-overlay)] text-center align-bottom font-normal ${
+                      className={`box-border border-b border-r border-[var(--color-border)] text-center align-bottom font-normal ${
+                        stripeEven
+                          ? 'bg-[var(--color-primary-muted)]/55 dark:bg-[var(--color-surface-elevated)]'
+                          : 'bg-[var(--color-surface)] dark:bg-[var(--color-surface)]'
+                      } ${
                         timelineCompact
                           ? 'min-w-[3.25rem] max-w-[4rem] px-0.5 py-1.5'
                           : 'min-w-[7rem] max-w-[7.75rem] px-2 py-2'
@@ -880,61 +1116,56 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0 }: Props) {
                         {!timelineCompact && col.range ? (
                           <span className="text-[10px] leading-tight text-[var(--color-text-muted)]">{col.range}</span>
                         ) : null}
-                        {!timelineCompact ? (
-                          <span className="text-[9px] tabular-nums text-[var(--color-text-subtle)]">
-                            {new Date(col.snapshot.ts).toLocaleDateString('th-TH', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        ) : null}
                       </div>
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {teamNames.map((team) => (
-                  <tr key={team} className="border-b border-[var(--color-border)] last:border-0">
-                    <td
-                      className={`${stickyCell} z-10 max-w-[11rem] truncate text-xs font-medium text-[var(--color-text)]`}
-                      title={team}
-                    >
-                      {team}
-                    </td>
-                    {displayWeekColumns.map((col) => {
-                      const t = teamTotalsFromSnapshot(col.snapshot, team);
-                      const contextLine = `${col.titleLine}\nทีม ${team}`;
-                      const blocks = blocksFromTeamBuckets(col.snapshot.teams?.[team], null);
-                      return (
-                        <td
-                          key={`${team}-${col.key}`}
-                          className={`align-middle text-center ${
-                            timelineCompact
-                              ? 'min-w-[3.25rem] max-w-[4rem] px-0.5 py-1'
-                              : 'min-w-[7rem] max-w-[7.75rem] px-2 py-2'
-                          }`}
-                        >
-                          <HistoryModeCellBlock
-                            blocks={blocks}
-                            totals={t}
-                            contextLine={contextLine}
-                            compact={timelineCompact}
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {teamRowKeys.map((rowKey) => {
+                  const teamLabel = labelForTeamRow(rowKey, teamOrder);
+                  return (
+                    <tr key={rowKey} className="border-b border-[var(--color-border)] last:border-0">
+                      <td
+                        className={`${stickyCell} z-10 max-w-[11rem] truncate text-xs font-medium text-[var(--color-text)]`}
+                        title={teamLabel}
+                      >
+                        {teamLabel}
+                      </td>
+                      {displayWeekColumns.map((col) => {
+                        const merged = bucketsForTeamRow(col.snapshot, rowKey, teamLabel, subtopicTeamMap);
+                        const t = teamTotalsFromBuckets(merged);
+                        const contextLine = `${col.titleLine}\nทีม ${teamLabel}`;
+                        const blocks = blocksFromTeamBuckets(merged, teamLabel);
+                        return (
+                          <td
+                            key={`${rowKey}-${col.key}`}
+                            className={`align-middle text-center ${
+                              timelineCompact
+                                ? 'min-w-[3.25rem] max-w-[4rem] px-0.5 py-1'
+                                : 'min-w-[7rem] max-w-[7.75rem] px-2 py-2'
+                            }`}
+                          >
+                            <HistoryModeCellBlock
+                              blocks={blocks}
+                              totals={t}
+                              contextLine={contextLine}
+                              compact={timelineCompact}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {!loading && !error && allWeekColumns.length > 0 && teamNames.length === 0 && (
+      {!loading && !error && allWeekColumns.length > 0 && teamRowKeys.length === 0 && (
         <p className="mt-2 text-xs text-[var(--color-text-muted)]">
           ยังไม่พบชื่อทีมใน snapshot — ตรวจสอบว่าโปรเจกต์มีทีมและหัวข้อในสำรองคลาวด์
         </p>

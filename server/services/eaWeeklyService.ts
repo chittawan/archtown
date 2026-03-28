@@ -85,16 +85,17 @@ function readBackupTables(userId: string): { ok: true; tables: BackupTables } | 
   return { ok: true, tables: parsed.tables };
 }
 
-function buildTopicToTeamName(tables: BackupTables): Map<string, { teamName: string; projectId: string }> {
+function buildTopicToTeamMeta(tables: BackupTables): Map<string, { teamId: string; teamName: string; projectId: string }> {
   const topics = getTableRows(tables, 'project_topics');
   const teams = getTableRows(tables, 'project_teams');
-  const map = new Map<string, { teamName: string; projectId: string }>();
+  const map = new Map<string, { teamId: string; teamName: string; projectId: string }>();
   for (const t of topics) {
     const topicId = String(t.id ?? '');
     const teamId = String(t.team_id ?? '');
     const team = teams.find((x) => String(x.id) === teamId);
     if (!team) continue;
     map.set(topicId, {
+      teamId: String(team.id ?? ''),
       teamName: String(team.name ?? 'Team'),
       projectId: String(team.project_id ?? ''),
     });
@@ -102,9 +103,10 @@ function buildTopicToTeamName(tables: BackupTables): Map<string, { teamName: str
   return map;
 }
 
+/** คีย์เป็น project_teams.id — ทนต่อการเปลี่ยนชื่อทีม; snapshot เก่าที่คีย์เป็นชื่อยังอ่านได้ฝั่ง client */
 function computeTeamsSnapshot(tables: BackupTables, projectId: string): Record<string, TeamSnapshotBuckets> {
   const subTopics = getTableRows(tables, 'project_sub_topics');
-  const topicToTeam = buildTopicToTeamName(tables);
+  const topicToTeam = buildTopicToTeamMeta(tables);
   const teamsOut: Record<string, TeamSnapshotBuckets> = {};
 
   const emptyBucket = (): TeamSnapshotBuckets => ({ RED: [], YELLOW: [], GREEN: [] });
@@ -116,11 +118,12 @@ function computeTeamsSnapshot(tables: BackupTables, projectId: string): Record<s
 
     const raw = st.status;
     const status = raw === 'RED' || raw === 'YELLOW' ? raw : 'GREEN';
-    const teamName = meta.teamName;
-    if (!teamsOut[teamName]) teamsOut[teamName] = emptyBucket();
+    const rowKey = meta.teamId || meta.teamName;
+    if (!rowKey) continue;
+    if (!teamsOut[rowKey]) teamsOut[rowKey] = emptyBucket();
     const id = String(st.id ?? '');
     const title = String(st.title ?? '');
-    teamsOut[teamName][status].push({ subtopic_id: id, title });
+    teamsOut[rowKey][status].push({ subtopic_id: id, title });
   }
 
   return teamsOut;
@@ -327,6 +330,35 @@ export function snapshotByTeamCounts(snap: WeeklySnapshotFile): Record<string, S
   return out;
 }
 
+/** แปลงคีย์ team id ใน snapshot เป็นชื่อทีมปัจจุบันจาก backup (snapshot เก่าที่คีย์เป็นชื่อคงเดิม) */
+function snapshotByTeamCountsWithDisplayNames(
+  snap: WeeklySnapshotFile,
+  tables: BackupTables,
+  projectId: string,
+): Record<string, SubtopicTotals> {
+  const raw = snapshotByTeamCounts(snap);
+  const teamRows = getTableRows(tables, 'project_teams').filter((t) => String(t.project_id ?? '') === projectId);
+  const idToName = new Map<string, string>();
+  for (const r of teamRows) {
+    idToName.set(String(r.id ?? ''), String(r.name ?? r.id ?? ''));
+  }
+  const out: Record<string, SubtopicTotals> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    const label = idToName.get(k) ?? k;
+    const cur = out[label];
+    if (cur) {
+      out[label] = {
+        RED: cur.RED + v.RED,
+        YELLOW: cur.YELLOW + v.YELLOW,
+        GREEN: cur.GREEN + v.GREEN,
+      };
+    } else {
+      out[label] = { ...v };
+    }
+  }
+  return out;
+}
+
 function pickLatestSnapshotByTs(snapshots: WeeklySnapshotFile[]): WeeklySnapshotFile | undefined {
   if (!snapshots.length) return undefined;
   return snapshots.reduce((best, s) => (String(s.ts) > String(best.ts) ? s : best));
@@ -425,7 +457,7 @@ export function getProjectEaSummary(
         week_start: latestSnap.week_start,
         week_end: latestSnap.week_end,
         subtopic_totals: snapshotSubtopicTotals(latestSnap),
-        by_team: snapshotByTeamCounts(latestSnap),
+        by_team: snapshotByTeamCountsWithDisplayNames(latestSnap, backup.tables, projectId),
       }
     : undefined;
   return {

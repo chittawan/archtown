@@ -270,6 +270,23 @@ export default function ProjectManagePage() {
     return counts;
   }, [teams]);
 
+  /** ลำดับทีม (id + ชื่อปัจจุบัน) สำหรับตาราง EA — รวม snapshot หลังเปลี่ยนชื่อทีม */
+  const eaTimelineTeamOrder = useMemo(
+    () => teams.map((t) => ({ id: t.id, name: t.name })),
+    [teams],
+  );
+  const eaSubtopicToTeamId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const tm of teams) {
+      for (const top of tm.topics) {
+        for (const st of top.subTopics) {
+          m.set(st.id, tm.id);
+        }
+      }
+    }
+    return m;
+  }, [teams]);
+
   const filteredTeams = useMemo(
     () => getFilteredTeams(teams, statusFilter),
     [teams, statusFilter]
@@ -1158,7 +1175,11 @@ export default function ProjectManagePage() {
         />
       </div>
 
-      <EaWeeklyTrendPanel projectId={displayProjectId} />
+      <EaWeeklyTrendPanel
+        projectId={displayProjectId}
+        teamOrder={eaTimelineTeamOrder}
+        subtopicToTeamId={eaSubtopicToTeamId}
+      />
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-3 items-center text-sm shadow-[var(--shadow-card)]">
         <span className="font-medium text-[var(--color-text-muted)] mr-1 shrink-0">
