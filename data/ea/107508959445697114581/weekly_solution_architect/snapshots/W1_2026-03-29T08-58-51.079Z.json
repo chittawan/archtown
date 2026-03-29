@@ -1,0 +1,110 @@
+{
+  "ts": "2026-03-29T08:58:51.079Z",
+  "trigger": "end-of-week",
+  "project_id": "weekly_solution_architect",
+  "week_no": 1,
+  "week_label": "W1",
+  "week_start": "2026-03-23",
+  "week_end": "2026-03-29",
+  "weeks_revision": 1,
+  "teams": {
+    "t-1773575363081-yjn6h9a": {
+      "RED": [],
+      "YELLOW": [
+        {
+          "detail_id": "d-1774017948526-9p8eonw",
+          "text": "[13:00 - 13:30] Update Summary Project [PM/PO]",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "done",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948527-4efbvc3",
+          "text": "[13:00 - 13:30] One Customer : planning resource on Production [ P'แป๊ะ ]",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "done",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948527-81t5srz",
+          "text": "[14:00 - 15:00] [Architecture Review] Weight management [vendor, K.Naris, K.Bas] Cont 2 ",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "done",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948527-5f5c8pq",
+          "text": "[16:00 - 17:00] Product and price : planning resource on Production [ Acadia ]",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "done",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948528-4igqgno",
+          "text": "Monthly Update Status Architecture",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948528-6lruins",
+          "text": "Tech Radar Workshop Count 3 [SolDev]",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948528-vuh801l",
+          "text": "Acadia sharing : Proof of work process (รอแจ้งวันอีกที)",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774017948528-o4k075k",
+          "text": "[APIM Gravitee] Discussion Adoption APIM Process - Survey Development Role",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        }
+      ],
+      "GREEN": [
+        {
+          "detail_id": "d-1774017948527-fkibh9e",
+          "text": "[15:00 - 16:00] [APIM Gravitee] Discussion Adoption APIM Process [ P’Aut] Cont 2",
+          "subtopic_id": "sub-1773575363081-vf1uxbr",
+          "subtopic_title": "Solution Architect [19/03/2026]",
+          "topic_id": "top-1773575363081-vl9wpcs",
+          "topic_title": "Solution Architect",
+          "task_status": "done",
+          "subtopic_status": "GREEN",
+          "health_note": "ทดสอบการ Review"
+        }
+      ]
+    }
+  }
+}

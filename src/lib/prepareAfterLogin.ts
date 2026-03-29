@@ -1,6 +1,6 @@
-import { ensureDb } from '../db/client';
 import * as archtownDb from '../db/archtownDb';
 import { isSyncAvailable, downloadFromCloud } from '../db/cloudSync';
+import { toError } from './formatUnknownError';
 
 export type PrepareStep =
   | { progress: number; label: string }
@@ -17,7 +17,9 @@ const PREPARE_AFTER_LOGIN_TIMEOUT_MS = 180_000;
 export async function prepareAfterLogin(onStep?: (s: PrepareStep) => void): Promise<void> {
   const run = async (): Promise<void> => {
     onStep?.({ progress: 10, label: 'กำลังเตรียมฐานข้อมูล...' });
-    await ensureDb();
+    // โหลด IndexedDB fallback ก่อน restore จาก Cloud — ถ้าทำหลัง download แล้ว
+    // listProjects() จะ import IDB ซ้ำและ DELETE ทุกตารางก่อน ทำให้ข้อมูลจาก Cloud ถูกลบทิ้ง
+    await archtownDb.ensureArchtownDataLoaded((sub) => onStep?.(sub));
     onStep?.({ progress: 25, label: 'กำลังตรวจสอบ Cloud...' });
 
     const syncOk = await isSyncAvailable();
@@ -50,6 +52,8 @@ export async function prepareAfterLogin(onStep?: (s: PrepareStep) => void): Prom
   });
   try {
     await Promise.race([run(), timeoutPromise]);
+  } catch (e) {
+    throw toError(e, 'เตรียมข้อมูลหลังล็อกอินไม่สำเร็จ');
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }

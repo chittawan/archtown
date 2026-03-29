@@ -1,7 +1,12 @@
 import React, { useRef, useState } from 'react';
 import { LONG_PRESS_HOLD_MS } from './LongPressDeleteButton';
 
-export type ReferenceIdKind = 'project_id' | 'team_id' | 'topic_id' | 'sub_id' | 'detail_idx';
+export type ReferenceIdKind =
+  | 'project_id'
+  | 'team_id'
+  | 'topic_id'
+  | 'sub_id'
+  | 'detail_id';
 
 type Props = {
   kind: ReferenceIdKind;

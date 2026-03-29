@@ -1,7 +1,7 @@
 {
   "project_id": "performance_management",
-  "weeks_revision": 12,
-  "updated_at": "2026-03-28T09:33:07.752Z",
+  "weeks_revision": 5,
+  "updated_at": "2026-03-29T08:30:01.442Z",
   "weeks": [
     {
       "week_no": 1,
@@ -12,7 +12,7 @@
     {
       "week_no": 2,
       "label": "W2",
-      "start": "2026-03-23",
+      "start": "2026-03-21",
       "end": "2026-03-27"
     },
     {
@@ -26,48 +26,6 @@
       "label": "W4",
       "start": "2026-04-04",
       "end": "2026-04-10"
-    },
-    {
-      "week_no": 5,
-      "label": "W5",
-      "start": "2026-04-11",
-      "end": "2026-04-17"
-    },
-    {
-      "week_no": 6,
-      "label": "W6",
-      "start": "2026-04-18",
-      "end": "2026-04-24"
-    },
-    {
-      "week_no": 7,
-      "label": "W7",
-      "start": "2026-04-25",
-      "end": "2026-05-01"
-    },
-    {
-      "week_no": 8,
-      "label": "W8",
-      "start": "2026-05-02",
-      "end": "2026-05-08"
-    },
-    {
-      "week_no": 9,
-      "label": "W9",
-      "start": "2026-05-09",
-      "end": "2026-05-15"
-    },
-    {
-      "week_no": 10,
-      "label": "W10",
-      "start": "2026-05-16",
-      "end": "2026-05-22"
-    },
-    {
-      "week_no": 11,
-      "label": "W11",
-      "start": "2026-05-23",
-      "end": "2026-05-29"
     }
   ]
 }

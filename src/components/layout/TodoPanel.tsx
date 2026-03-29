@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Check, Circle, ListTodo, ExternalLink, FileText } from 'lucide-react';
 import type { ProjectData, Team, SubTopicDetail } from '../../types';
 import * as archtownDb from '../../db/archtownDb';
+import { ensureSubTopicDetailIds } from '../../lib/ensureSubTopicDetailIds';
 
 interface TodoGroup {
   /** Full breadcrumb for tooltip */
@@ -107,7 +108,7 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
           setError(true);
           return;
         }
-        setProjectData(data);
+        setProjectData({ ...data, teams: ensureSubTopicDetailIds(data.teams) });
       })
       .catch(() => {
         setProjectData(null);
@@ -120,7 +121,7 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
     if (!projectId || typeof window === 'undefined') return;
     const handler = () => {
       loadProject().then((data) => {
-        if (data) setProjectData(data);
+        if (data) setProjectData({ ...data, teams: ensureSubTopicDetailIds(data.teams) });
       });
     };
     window.addEventListener('project-summary-invalidate', handler);
@@ -206,7 +207,7 @@ export default function TodoPanel({ projectId }: { projectId: string | null }) {
             new CustomEvent('project-todos-updated', {
               detail: {
                 projectId: next.id,
-                teams: nextTeams,
+                teams: ensureSubTopicDetailIds(nextTeams),
               },
             })
           );

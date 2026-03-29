@@ -66,6 +66,9 @@ export type TaskListItem = {
   subtopic_title: string;
   project_id: string;
   project_name: string;
+  health: string | null;
+  health_note: string | null;
+  health_reviewed_at: string | null;
 };
 
 function buildTopicToProjectMaps(tables: BackupTables): {
@@ -123,6 +126,9 @@ export function listTasksFiltered(
       if (typeof dd !== 'string' || !dd || dd >= today) continue;
     }
 
+    const rawH = d.health;
+    const health =
+      rawH === 'RED' || rawH === 'YELLOW' || rawH === 'GREEN' ? rawH : null;
     out.push({
       id,
       sub_topic_id: subTopicId,
@@ -134,10 +140,39 @@ export function listTasksFiltered(
       subtopic_title: String(sub.title ?? ''),
       project_id: projectId,
       project_name: projectNameById.get(projectId) ?? projectId,
+      health,
+      health_note: d.health_note == null || d.health_note === '' ? null : String(d.health_note),
+      health_reviewed_at:
+        d.health_reviewed_at == null || d.health_reviewed_at === ''
+          ? null
+          : String(d.health_reviewed_at),
     });
   }
 
   return out;
+}
+
+const HEALTH_REVIEW_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Tasks with no health set, or health_reviewed_at missing/stale (>7 days). Per Phase9 SA review queue. */
+export function listTasksNeedingHealthReview(
+  tables: BackupTables,
+  filters: { project_id?: string },
+): TaskListItem[] {
+  const all = listTasksFiltered(tables, {
+    status: 'all',
+    project_id: filters.project_id,
+    overdue_only: false,
+  });
+  const cutoff = Date.now() - HEALTH_REVIEW_MAX_AGE_MS;
+  return all.filter((t) => {
+    if (t.health == null) return true;
+    const reviewed = t.health_reviewed_at;
+    if (reviewed == null || reviewed === '') return true;
+    const ts = Date.parse(reviewed);
+    if (Number.isNaN(ts)) return true;
+    return ts < cutoff;
+  });
 }
 
 export function parseBackupTables(data: unknown): { version: number; tables: BackupTables } | null {

@@ -1,0 +1,163 @@
+{
+  "ts": "2026-03-29T08:29:35.709Z",
+  "trigger": "end-of-week",
+  "project_id": "performance_management",
+  "week_no": 4,
+  "week_label": "W4",
+  "week_start": "2026-04-04",
+  "week_end": "2026-04-10",
+  "weeks_revision": 4,
+  "teams": {
+    "t-1773575363083-zopkzhf": {
+      "RED": [
+        {
+          "detail_id": "d-1774752103076-ndzo9lz",
+          "text": "sub system",
+          "subtopic_id": "sub-1774752076208",
+          "subtopic_title": "update status system service",
+          "topic_id": "top-1773575363083-xbk99a0",
+          "topic_title": "System & Service 2",
+          "task_status": "todo",
+          "subtopic_status": "YELLOW"
+        }
+      ],
+      "YELLOW": [
+        {
+          "detail_id": "d-1774752088927-ix2wbdh",
+          "text": "sub update",
+          "subtopic_id": "sub-1774752067277",
+          "subtopic_title": "update status cyber",
+          "topic_id": "top-1773575363083-mdjfg0w",
+          "topic_title": "Cyber Security 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774757802753-yvatp28",
+          "text": "ทดสอบ",
+          "subtopic_id": "sub-1773575363083-re5ubyw",
+          "subtopic_title": "Resource Utilization",
+          "topic_id": "top-1773575363083-b3gvrex",
+          "topic_title": "Server / Resource Cost 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN",
+          "health_note": "กำลังเทสระบบ"
+        }
+      ],
+      "GREEN": [
+        {
+          "detail_id": "d-1774713630146-n7ryhpz",
+          "text": "sub Network ทดสอบ 12345",
+          "subtopic_id": "sub-1773575363083-ijwiun8",
+          "subtopic_title": "Network Topology & Firewall",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774713630146-r8xwcqp",
+          "text": "sub Network ทดสอบ 213123",
+          "subtopic_id": "sub-1773575363083-ijwiun8",
+          "subtopic_title": "Network Topology & Firewall",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774713630146-1nd6zm9",
+          "text": "sub Network Red eye",
+          "subtopic_id": "sub-1773575363083-ijwiun8",
+          "subtopic_title": "Network Topology & Firewall",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774713630146-mce222c",
+          "text": "sub Network asdasdasd",
+          "subtopic_id": "sub-1773575363083-ijwiun8",
+          "subtopic_title": "Network Topology & Firewall",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774001934861-weplnmg",
+          "text": "subtask - VPN & Load Balancer",
+          "subtopic_id": "sub-1773575363083-335ilzm",
+          "subtopic_title": "VPN & Load Balancer",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774752424929-c93jv4c",
+          "text": "",
+          "subtopic_id": "sub-1773575363083-ijwiun8",
+          "subtopic_title": "Network Topology & Firewall",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774754159915-5c2ocxe",
+          "text": "Testasdasd",
+          "subtopic_id": "sub-1773575363083-ijwiun8",
+          "subtopic_title": "Network Topology & Firewall",
+          "topic_id": "top-1773575363083-vwugsd5",
+          "topic_title": "Network & Connectivity 2",
+          "task_status": "done",
+          "subtopic_status": "GREEN"
+        },
+        {
+          "detail_id": "d-1774767440130-opttfym",
+          "text": "Introduction",
+          "subtopic_id": "sub-1774754015265",
+          "subtopic_title": "Example",
+          "topic_id": "top-1773575363083-xbk99a0",
+          "topic_title": "System & Service 2",
+          "task_status": "todo",
+          "subtopic_status": "YELLOW"
+        }
+      ]
+    },
+    "t-1773575363083-p5yu26b": {
+      "RED": [],
+      "YELLOW": [
+        {
+          "detail_id": "d-1774001934868-1xea6or",
+          "text": "Java heap space : การเรียกใช้ route services มากกว่า 100,000 ครั้งต่อวัน",
+          "subtopic_id": "sub-1773636359583",
+          "subtopic_title": "Longdomap",
+          "topic_id": "top-1773575363083-s2zids2",
+          "topic_title": "Capacity Forecast",
+          "task_status": "todo",
+          "subtopic_status": "GREEN"
+        }
+      ],
+      "GREEN": []
+    },
+    "t-1773575363083-grzpmcc": {
+      "RED": [],
+      "YELLOW": [
+        {
+          "detail_id": "d-1774001934868-5ciyf32",
+          "text": "คุยกับพี่เชอรี่",
+          "subtopic_id": "sub-1773575363083-dzilgw3",
+          "subtopic_title": "อธิบาย เพื่อนัดสื่อสารกันสำหรับ Agenda นี้",
+          "topic_id": "top-1773575363083-oetmejy",
+          "topic_title": "Data Quality",
+          "task_status": "done",
+          "subtopic_status": "GREEN"
+        }
+      ],
+      "GREEN": []
+    }
+  }
+}

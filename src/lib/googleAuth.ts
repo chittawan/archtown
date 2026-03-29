@@ -1,4 +1,6 @@
 export const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
+/** หลังอ่าน OAuth callback จาก # หรือ query — ใช้กับ React StrictMode remount */
+export const OAUTH_FRAGMENT_CONSUMED_KEY = 'archtown_oauth_fragment_consumed';
 const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
 const TOKEN_LOGIN_USER_ID_KEY = 'archtown_token_google_user_id';
 const TOKEN_LOGIN_TOKEN_KEY = 'archtown_token_login_token';
@@ -18,6 +20,7 @@ export function buildGoogleRedirectUrl(clientId: string): string {
   const nonce = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   if (typeof window !== 'undefined') {
     sessionStorage.setItem(GOOGLE_OAUTH_NONCE_KEY, nonce);
+    sessionStorage.removeItem(OAUTH_FRAGMENT_CONSUMED_KEY);
   }
   const params = new URLSearchParams({
     client_id: clientId,
@@ -40,6 +43,7 @@ export function isGoogleLoggedIn(): boolean {
 
 export function logoutGoogle(): void {
   if (typeof window === 'undefined') return;
+  sessionStorage.removeItem(OAUTH_FRAGMENT_CONSUMED_KEY);
   sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_USER_ID_KEY);
   sessionStorage.removeItem(TOKEN_LOGIN_TOKEN_KEY);

@@ -41,7 +41,13 @@ CREATE TABLE IF NOT EXISTS project_sub_topic_details (
   description TEXT,
   status TEXT DEFAULT 'todo' CHECK (status IN ('todo','doing','done')),
   due_date TEXT,
-  sort_order INTEGER NOT NULL DEFAULT 0
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  health TEXT,
+  health_note TEXT,
+  health_reviewed_at TEXT,
+  health_updated_at TEXT,
+  health_note_updated_at TEXT,
+  health_reviewed_at_updated_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_teams_project ON project_teams(project_id);

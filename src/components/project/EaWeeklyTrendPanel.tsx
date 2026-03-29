@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LineChart, Camera, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, LineChart, Camera, Plus, Trash2, X } from 'lucide-react';
 import { eaApiHeaders } from '../../lib/eaApiHeaders';
 
 /** จำนวนสัปดาห์ล่าสุดที่โหลดจาก API — ใช้ slice ฝั่ง client เพื่อไม่ให้ตารางกว้างเกินเมื่อมีหลายเดือน/ปี */
@@ -72,27 +72,38 @@ function emptyTeamBuckets(): TeamBuckets {
   return { RED: [], YELLOW: [], GREEN: [] };
 }
 
-function subtopicIdFromEaItem(item: unknown): string {
+function eaItemSubtopicId(item: unknown): string {
   if (item && typeof item === 'object' && 'subtopic_id' in item) {
     return String((item as { subtopic_id: unknown }).subtopic_id ?? '');
   }
   return '';
 }
 
-function pushUniqueSubtopicItem(arr: unknown[], item: unknown) {
-  const id = subtopicIdFromEaItem(item);
+/** แยกงาน (detail) ไม่รวมหลายรายการใต้ subtopic เดียว; snapshot เก่าใช้ subtopic_id เท่านั้น */
+function eaItemDedupeKey(item: unknown): string {
+  if (item && typeof item === 'object') {
+    const o = item as Record<string, unknown>;
+    if (typeof o.detail_id === 'string' && o.detail_id.trim()) return `d:${o.detail_id}`;
+    const st = typeof o.subtopic_id === 'string' ? o.subtopic_id : '';
+    if (st) return `st:${st}`;
+  }
+  return '';
+}
+
+function pushUniqueEaItem(arr: unknown[], item: unknown) {
+  const id = eaItemDedupeKey(item);
   if (!id) {
     arr.push(item);
     return;
   }
-  if (arr.some((x) => subtopicIdFromEaItem(x) === id)) return;
+  if (arr.some((x) => eaItemDedupeKey(x) === id)) return;
   arr.push(item);
 }
 
 function mergeTeamBucketsInto(target: TeamBuckets, source: TeamBuckets) {
   for (const st of ['RED', 'YELLOW', 'GREEN'] as const) {
     for (const item of source[st] ?? []) {
-      pushUniqueSubtopicItem(target[st], item);
+      pushUniqueEaItem(target[st], item);
     }
   }
 }
@@ -118,9 +129,9 @@ function bucketsForTeamRow(
       if (!buckets) continue;
       for (const st of ['RED', 'YELLOW', 'GREEN'] as const) {
         for (const item of buckets[st] ?? []) {
-          const sid = subtopicIdFromEaItem(item);
+          const sid = eaItemSubtopicId(item);
           if (sid && subtopicToTeam.get(sid) === teamId) {
-            pushUniqueSubtopicItem(out[st], item);
+            pushUniqueEaItem(out[st], item);
           }
         }
       }
@@ -149,6 +160,16 @@ function formatWeekRange(start?: string, end?: string): string {
   } catch {
     return `${start} – ${end}`;
   }
+}
+
+/** แสดง topic_id ใน tooltip ให้อ่านง่าย — คง suffix ที่มนุษย์ตั้ง หรือย่อเมื่อยาว */
+function simplifyTopicIdForTooltip(raw: string): string {
+  const t = raw.trim();
+  if (!t) return '';
+  const m = /^top-\d+-([a-z0-9]+)$/i.exec(t);
+  if (m) return m[1];
+  if (t.length <= 16) return t;
+  return `${t.slice(0, 5)}…${t.slice(-4)}`;
 }
 
 /** คีย์ YYYY-MM จาก week_start ของ snapshot (หรือจาก ts) — ใช้จัดกลุ่มหัวคอลัมน์ตามเดือน */
@@ -219,10 +240,28 @@ function weekColumnFullHeaderTitle(col: {
 function teamHealthSummaryTh(totals: { RED: number; YELLOW: number; GREEN: number }): string {
   const { RED, YELLOW, GREEN } = totals;
   const sum = RED + YELLOW + GREEN;
-  if (sum === 0) return 'ไม่มี subtopic ในช่วง snapshot นี้';
+  if (sum === 0) return 'ไม่มีงานในช่วง snapshot นี้';
   if (RED > 0) return `มีประเด็นแดง ${RED} รายการ — เหลือง ${YELLOW} · เขียว ${GREEN}`;
   if (YELLOW > 0) return `เฝ้าระวัง (เหลือง) ${YELLOW} รายการ — เขียว ${GREEN}`;
   return `ราบรื่น — เขียว ${GREEN} รายการ`;
+}
+
+/** บรรทัดสรุปใต้ไอคอนภาพรวม — แยกคำว่า “หัวข้อย่อย” vs “รายการงาน” */
+function teamCellBreakdownTh(
+  totals: { RED: number; YELLOW: number; GREEN: number },
+  bySubtopicStatus: boolean,
+): string {
+  const { RED, YELLOW, GREEN } = totals;
+  const sum = RED + YELLOW + GREEN;
+  if (sum === 0) {
+    return bySubtopicStatus ? 'ไม่มีหัวข้อย่อยในช่วง snapshot นี้' : 'ไม่มีงานในช่วง snapshot นี้';
+  }
+  if (bySubtopicStatus) {
+    if (RED > 0) return `สรุปสถานะหัวข้อย่อย: แดง ${RED} — เหลือง ${YELLOW} · เขียว ${GREEN}`;
+    if (YELLOW > 0) return `สรุปสถานะหัวข้อย่อย: เหลือง ${YELLOW} — เขียว ${GREEN}`;
+    return `สรุปสถานะหัวข้อย่อย: เขียว ${GREEN}`;
+  }
+  return teamHealthSummaryTh(totals);
 }
 
 /** ภาพรวมระดับทีม/โปรเจกต์แบบ Summary View (worst subtopic ในช่องนั้น) */
@@ -256,11 +295,13 @@ const SUMMARY_VIEW_EMOJI: Record<Exclude<SummaryRollup, 'empty'>, string> = {
 function historyModeTooltip(
   contextLine: string,
   totals: { RED: number; YELLOW: number; GREEN: number },
+  rollupExplicit?: SummaryRollup,
+  subtopicBreakdown?: boolean,
 ): string {
-  const rollup = summaryRollupFromSubtopicCounts(totals);
+  const rollup = rollupExplicit ?? summaryRollupFromSubtopicCounts(totals);
   const en =
-    rollup === 'empty' ? 'No items' : `${SUMMARY_VIEW_HEADLINE[rollup]} (Summary View roll-up)`;
-  return `${contextLine}\n${en}\n${teamHealthSummaryTh(totals)}`;
+    rollup === 'empty' ? 'No items' : `${SUMMARY_VIEW_HEADLINE[rollup as Exclude<SummaryRollup, 'empty'>]} (Summary View roll-up)`;
+  return `${contextLine}\n${en}\n${teamCellBreakdownTh(totals, !!subtopicBreakdown)}`;
 }
 
 /** หัวข้อไทยสำหรับกล่องข้อมูล hover ของไอคอนสรุปภาพรวม (แดง / เหลือง / เขียว) */
@@ -272,8 +313,9 @@ function summaryRollupTitleTh(rollup: Exclude<SummaryRollup, 'empty'>): string {
 
 type EaTooltipAnchor = { top: number; left: number };
 
-const EA_TOOLTIP_PANEL_CLASS =
-  'pointer-events-none fixed z-[300] max-w-[min(18rem,calc(100vw-1.5rem))] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-left shadow-[var(--shadow-modal)]';
+const EA_TOOLTIP_PANEL_BASE =
+  'fixed z-[300] max-w-[min(18rem,calc(100vw-1.5rem))] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-left shadow-[var(--shadow-modal)]';
+const EA_TOOLTIP_PANEL_CLASS = `${EA_TOOLTIP_PANEL_BASE} pointer-events-none`;
 
 function eaClampedTooltipAnchor(el: HTMLElement): EaTooltipAnchor {
   const r = el.getBoundingClientRect();
@@ -288,16 +330,25 @@ function eaClampedTooltipAnchor(el: HTMLElement): EaTooltipAnchor {
 function EaTooltipPortal({
   anchor,
   children,
+  interactive,
 }: {
   anchor: EaTooltipAnchor | null;
   children: React.ReactNode;
+  /** true = เลือกข้อความได้ (คลิก pin บล็อก timeline) */
+  interactive?: boolean;
 }) {
   if (!anchor || typeof document === 'undefined') return null;
   return createPortal(
     <div
       data-ea-tooltip-portal
-      role="tooltip"
-      className={EA_TOOLTIP_PANEL_CLASS}
+      {...(interactive ? { 'data-ea-block-tip-panel': '' } : {})}
+      role={interactive ? 'dialog' : 'tooltip'}
+      aria-label={interactive ? 'รายละเอียด topic — คลิกนอกกล่องหรือกด Esc เพื่อปิด' : undefined}
+      className={
+        interactive
+          ? `${EA_TOOLTIP_PANEL_BASE} pointer-events-auto cursor-auto select-text`
+          : EA_TOOLTIP_PANEL_CLASS
+      }
       style={{
         top: anchor.top,
         left: anchor.left,
@@ -310,21 +361,181 @@ function EaTooltipPortal({
   );
 }
 
-/** หนึ่งบล็อกต่อหนึ่งรายการใน snapshot — เรียงตามที่จัดเก็บ: แดงก่อน แล้วเหลือง แล้วเขียว */
+type EaSubtopicRowTip = {
+  title: string;
+  rowStatus: 'RED' | 'YELLOW' | 'GREEN';
+};
+
+type EaAttentionItemTip = {
+  health: 'RED' | 'YELLOW';
+  /** ชื่องาน / ข้อความ todo หลัก */
+  taskTitle: string;
+  /** health_note หรือรายละเอียดรอง */
+  note: string;
+};
+
+/** สรุปสำหรับผู้บริหารในกล่อง hover/pin ของจุดสีราย topic */
+type EaBlockManagerBrief = {
+  /** จำนวนรายการตามสุขภาพงาน — ไอคอนเท่านั้น ไม่มีป้ายสี */
+  healthInventory: string;
+  /** อ่านสำหรับผู้ใช้ screen reader (มีคำว่า แดง/เหลือง/เขียว) */
+  healthInventorySpoken: string;
+  subtopicRows: EaSubtopicRowTip[];
+  progress: {
+    todo: number;
+    doing: number;
+    done: number;
+    total: number;
+    hasTaskStatus: boolean;
+  };
+  attentionItems: EaAttentionItemTip[];
+  attentionEmpty: string | null;
+  /** snapshot เก่า / ไม่มี topic ในข้อมูล */
+  snapshotContextLine?: string;
+};
+
+/** หนึ่งบล็อก = หนึ่ง topic (รวมทุก subtopic ใต้ topic เดียวกัน); snapshot ไม่มี topic_id = หนึ่งบล็อกต่อหนึ่ง subtopic */
 type StoredSubtopicBlock = {
   key: string;
   status: 'RED' | 'YELLOW' | 'GREEN';
-  /** หัวข้อหลักในกล่องข้อมูล hover */
-  title: string;
-  /** บรรทัดเดียว — fallback native title / aria */
+  topicTitle: string;
+  topicId: string;
+  /** snapshot ไม่มี topic — บล็อกนี้คือหัวข้อย่อยเดี่ยว */
+  orphanSubtopicTitle?: string;
+  orphanSubtopicId?: string;
+  /** บรรทัดเดียว — aria-label */
   hover: string;
+  /** topic_id แบบย่อสำหรับ tooltip */
+  topicIdShort: string;
+  managerBrief: EaBlockManagerBrief;
 };
+
+function healthNoteFromEaItem(item: unknown): string {
+  if (item && typeof item === 'object' && 'health_note' in item) {
+    return String((item as { health_note: unknown }).health_note ?? '').trim();
+  }
+  return '';
+}
+
+function taskStatusFromEaItem(item: unknown): 'todo' | 'doing' | 'done' | null {
+  if (item && typeof item === 'object' && 'task_status' in item) {
+    const s = String((item as { task_status: unknown }).task_status).trim();
+    if (s === 'todo' || s === 'doing' || s === 'done') return s;
+  }
+  return null;
+}
+
+function worstHealthFromDetailCounts(byHealth: {
+  RED: number;
+  YELLOW: number;
+  GREEN: number;
+}): 'RED' | 'YELLOW' | 'GREEN' {
+  if (byHealth.RED > 0) return 'RED';
+  if (byHealth.YELLOW > 0) return 'YELLOW';
+  return 'GREEN';
+}
+
+/** สีบล็อก: สรุป project_sub_topics.status ต่อหัวข้อย่อย (ไม่ใช่สุขภาพงานรายการ) — จากฟิลด์ subtopic_status ใน snapshot */
+function rollupSubtopicStatusesForBlock(
+  subtopicIds: readonly string[],
+  statusBySubId: Map<string, 'RED' | 'YELLOW' | 'GREEN'>,
+): 'RED' | 'YELLOW' | 'GREEN' | null {
+  if (!subtopicIds.length || !statusBySubId.size) return null;
+  for (const id of subtopicIds) {
+    if (!statusBySubId.has(id)) return null;
+  }
+  let hasYellow = false;
+  for (const id of subtopicIds) {
+    const s = statusBySubId.get(id)!;
+    if (s === 'RED') return 'RED';
+    if (s === 'YELLOW') hasYellow = true;
+  }
+  return hasYellow ? 'YELLOW' : 'GREEN';
+}
+
+function eaItemSubtopicRowStatus(item: unknown): 'RED' | 'YELLOW' | 'GREEN' | null {
+  if (!item || typeof item !== 'object') return null;
+  const s = (item as Record<string, unknown>).subtopic_status;
+  if (s === 'RED' || s === 'YELLOW' || s === 'GREEN') return s;
+  return null;
+}
+
+function collectUniqueSubtopicIdsFromBuckets(buckets: TeamBuckets | undefined): string[] {
+  const set = new Set<string>();
+  if (!buckets) return [];
+  for (const col of ['RED', 'YELLOW', 'GREEN'] as const) {
+    for (const item of buckets[col] ?? []) {
+      const sid = eaItemSubtopicId(item);
+      if (sid) set.add(sid);
+    }
+  }
+  return [...set];
+}
+
+function subtopicRowStatusMapFromBuckets(buckets: TeamBuckets | undefined): Map<string, 'RED' | 'YELLOW' | 'GREEN'> {
+  const m = new Map<string, 'RED' | 'YELLOW' | 'GREEN'>();
+  if (!buckets) return m;
+  for (const col of ['RED', 'YELLOW', 'GREEN'] as const) {
+    for (const item of buckets[col] ?? []) {
+      const sid = eaItemSubtopicId(item);
+      const rs = eaItemSubtopicRowStatus(item);
+      if (sid && rs) m.set(sid, rs);
+    }
+  }
+  return m;
+}
+
+function histogramSubtopicRowStatus(
+  subtopicIds: readonly string[],
+  statusBySubId: Map<string, 'RED' | 'YELLOW' | 'GREEN'>,
+): { RED: number; YELLOW: number; GREEN: number } {
+  const out = { RED: 0, YELLOW: 0, GREEN: 0 };
+  for (const id of subtopicIds) {
+    const s = statusBySubId.get(id);
+    if (s === 'RED') out.RED++;
+    else if (s === 'YELLOW') out.YELLOW++;
+    else if (s === 'GREEN') out.GREEN++;
+  }
+  return out;
+}
+
+/** ไอคอนภาพรวมช่อง: สรุปจากสถานะหัวข้อย่อย (subtopic_status) เมื่อ snapshot มีครบ — ไม่งั้นใช้จำนวนรายการตามสุขภาพงาน */
+function teamCellSummaryRollupAndTotals(buckets: TeamBuckets | undefined): {
+  rollup: SummaryRollup;
+  totals: { RED: number; YELLOW: number; GREEN: number };
+  usesSubtopicRowStatus: boolean;
+} {
+  const t = teamTotalsFromBuckets(buckets);
+  const n = t.RED + t.YELLOW + t.GREEN;
+  if (n === 0) return { rollup: 'empty', totals: t, usesSubtopicRowStatus: false };
+  const ids = collectUniqueSubtopicIdsFromBuckets(buckets);
+  const statusMap = subtopicRowStatusMapFromBuckets(buckets);
+  const fromRow = rollupSubtopicStatusesForBlock(ids, statusMap);
+  if (fromRow !== null) {
+    return {
+      rollup: fromRow,
+      totals: histogramSubtopicRowStatus(ids, statusMap),
+      usesSubtopicRowStatus: true,
+    };
+  }
+  return {
+    rollup: summaryRollupFromSubtopicCounts(t),
+    totals: t,
+    usesSubtopicRowStatus: false,
+  };
+}
 
 function parseSubtopicItem(item: unknown, fallbackIdx: number): { id: string; title: string } {
   if (item && typeof item === 'object') {
     const o = item as Record<string, unknown>;
-    const id = String(o.subtopic_id ?? fallbackIdx);
-    const title = String(o.title ?? '').trim() || id;
+    const detailId = typeof o.detail_id === 'string' ? o.detail_id.trim() : '';
+    const text = String(o.text ?? '').trim();
+    const subTitle = String(o.subtopic_title ?? '').trim();
+    const legacyTitle = String(o.title ?? '').trim();
+    const id = detailId || String(o.subtopic_id ?? fallbackIdx);
+    let title = text;
+    if (text && subTitle) title = `${subTitle} — ${text}`;
+    else if (!title) title = subTitle || legacyTitle || id;
     return { id, title };
   }
   return { id: String(fallbackIdx), title: `รายการ ${fallbackIdx}` };
@@ -334,80 +545,405 @@ function statusLabelTh(s: 'RED' | 'YELLOW' | 'GREEN'): string {
   return s === 'RED' ? 'แดง' : s === 'YELLOW' ? 'เหลือง' : 'เขียว';
 }
 
+/** สถานะสุขภาพงาน / สีบล็อก — แสดงใน UI โดยไม่ต้องมีคำว่า แดง/เหลือง/เขียว คู่กับไอคอน */
+function statusHealthIcon(s: 'RED' | 'YELLOW' | 'GREEN'): string {
+  return s === 'RED' ? '🔴' : s === 'YELLOW' ? '🟡' : '🟢';
+}
+
+/** `t:topicId` รวมทุก subtopic ใต้ topic · `s:subtopicId` = snapshot ไม่มี topic_id */
+function eaItemTopicGroupKey(item: unknown): string | null {
+  const sid = eaItemSubtopicId(item);
+  if (!sid) return null;
+  if (item && typeof item === 'object') {
+    const tid = String((item as Record<string, unknown>).topic_id ?? '').trim();
+    if (tid) return `t:${tid}`;
+  }
+  return `s:${sid}`;
+}
+
+function orderIndexOrLarge(order: readonly string[] | undefined, id: string): number {
+  if (!order?.length || !id) return -1;
+  const i = order.indexOf(id);
+  return i;
+}
+
+/** ลำดับ topic ตามการเดินหัวข้อย่อยในโปรเจกต์ (ตรงกับ sort_order ใน DB เมื่อโหลดผ่าน getProject) */
+function derivedTopicRankFromSubtopicOrder(
+  topicId: string,
+  subtopicOrder: readonly string[] | undefined,
+  subtopicToTopicId: Map<string, string> | undefined,
+): number {
+  if (!topicId || !subtopicOrder?.length || !subtopicToTopicId?.size) return -1;
+  for (let i = 0; i < subtopicOrder.length; i++) {
+    if (subtopicToTopicId.get(subtopicOrder[i]) === topicId) return i;
+  }
+  return -1;
+}
+
+function toSubtopicToTopicMap(
+  raw: ReadonlyMap<string, string> | Record<string, string> | undefined,
+): Map<string, string> | undefined {
+  if (!raw) return undefined;
+  if (raw instanceof Map) return raw.size ? raw : undefined;
+  const e = Object.entries(raw);
+  return e.length ? new Map(e) : undefined;
+}
+
+function compareTimelineBlocksByDisplayOrder(
+  a: {
+    groupKey: string;
+    topicId: string;
+    topicTitle: string;
+  },
+  b: {
+    groupKey: string;
+    topicId: string;
+    topicTitle: string;
+  },
+  projectTopicOrder: readonly string[] | undefined,
+  projectSubtopicOrder: readonly string[] | undefined,
+  subtopicToTopicId: Map<string, string> | undefined,
+): number {
+  const useExplicitTopic = !!projectTopicOrder?.length;
+  const useDerivedTopic =
+    !useExplicitTopic &&
+    !!projectSubtopicOrder?.length &&
+    !!subtopicToTopicId?.size;
+
+  const rank = (x: typeof a): number => {
+    if (x.groupKey.startsWith('s:')) {
+      const sid = x.groupKey.slice(2);
+      const j = orderIndexOrLarge(projectSubtopicOrder, sid);
+      return j >= 0 ? 500_000 + j : 950_000;
+    }
+    const tid = x.topicId;
+    if (useExplicitTopic) {
+      const i = orderIndexOrLarge(projectTopicOrder, tid);
+      return i >= 0 ? i : 800_000;
+    }
+    if (useDerivedTopic) {
+      const d = derivedTopicRankFromSubtopicOrder(tid, projectSubtopicOrder, subtopicToTopicId);
+      return d >= 0 ? d : 800_000;
+    }
+    return 800_000;
+  };
+
+  const ra = rank(a);
+  const rb = rank(b);
+  if (ra !== rb) return ra - rb;
+
+  if (a.groupKey.startsWith('s:') && b.groupKey.startsWith('s:')) {
+    return a.groupKey.localeCompare(b.groupKey, 'th');
+  }
+  const ta = a.topicTitle.trim() || a.topicId || a.groupKey;
+  const tb = b.topicTitle.trim() || b.topicId || b.groupKey;
+  const tc = ta.localeCompare(tb, 'th');
+  if (tc !== 0) return tc;
+  return a.groupKey.localeCompare(b.groupKey, 'th');
+}
+
+function buildSubtopicRowsForTip(
+  titleBySubId: Map<string, string>,
+  statusBySubId: Map<string, 'RED' | 'YELLOW' | 'GREEN'>,
+  projectSubtopicOrder?: readonly string[] | null,
+): EaSubtopicRowTip[] {
+  if (titleBySubId.size === 0) return [];
+  const ids = [...titleBySubId.keys()];
+  ids.sort((a, b) => {
+    const ia = orderIndexOrLarge(projectSubtopicOrder, a);
+    const ib = orderIndexOrLarge(projectSubtopicOrder, b);
+    const fa = ia >= 0 ? ia : 50_000;
+    const fb = ib >= 0 ? ib : 50_000;
+    if (fa !== fb) return fa - fb;
+    return a.localeCompare(b, 'th');
+  });
+  return ids.map((id) => ({
+    title: titleBySubId.get(id) || id,
+    rowStatus: statusBySubId.get(id) ?? 'GREEN',
+  }));
+}
+
 function blocksFromTeamBuckets(
   buckets: TeamBuckets | undefined,
   teamNameForHover: string | null,
+  /** ลำดับ topic_id ตามโปรเจกต์ (= sort_order ใน DB) */
+  projectTopicOrder?: readonly string[] | null,
+  /** ลำดับ subtopic — เรียงบล็อกแบบ s:…, สรุปหัวข้อย่อยใต้ topic, และสำรองลำดับ topic */
+  projectSubtopicOrder?: readonly string[] | null,
+  /** subtopic_id → topic_id — ใช้สร้างลำดับ topic เมื่อไม่มี projectTopicOrder */
+  subtopicToTopicId?: Map<string, string> | undefined,
 ): StoredSubtopicBlock[] {
   if (!buckets) return [];
-  const out: StoredSubtopicBlock[] = [];
-  const push = (arr: unknown[] | undefined, status: 'RED' | 'YELLOW' | 'GREEN') => {
-    if (!Array.isArray(arr)) return;
-    arr.forEach((item, i) => {
-      const { id, title } = parseSubtopicItem(item, i);
-      const prefix = teamNameForHover ? `${teamNameForHover} — ` : '';
-      const displayTitle = `${prefix}${title}`;
-      out.push({
-        key: `${status}-${id}-${out.length}`,
-        status,
-        title: displayTitle,
-        hover: `${displayTitle} (${statusLabelTh(status)})`,
-      });
-    });
+  type RagTodoLine = { health: 'RED' | 'YELLOW'; taskTitle: string; note: string };
+  type Agg = {
+    groupKey: string;
+    topicId: string;
+    topicTitle: string;
+    byHealth: { RED: number; YELLOW: number; GREEN: number };
+    todo: number;
+    doing: number;
+    done: number;
+    ragTodos: RagTodoLine[];
+    subtopicTitles: Map<string, string>;
+    /** subtopic_id → project_sub_topics.status (จาก snapshot) */
+    subtopicRowStatus: Map<string, 'RED' | 'YELLOW' | 'GREEN'>;
   };
-  push(buckets.RED, 'RED');
-  push(buckets.YELLOW, 'YELLOW');
-  push(buckets.GREEN, 'GREEN');
-  return out;
+  const byGroup = new Map<string, Agg>();
+
+  const bump = (item: unknown, healthBucket: 'RED' | 'YELLOW' | 'GREEN') => {
+    const gk = eaItemTopicGroupKey(item);
+    if (!gk) return;
+    const sid = eaItemSubtopicId(item);
+    let row = byGroup.get(gk);
+    if (!row) {
+      const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      const st = o ? String(o.subtopic_title ?? '').trim() : '';
+      const tid = o ? String(o.topic_id ?? '').trim() : '';
+      const tt = o ? String(o.topic_title ?? '').trim() : '';
+      row = {
+        groupKey: gk,
+        topicId: tid,
+        topicTitle: gk.startsWith('s:') ? st || sid || '' : tt,
+        byHealth: { RED: 0, YELLOW: 0, GREEN: 0 },
+        todo: 0,
+        doing: 0,
+        done: 0,
+        ragTodos: [],
+        subtopicTitles: new Map(),
+        subtopicRowStatus: new Map(),
+      };
+      byGroup.set(gk, row);
+    }
+    if (sid) {
+      const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      const st = o ? String(o.subtopic_title ?? '').trim() : '';
+      row.subtopicTitles.set(sid, st || sid);
+      const rowSt = eaItemSubtopicRowStatus(item);
+      if (rowSt) row.subtopicRowStatus.set(sid, rowSt);
+    }
+    row.byHealth[healthBucket]++;
+    const ts = taskStatusFromEaItem(item);
+    if (ts === 'todo') row.todo++;
+    else if (ts === 'doing') row.doing++;
+    else if (ts === 'done') row.done++;
+    if (healthBucket === 'RED' || healthBucket === 'YELLOW') {
+      const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      const t = o ? String(o.text ?? '').trim() : '';
+      const subTitle = o ? String(o.subtopic_title ?? '').trim() : '';
+      const taskTitle =
+        t && subTitle && t !== subTitle
+          ? `${subTitle} · ${t}`
+          : t || subTitle || '(ไม่มีชื่องาน)';
+      row.ragTodos.push({
+        health: healthBucket,
+        taskTitle,
+        note: healthNoteFromEaItem(item),
+      });
+    }
+    if (item && typeof item === 'object') {
+      const o = item as Record<string, unknown>;
+      const ttl = String(o.topic_title ?? '').trim();
+      if (ttl) row.topicTitle = ttl;
+      const tti = String(o.topic_id ?? '').trim();
+      if (tti) row.topicId = tti;
+    }
+  };
+
+  for (const st of ['RED', 'YELLOW', 'GREEN'] as const) {
+    for (const item of buckets[st] ?? []) bump(item, st);
+  }
+
+  const rows = [...byGroup.values()].sort((a, b) =>
+    compareTimelineBlocksByDisplayOrder(
+      a,
+      b,
+      projectTopicOrder ?? undefined,
+      projectSubtopicOrder ?? undefined,
+      subtopicToTopicId,
+    ),
+  );
+
+  return rows.map((r) => {
+    const idsInCell = [...r.subtopicTitles.keys()];
+    const fromSubtopicRow = rollupSubtopicStatusesForBlock(idsInCell, r.subtopicRowStatus);
+    const worst = fromSubtopicRow ?? worstHealthFromDetailCounts(r.byHealth);
+    const teamPrefix = teamNameForHover ? `${teamNameForHover} · ` : '';
+    const isOrphan = r.groupKey.startsWith('s:');
+    const orphanSid = isOrphan ? r.groupKey.slice(2) : '';
+    const orphanTitle = isOrphan ? r.subtopicTitles.get(orphanSid) || orphanSid : '';
+
+    const { RED, YELLOW, GREEN } = r.byHealth;
+    const detailCount = RED + YELLOW + GREEN;
+    const healthInventory = `${statusHealthIcon('RED')} ${RED} · ${statusHealthIcon('YELLOW')} ${YELLOW} · ${statusHealthIcon('GREEN')} ${GREEN}`;
+    const healthInventorySpoken = `สุขภาพงานรายการ: แดง ${RED} · เหลือง ${YELLOW} · เขียว ${GREEN}`;
+    const taskTotal = r.todo + r.doing + r.done;
+    const progress = {
+      todo: r.todo,
+      doing: r.doing,
+      done: r.done,
+      total: taskTotal > 0 ? taskTotal : detailCount,
+      hasTaskStatus: taskTotal > 0,
+    };
+
+    const topicIdLine =
+      r.topicId || r.topicTitle.trim()
+        ? `topic_id: ${r.topicId || '—'} · ชื่อหัวข้อหลัก: ${r.topicTitle.trim() || '—'}`
+        : 'topic: ไม่มีใน snapshot เก่า (หนึ่งบล็อกต่อหนึ่งหัวข้อย่อย — ถ่าย snapshot ใหม่เพื่อรวมเป็น topic)';
+
+    const attentionItems: EaAttentionItemTip[] = r.ragTodos.map((x) => ({
+      health: x.health,
+      taskTitle: x.taskTitle,
+      note: x.note,
+    }));
+    const attentionEmpty =
+      r.ragTodos.length === 0
+        ? 'ไม่มีรายการที่ต้องจับตาในช่องนี้'
+        : null;
+
+    const snapshotContextLine =
+      !isOrphan && !r.topicId.trim() && !r.topicTitle.trim() ? topicIdLine : undefined;
+
+    const subtopicRows = buildSubtopicRowsForTip(
+      r.subtopicTitles,
+      r.subtopicRowStatus,
+      projectSubtopicOrder,
+    );
+
+    const managerBrief: EaBlockManagerBrief = {
+      healthInventory,
+      healthInventorySpoken,
+      subtopicRows,
+      progress,
+      attentionItems,
+      attentionEmpty,
+      ...(snapshotContextLine ? { snapshotContextLine } : {}),
+    };
+
+    const topicHead = r.topicTitle.trim() || (r.topicId ? r.topicId : '') || '—';
+    const shortHover = isOrphan
+      ? `${teamPrefix}หัวข้อย่อย (ไม่มี topic ใน snapshot): ${orphanTitle} · subtopic_id ${orphanSid} · ${statusLabelTh(worst)}`
+      : `${teamPrefix}หัวข้อหลัก: ${topicHead} · topic_id ${r.topicId || '—'} · ${statusLabelTh(worst)}`;
+
+    const topicIdShort = simplifyTopicIdForTooltip(isOrphan ? orphanSid : r.topicId);
+
+    return {
+      key: isOrphan ? `st-${orphanSid}` : `tp-${r.groupKey.slice(2)}`,
+      status: worst,
+      topicTitle: r.topicTitle,
+      topicId: r.topicId,
+      orphanSubtopicTitle: isOrphan ? orphanTitle : undefined,
+      orphanSubtopicId: isOrphan ? orphanSid : undefined,
+      hover: shortHover,
+      topicIdShort,
+      managerBrief,
+    };
+  });
 }
 
 type EaBlockTip = {
   key: string;
   top: number;
   left: number;
-  title: string;
+  topicTitle: string;
+  topicId: string;
+  orphanSubtopicTitle?: string;
+  orphanSubtopicId?: string;
   status: 'RED' | 'YELLOW' | 'GREEN';
+  topicIdShort: string;
+  managerBrief: EaBlockManagerBrief;
 };
 
-function StatusBlocksGrid({ blocks, compact }: { blocks: StoredSubtopicBlock[]; compact?: boolean }) {
-  const [activeTip, setActiveTip] = useState<EaBlockTip | null>(null);
+function blockTipFromElement(b: StoredSubtopicBlock, el: HTMLElement): EaBlockTip {
+  const { top, left } = eaClampedTooltipAnchor(el);
+  return {
+    key: b.key,
+    top,
+    left,
+    topicTitle: b.topicTitle,
+    topicId: b.topicId,
+    orphanSubtopicTitle: b.orphanSubtopicTitle,
+    orphanSubtopicId: b.orphanSubtopicId,
+    status: b.status,
+    topicIdShort: b.topicIdShort,
+    managerBrief: b.managerBrief,
+  };
+}
+
+function subtopicStatusDotClass(s: 'RED' | 'YELLOW' | 'GREEN'): string {
+  if (s === 'RED') return 'bg-red-500';
+  if (s === 'YELLOW') return 'bg-amber-500';
+  return 'bg-emerald-500';
+}
+
+function StatusBlocksGrid({
+  blocks,
+  compact,
+  weekBadgeLabel,
+  weekDateRange,
+}: {
+  blocks: StoredSubtopicBlock[];
+  compact?: boolean;
+  weekBadgeLabel: string;
+  weekDateRange: string;
+}) {
+  const [hoverTip, setHoverTip] = useState<EaBlockTip | null>(null);
+  const [pinnedTip, setPinnedTip] = useState<EaBlockTip | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const displayTip = pinnedTip ?? hoverTip;
+  const isPinned = pinnedTip !== null;
 
   useEffect(() => {
-    if (!activeTip) return;
-    const clear = () => setActiveTip(null);
+    if (isPinned || !hoverTip) return;
+    const clear = () => setHoverTip(null);
     window.addEventListener('scroll', clear, true);
     return () => window.removeEventListener('scroll', clear, true);
-  }, [activeTip]);
+  }, [hoverTip, isPinned]);
 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const onFocusOut = (e: FocusEvent) => {
+      if (pinnedTip) return;
       const rel = e.relatedTarget as Node | null;
       if (rel && el.contains(rel)) return;
-      setActiveTip(null);
+      setHoverTip(null);
     };
     el.addEventListener('focusout', onFocusOut);
     return () => el.removeEventListener('focusout', onFocusOut);
-  }, []);
+  }, [pinnedTip]);
+
+  useEffect(() => {
+    if (!pinnedTip) return;
+    const onDocDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t)) return;
+      if ((t as Element).closest?.('[data-ea-block-tip-panel]')) return;
+      setPinnedTip(null);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [pinnedTip]);
+
+  useEffect(() => {
+    if (!pinnedTip) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPinnedTip(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [pinnedTip]);
 
   if (blocks.length === 0) return null;
   const size = compact ? 'size-[8px]' : 'size-[10px]';
   const maxW = compact ? 'max-w-[4.5rem]' : 'max-w-[7.5rem]';
 
-  const showTip = (b: StoredSubtopicBlock, el: HTMLElement) => {
-    const { top, left } = eaClampedTooltipAnchor(el);
-    setActiveTip({
-      key: b.key,
-      top,
-      left,
-      title: b.title,
-      status: b.status,
-    });
+  const showHoverTip = (b: StoredSubtopicBlock, el: HTMLElement) => {
+    if (pinnedTip) return;
+    setHoverTip(blockTipFromElement(b, el));
   };
 
   const baseBlock =
-    'shrink-0 cursor-default rounded-none border border-[var(--color-border)] transition-[transform,box-shadow] duration-150 ease-out hover:z-20 hover:scale-[1.35] hover:shadow-md hover:ring-2 hover:ring-[var(--color-primary)] hover:ring-offset-1 hover:ring-offset-[var(--color-page)] focus-visible:z-20 focus-visible:scale-[1.35] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-page)]';
+    'static left-auto top-auto shrink-0 cursor-pointer rounded-none border border-[var(--color-border)] transition-[transform,box-shadow] duration-150 ease-out hover:z-20 hover:scale-[1.35] hover:shadow-md hover:ring-2 hover:ring-[var(--color-primary)] hover:ring-offset-1 hover:ring-offset-[var(--color-page)] focus-visible:z-20 focus-visible:scale-[1.35] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-page)] p-0';
 
   const activeRing =
     'z-20 scale-[1.35] shadow-md ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-page)]';
@@ -418,47 +954,221 @@ function StatusBlocksGrid({ blocks, compact }: { blocks: StoredSubtopicBlock[]; 
         ref={wrapRef}
         className={`flex w-full ${maxW} flex-wrap justify-center gap-px`}
         onMouseLeave={(e) => {
+          if (pinnedTip) return;
           const rel = e.relatedTarget as Node | null;
           if (rel && e.currentTarget.contains(rel)) return;
-          setActiveTip(null);
+          setHoverTip(null);
         }}
       >
         {blocks.map((b) => (
-          <span
+          <button
             key={b.key}
-            role="img"
+            type="button"
             aria-label={b.hover}
-            title={b.hover}
-            tabIndex={0}
+            aria-pressed={pinnedTip?.key === b.key}
+            title="คลิกเพื่อเปิดรายละเอียดค้างไว้ (คัดลอกได้)"
+            style={{ position: 'static', left: 'auto', top: 'auto' }}
             className={`${size} ${baseBlock} ${
               b.status === 'RED'
                 ? 'bg-red-500'
                 : b.status === 'YELLOW'
                   ? 'bg-amber-500'
                   : 'bg-emerald-500'
-            } ${activeTip?.key === b.key ? activeRing : ''}`}
-            onMouseEnter={(e) => showTip(b, e.currentTarget)}
-            onFocus={(e) => showTip(b, e.currentTarget)}
+            } ${displayTip?.key === b.key ? activeRing : ''}`}
+            onMouseEnter={(e) => showHoverTip(b, e.currentTarget)}
+            onFocus={(e) => showHoverTip(b, e.currentTarget)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const el = e.currentTarget;
+              if (pinnedTip?.key === b.key) {
+                setPinnedTip(null);
+                return;
+              }
+              setPinnedTip(blockTipFromElement(b, el));
+              setHoverTip(null);
+            }}
           />
         ))}
       </div>
-      <EaTooltipPortal anchor={activeTip ? { top: activeTip.top, left: activeTip.left } : null}>
-        {activeTip ? (
+      <EaTooltipPortal
+        anchor={displayTip ? { top: displayTip.top, left: displayTip.left } : null}
+        interactive={isPinned}
+      >
+        {displayTip ? (
           <>
-            <p className="text-xs font-semibold leading-snug text-[var(--color-text)] [overflow-wrap:anywhere]">
-              {activeTip.title}
-            </p>
-            <p
-              className={`mt-1.5 text-[10px] font-semibold tracking-wide ${
-                activeTip.status === 'RED'
-                  ? 'text-red-600 dark:text-red-400'
-                  : activeTip.status === 'YELLOW'
-                    ? 'text-amber-700 dark:text-amber-300'
-                    : 'text-emerald-700 dark:text-emerald-300'
-              }`}
-            >
-              สถานะ · {statusLabelTh(activeTip.status)}
-            </p>
+            {isPinned ? (
+              <p className="mb-2 text-[10px] leading-snug text-[var(--color-text-subtle)]">
+                คลิกนอกกล่อง กด Esc หรือคลิกจุดสีเดิมอีกครั้งเพื่อปิด · เลือกข้อความเพื่อคัดลอก
+              </p>
+            ) : null}
+            {displayTip.managerBrief.snapshotContextLine ? (
+              <p className="mb-2 text-[10px] leading-snug text-[var(--color-text-muted)] [overflow-wrap:anywhere]">
+                {displayTip.managerBrief.snapshotContextLine}
+              </p>
+            ) : null}
+            <div className="flex items-start gap-2 border-b border-[var(--color-border)] pb-2">
+              <span
+                className={`mt-1 size-2 shrink-0 rounded-full ${
+                  displayTip.status === 'RED'
+                    ? 'bg-red-500'
+                    : displayTip.status === 'YELLOW'
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                }`}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-snug text-[var(--color-text)] [overflow-wrap:anywhere]">
+                  {displayTip.orphanSubtopicId
+                    ? displayTip.orphanSubtopicTitle || displayTip.orphanSubtopicId
+                    : displayTip.topicTitle.trim()
+                      ? displayTip.topicTitle
+                      : displayTip.topicId.trim()
+                        ? '(ไม่มีชื่อหัวข้อหลักใน snapshot)'
+                        : '—'}
+                </p>
+                {displayTip.topicIdShort ? (
+                  <p className="mt-0.5 font-mono text-[10px] leading-snug text-[var(--color-text-muted)] [overflow-wrap:anywhere]">
+                    ID · {displayTip.topicIdShort}
+                  </p>
+                ) : null}
+                {displayTip.orphanSubtopicId ? (
+                  <p className="mt-0.5 text-[9px] leading-snug text-[var(--color-text-subtle)]">
+                    หัวข้อย่อย (snapshot ไม่มี topic)
+                  </p>
+                ) : null}
+              </div>
+              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-page)] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--color-text-muted)]">
+                {weekBadgeLabel}
+              </span>
+            </div>
+            {displayTip.managerBrief.subtopicRows.length > 0 ? (
+              <div className="mt-2 border-b border-[var(--color-border)] pb-2">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-subtle)]">
+                  Subtopics
+                </p>
+                <ul className="mt-1.5 list-none space-y-1.5 pl-0">
+                  {displayTip.managerBrief.subtopicRows.map((row, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[10px] leading-snug text-[var(--color-text)]">
+                      <span
+                        className={`mt-0.5 size-2 shrink-0 rounded-sm ${subtopicStatusDotClass(row.rowStatus)}`}
+                        title={statusLabelTh(row.rowStatus)}
+                        aria-label={statusLabelTh(row.rowStatus)}
+                      />
+                      <span className="[overflow-wrap:anywhere]">{row.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <div className="mt-2 border-b border-[var(--color-border)] pb-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-subtle)]">
+                Health ของงาน
+              </p>
+              <p
+                className="mt-1 text-[11px] font-medium leading-snug text-[var(--color-text)] [overflow-wrap:anywhere]"
+                aria-label={displayTip.managerBrief.healthInventorySpoken}
+              >
+                {displayTip.managerBrief.healthInventory}
+              </p>
+            </div>
+            <div className="mt-2 border-b border-[var(--color-border)] pb-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-subtle)]">
+                ความคืบหน้า
+              </p>
+              {displayTip.managerBrief.progress.hasTaskStatus &&
+              displayTip.managerBrief.progress.total > 0 ? (
+                <>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div
+                      className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--color-border)]"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={displayTip.managerBrief.progress.total}
+                      aria-valuenow={displayTip.managerBrief.progress.done}
+                      aria-label={`ความคืบหน้า ${displayTip.managerBrief.progress.done} จาก ${displayTip.managerBrief.progress.total} เสร็จ`}
+                    >
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-[width] duration-300"
+                        style={{
+                          width: `${Math.min(100, (100 * displayTip.managerBrief.progress.done) / displayTip.managerBrief.progress.total)}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="shrink-0 text-[10px] tabular-nums leading-none text-[var(--color-text-muted)]">
+                      {displayTip.managerBrief.progress.done}/{displayTip.managerBrief.progress.total} เสร็จ
+                    </span>
+                  </div>
+                  <p className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] leading-snug">
+                    <span className="text-[var(--color-text-muted)]">
+                      รอ {displayTip.managerBrief.progress.todo}
+                    </span>
+                    <span className="text-amber-600 dark:text-amber-400">
+                      กำลังทำ {displayTip.managerBrief.progress.doing}
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      เสร็จ {displayTip.managerBrief.progress.done}
+                    </span>
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-[10px] leading-snug text-[var(--color-text-muted)]">
+                  {displayTip.managerBrief.progress.total > 0
+                    ? 'ยังไม่มีฟิลด์สถานะรายการใน snapshot — อ้างอิงจำนวนใน Health ด้านบน'
+                    : '—'}
+                </p>
+              )}
+            </div>
+            <div className="mt-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-subtle)]">
+                ต้องจับตา
+              </p>
+              {displayTip.managerBrief.attentionItems.length ? (
+                <ul className="mt-1.5 list-none space-y-2 pl-0">
+                  {displayTip.managerBrief.attentionItems.map((item, i) => (
+                    <li key={i} className="[overflow-wrap:anywhere]">
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md ring-1 ring-inset ${
+                            item.health === 'RED'
+                              ? 'bg-red-500/12 text-red-600 ring-red-500/25 dark:bg-red-950/70 dark:text-red-400 dark:ring-red-400/20'
+                              : 'bg-amber-500/12 text-amber-600 ring-amber-500/25 dark:bg-amber-950/70 dark:text-amber-400 dark:ring-amber-400/20'
+                          }`}
+                          role="img"
+                          aria-label={
+                            item.health === 'RED'
+                              ? 'สถานะแดง — ต้องจับตา'
+                              : 'สถานะเหลือง — เฝ้าระวัง'
+                          }
+                        >
+                          <AlertTriangle className="size-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold leading-snug text-[var(--color-text)]">
+                            {item.taskTitle}
+                          </p>
+                          {item.note ? (
+                            <p className="mt-0.5 text-[10px] leading-snug text-[var(--color-text-muted)]">
+                              {item.note}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : displayTip.managerBrief.attentionEmpty ? (
+                <p className="mt-1 text-[10px] leading-snug text-[var(--color-text-muted)]">
+                  {displayTip.managerBrief.attentionEmpty}
+                </p>
+              ) : null}
+            </div>
+            <div className="-mx-2.5 -mb-2 mt-3 border-t border-[var(--color-border)] bg-[var(--color-page)] px-2.5 py-1.5">
+              <p className="text-[9px] leading-snug text-[var(--color-text-muted)] [overflow-wrap:anywhere]">
+                สีจุดมาจาก subtopic status · {weekBadgeLabel}: {weekDateRange || '—'}
+              </p>
+            </div>
           </>
         ) : null}
       </EaTooltipPortal>
@@ -485,11 +1195,14 @@ function SummaryRollupWithTip({
   totals,
   contextLine,
   compact,
+  usesSubtopicRowStatus,
 }: {
   rollup: Exclude<SummaryRollup, 'empty'>;
   totals: { RED: number; YELLOW: number; GREEN: number };
   contextLine: string;
   compact?: boolean;
+  /** true = ตัวเลขเป็นจำนวนหัวข้อย่อยตาม subtopic_status; false = จำนวนรายการตามสุขภาพงาน */
+  usesSubtopicRowStatus: boolean;
 }) {
   const [tipAnchor, setTipAnchor] = useState<EaTooltipAnchor | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -534,7 +1247,7 @@ function SummaryRollupWithTip({
       >
         <span
           role="img"
-          aria-label={historyModeTooltip(contextLine, totals)}
+          aria-label={historyModeTooltip(contextLine, totals, rollup, usesSubtopicRowStatus)}
           tabIndex={0}
           className={`${chipBase} ${chipSize} ${summaryRollupChipPillClass(rollup)} ${tipAnchor ? chipActive : ''}`}
           onMouseEnter={(e) => setTipAnchor(eaClampedTooltipAnchor(e.currentTarget))}
@@ -549,9 +1262,13 @@ function SummaryRollupWithTip({
         <p className={`mt-1 text-[10px] font-semibold tracking-wide ${rollupStatusTipClass(rollup)}`}>
           {SUMMARY_VIEW_HEADLINE[rollup]} · Summary View
         </p>
-        <p className="mt-2 text-[11px] leading-snug text-[var(--color-text)]">{teamHealthSummaryTh(totals)}</p>
+        <p className="mt-2 text-[11px] leading-snug text-[var(--color-text)]">
+          {teamCellBreakdownTh(totals, usesSubtopicRowStatus)}
+        </p>
         <p className="mt-2 text-[10px] leading-relaxed text-[var(--color-text-subtle)]">
-          ไอคอนนี้สะท้อนสถานะหนักสุดในช่อง: แดง {'>'} เหลือง {'>'} เขียว (เหมือนสรุปใน Summary View)
+          {usesSubtopicRowStatus
+            ? 'ไอคอนนี้สรุปจากสถานะหัวข้อย่อย (sub_topic) ในช่อง: แดง > เหลือง > เขียว — สอดคล้องจุดสีราย topic'
+            : 'ไอคอนนี้สะท้อนสถานะหนักสุดจากสุขภาพงานรายการ (snapshot เก่าไม่มี subtopic_status)'}
         </p>
       </EaTooltipPortal>
     </>
@@ -560,16 +1277,20 @@ function SummaryRollupWithTip({
 
 function HistoryModeCellBlock({
   blocks,
-  totals,
+  merged,
   contextLine,
   compact,
+  weekBadgeLabel,
+  weekDateRange,
 }: {
   blocks: StoredSubtopicBlock[];
-  totals: { RED: number; YELLOW: number; GREEN: number };
+  merged: TeamBuckets;
   contextLine: string;
   compact?: boolean;
+  weekBadgeLabel: string;
+  weekDateRange: string;
 }) {
-  const rollup = summaryRollupFromSubtopicCounts(totals);
+  const { rollup, totals, usesSubtopicRowStatus } = teamCellSummaryRollupAndTotals(merged);
   const gap = compact ? 'gap-1' : 'gap-1.5';
   const maxW = compact ? 'max-w-[4.5rem]' : 'max-w-[7.5rem]';
   const emptyCls = compact
@@ -580,7 +1301,7 @@ function HistoryModeCellBlock({
     <div
       className={`mx-auto flex w-full ${maxW} flex-col items-center ${gap}`}
       role="group"
-      aria-label={historyModeTooltip(contextLine, totals)}
+      aria-label={historyModeTooltip(contextLine, totals, rollup, usesSubtopicRowStatus)}
     >
       {rollup === 'empty' ? (
         <span
@@ -592,8 +1313,19 @@ function HistoryModeCellBlock({
         </span>
       ) : (
         <>
-          <SummaryRollupWithTip rollup={rollup} totals={totals} contextLine={contextLine} compact={compact} />
-          <StatusBlocksGrid blocks={blocks} compact={compact} />
+          <SummaryRollupWithTip
+            rollup={rollup}
+            totals={totals}
+            contextLine={contextLine}
+            compact={compact}
+            usesSubtopicRowStatus={usesSubtopicRowStatus}
+          />
+          <StatusBlocksGrid
+            blocks={blocks}
+            compact={compact}
+            weekBadgeLabel={weekBadgeLabel}
+            weekDateRange={weekDateRange}
+          />
         </>
       )}
     </div>
@@ -609,6 +1341,12 @@ type Props = {
   teamOrder?: readonly EaTeamOrderEntry[];
   /** subtopic_id → team_id — รวม snapshot ที่คีย์เป็นชื่อเก่า/ทีมเดียวกันเข้าแถวเดียว */
   subtopicToTeamId?: ReadonlyMap<string, string> | Record<string, string>;
+  /** team_id → ลำดับ topic_id ตามโปรเจกต์ — เรียงบล็อก (หนึ่งบล็อก = หนึ่ง topic) */
+  topicOrderByTeamId?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
+  /** team_id → ลำดับ subtopic_id — เรียงบล็อกแบบ snapshot เก่า (ไม่มี topic) และข้อความสรุปหัวข้อย่อยใต้ topic */
+  subtopicOrderByTeamId?: ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
+  /** subtopic_id → topic_id — สำรองลำดับ topic จากลำดับ subtopic ตาม DB เมื่อไม่ส่ง topicOrder */
+  subtopicToTopicId?: ReadonlyMap<string, string> | Record<string, string>;
 };
 
 function labelForTeamRow(rowKey: string, teamOrder: readonly EaTeamOrderEntry[] | undefined): string {
@@ -665,7 +1403,27 @@ function toSubtopicTeamMap(
   return e.length ? new Map(e) : undefined;
 }
 
-export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subtopicToTeamId }: Props) {
+function stringListForTeam(
+  raw:
+    | ReadonlyMap<string, readonly string[]>
+    | Record<string, readonly string[]>
+    | undefined,
+  teamId: string,
+): readonly string[] | undefined {
+  if (!raw) return undefined;
+  const list = raw instanceof Map ? raw.get(teamId) : raw[teamId];
+  return list?.length ? list : undefined;
+}
+
+export function EaWeeklyTrendPanel({
+  projectId,
+  refreshKey = 0,
+  teamOrder,
+  subtopicToTeamId,
+  topicOrderByTeamId,
+  subtopicOrderByTeamId,
+  subtopicToTopicId,
+}: Props) {
   const [snapshots, setSnapshots] = useState<EaHistorySnapshot[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -813,6 +1571,7 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subto
   }, [eaSnapshotModalOpen, projectId]);
 
   const subtopicTeamMap = useMemo(() => toSubtopicTeamMap(subtopicToTeamId), [subtopicToTeamId]);
+  const subtopicTopicLookup = useMemo(() => toSubtopicToTopicMap(subtopicToTopicId), [subtopicToTopicId]);
 
   const teamRowKeys = useMemo(
     () => (snapshots?.length ? teamRowKeysSorted(snapshots, teamOrder, subtopicTeamMap) : []),
@@ -976,7 +1735,7 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subto
     'sticky left-0 z-10 border-r border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left shadow-[4px_0_12px_-4px_rgba(0,0,0,0.12)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)]';
 
   const timelineSectionBlurb =
-    'แต่ละแถวเป็นหนึ่งทีม · แต่ละช่อง: สัญลักษณ์ภาพรวม + สี่เหลี่ยมชิดกันต่อหัวข้อย่อย (ลำดับแดง→เหลือง→เขียวใน snapshot) · เลือกช่วงสัปดาห์ล่าสุดได้เมื่อมีข้อมูลยาวหลายเดือน · ชี้หัวคอลัมน์/สี่เหลี่ยมเพื่อรายละเอียด';
+    'แต่ละแถวเป็นหนึ่งทีม · แต่ละช่อง: สัญลักษณ์ภาพรวม + สี่เหลี่ยมชิดกัน (หนึ่งสี่เหลี่ยม = หนึ่ง topic — สีสรุปจากสถานะหัวข้อย่อยใน snapshot ณ เวลาบันทึก ไม่ใช่สุขภาพงาน; snapshot เก่าไม่มีฟิลด์นี้จึงใช้สีจากสุขภาพงาน) · ลำดับตามหัวข้อในโปรเจกต์ · ชี้หัวคอลัมน์/สี่เหลี่ยมเพื่อรายละเอียด';
 
   return (
     <div className="relative mb-6 rounded-lg border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-3 sm:p-4">
@@ -1007,7 +1766,7 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subto
       </div>
 
       <p className="mt-2 text-[10px] leading-relaxed text-[var(--color-text-subtle)] sm:text-[11px]">
-        <span aria-hidden>🔴</span> แดง · <span aria-hidden>🟡</span> เหลือง · <span aria-hidden>🟢</span> เขียว — ภาพรวมช่องตาม Summary View
+        <span aria-hidden>🔴</span> แดง · <span aria-hidden>🟡</span> เหลือง · <span aria-hidden>🟢</span> เขียว — ไอคอนภาพรวมช่องสรุปจากสถานะหัวข้อย่อยใน snapshot (ถ้ามี subtopic_status) สอดคล้องจุดสีราย topic
       </p>
 
       {loading && <p className="mt-4 text-sm text-[var(--color-text-muted)]">กำลังโหลดประวัติ EA…</p>}
@@ -1135,9 +1894,14 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subto
                       </td>
                       {displayWeekColumns.map((col) => {
                         const merged = bucketsForTeamRow(col.snapshot, rowKey, teamLabel, subtopicTeamMap);
-                        const t = teamTotalsFromBuckets(merged);
                         const contextLine = `${col.titleLine}\nทีม ${teamLabel}`;
-                        const blocks = blocksFromTeamBuckets(merged, teamLabel);
+                        const blocks = blocksFromTeamBuckets(
+                          merged,
+                          teamLabel,
+                          stringListForTeam(topicOrderByTeamId, rowKey),
+                          stringListForTeam(subtopicOrderByTeamId, rowKey),
+                          subtopicTopicLookup,
+                        );
                         return (
                           <td
                             key={`${rowKey}-${col.key}`}
@@ -1149,9 +1913,11 @@ export function EaWeeklyTrendPanel({ projectId, refreshKey = 0, teamOrder, subto
                           >
                             <HistoryModeCellBlock
                               blocks={blocks}
-                              totals={t}
+                              merged={merged}
                               contextLine={contextLine}
                               compact={timelineCompact}
+                              weekBadgeLabel={col.label}
+                              weekDateRange={col.range}
                             />
                           </td>
                         );

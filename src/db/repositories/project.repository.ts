@@ -2,9 +2,8 @@
  * Domain repository: Project (aggregate of projects + project_teams + topics + sub_topics + details).
  * Frontend pages call this; it uses table repositories and runs transactions.
  */
-import type { ProjectData } from '../../types';
-import type { ProjectSummary } from '../../types';
-import { nameToId, sanitizeId } from '../../lib/idUtils';
+import type { ProjectData, ProjectSummary, TaskHealthRag } from '../../types';
+import { genDetailRowId, nameToId, sanitizeId } from '../../lib/idUtils';
 import * as client from '../client';
 import {
   enqueuePatchDelete,
@@ -180,10 +179,17 @@ export async function getProject(id: string): Promise<{ id: string; data: Projec
       for (const sub of subRows) {
         const detailRows = await projectDetailsTable.getBySubTopicId(sub.id);
         const details = detailRows.map((d) => ({
+          id: d.id,
           text: d.text ?? '',
           description: d.description ?? undefined,
           status: (d.status === 'done' || d.status === 'doing' ? d.status : 'todo') as 'todo' | 'doing' | 'done',
           dueDate: d.due_date ?? undefined,
+          health:
+            d.health === 'RED' || d.health === 'YELLOW' || d.health === 'GREEN'
+              ? (d.health as TaskHealthRag)
+              : undefined,
+          healthNote: d.health_note != null ? d.health_note : undefined,
+          healthReviewedAt: d.health_reviewed_at != null ? d.health_reviewed_at : undefined,
         }));
         subTopics.push({
           id: sub.id,
@@ -263,8 +269,16 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
       status: string;
       due_date: string | null;
       sort_order: number;
+      health: string | null;
+      health_note: string | null;
+      health_reviewed_at: string | null;
+      health_updated_at: string | null;
+      health_note_updated_at: string | null;
+      health_reviewed_at_updated_at: string | null;
     }>(
-      `SELECT d.id, d.sub_topic_id, d.text, d.description, d.status, d.due_date, d.sort_order
+      `SELECT d.id, d.sub_topic_id, d.text, d.description, d.status, d.due_date, d.sort_order,
+              d.health, d.health_note, d.health_reviewed_at,
+              d.health_updated_at, d.health_note_updated_at, d.health_reviewed_at_updated_at
        FROM project_sub_topic_details d
        INNER JOIN project_sub_topics st ON st.id = d.sub_topic_id
        INNER JOIN project_topics pt ON pt.id = st.topic_id
@@ -279,6 +293,7 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
   const existingTopicsById = new Map(existingTopics.map((r) => [r.id, r]));
   const existingSubTopicsById = new Map(existingSubTopics.map((r) => [r.id, r]));
   const existingDetailsById = new Map(existingDetails.map((r) => [r.id, r]));
+  const detailMetaTs = new Date().toISOString();
 
   // Materialize next rows with final ids + computed sort orders
   let teamOrder = 0;
@@ -306,6 +321,12 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
     status: string;
     due_date: string | null;
     sort_order: number;
+    health: string | null;
+    health_note: string | null;
+    health_reviewed_at: string | null;
+    health_updated_at: string | null;
+    health_note_updated_at: string | null;
+    health_reviewed_at_updated_at: string | null;
   }> = [];
   let nextDetailIds = new Set<string>();
 
@@ -340,8 +361,16 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
 
         let detailOrder = 0;
         for (const d of sub.details ?? []) {
-          const detailId = (d as { id?: string }).id || genId('d');
+          const detailId = (typeof d.id === 'string' && d.id.trim() ? d.id.trim() : null) || genDetailRowId();
           const st = d.status === 'done' || d.status === 'doing' ? d.status : 'todo';
+          const healthVal =
+            d.health === 'RED' || d.health === 'YELLOW' || d.health === 'GREEN' ? d.health : null;
+          const healthNote = d.healthNote ?? null;
+          const healthReviewedAt = d.healthReviewedAt ?? null;
+          const prevD = existingDetailsById.get(detailId);
+          const healthChanged = (prevD?.health ?? null) !== (healthVal ?? null);
+          const healthNoteChanged = (prevD?.health_note ?? null) !== (healthNote ?? null);
+          const healthReviewedChanged = (prevD?.health_reviewed_at ?? null) !== (healthReviewedAt ?? null);
           const detailRow = {
             id: detailId,
             sub_topic_id: subId,
@@ -350,6 +379,16 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
             status: st,
             due_date: d.dueDate ?? null,
             sort_order: detailOrder++,
+            health: healthVal,
+            health_note: healthNote,
+            health_reviewed_at: healthReviewedAt,
+            health_updated_at: healthChanged ? detailMetaTs : (prevD?.health_updated_at ?? null),
+            health_note_updated_at: healthNoteChanged
+              ? detailMetaTs
+              : (prevD?.health_note_updated_at ?? null),
+            health_reviewed_at_updated_at: healthReviewedChanged
+              ? detailMetaTs
+              : (prevD?.health_reviewed_at_updated_at ?? null),
           };
           nextDetails.push(detailRow);
           nextDetailIds.add(detailId);
@@ -418,6 +457,11 @@ export async function saveProject(projectName: string, data: ProjectData): Promi
       if (prev.status !== next.status) fields.status = next.status;
       if (prev.due_date !== next.due_date) fields.due_date = next.due_date;
       if (prev.sort_order !== next.sort_order) fields.sort_order = next.sort_order;
+      if ((prev.health ?? null) !== (next.health ?? null)) fields.health = next.health;
+      if ((prev.health_note ?? null) !== (next.health_note ?? null)) fields.health_note = next.health_note;
+      if ((prev.health_reviewed_at ?? null) !== (next.health_reviewed_at ?? null)) {
+        fields.health_reviewed_at = next.health_reviewed_at;
+      }
       return { id: did, fields };
     })
     .filter((x) => Object.keys(x.fields).length > 0);

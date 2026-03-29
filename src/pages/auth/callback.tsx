@@ -1,21 +1,36 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { prepareAfterLogin } from '../../lib/prepareAfterLogin';
+import { formatUnknownError } from '../../lib/formatUnknownError';
+import { AUTH_ID_TOKEN_KEY, OAUTH_FRAGMENT_CONSUMED_KEY } from '../../lib/googleAuth';
 
 const AUTH_CODE_KEY = 'archtown_oauth_code';
-const AUTH_ID_TOKEN_KEY = 'archtown_id_token';
 const GOOGLE_OAUTH_NONCE_KEY = 'archtown_google_oauth_nonce';
 
-function parseHashParams(hash: string): Record<string, string> {
-  const params: Record<string, string> = {};
+function stripUrlHash(): void {
+  if (!window.location.hash) return;
+  const { pathname, search } = window.location;
+  window.history.replaceState(null, '', `${pathname}${search}`);
+}
+
+/**
+ * Parse OAuth/OpenID fragment (e.g. id_token=...&authuser=0). Use URLSearchParams so values
+ * may contain "=" (JWT padding) — manual split on "=" breaks tokens.
+ */
+function parseFragmentParams(hash: string): Record<string, string> {
   const stripped = hash.startsWith('#') ? hash.slice(1) : hash;
-  stripped.split('&').forEach((pair) => {
-    const [key, value] = pair.split('=');
-    if (key && value) params[decodeURIComponent(key)] = decodeURIComponent(value);
+  if (!stripped) return {};
+  const usp = new URLSearchParams(stripped);
+  const params: Record<string, string> = {};
+  usp.forEach((value, key) => {
+    if (key) params[key] = value;
   });
   return params;
 }
+
+/** React 18 StrictMode (dev) mounts twice; share one prepare so SQLite/sync is not started twice. */
+let prepareAfterLoginShared: Promise<void> | null = null;
 
 export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -23,13 +38,23 @@ export default function AuthCallbackPage() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const preparedRef = useRef(false);
 
   useEffect(() => {
+    // StrictMode remount: hash ถูก strip แล้วแต่ token / auth code เก็บไว้แล้ว
+    if (sessionStorage.getItem(OAUTH_FRAGMENT_CONSUMED_KEY) === '1') {
+      const hasToken = !!sessionStorage.getItem(AUTH_ID_TOKEN_KEY);
+      const hasCode = !!sessionStorage.getItem(AUTH_CODE_KEY);
+      if (hasToken || hasCode) {
+        stripUrlHash();
+        setStatus('preparing');
+        return;
+      }
+    }
+
     // Implicit flow: id_token and optional error in hash
     const hash = window.location.hash;
     if (hash) {
-      const params = parseHashParams(hash);
+      const params = parseFragmentParams(hash);
       const hashError = params.error;
       const hashErrorDescription = params.error_description || hashError;
       const idToken = params.id_token;
@@ -42,6 +67,12 @@ export default function AuthCallbackPage() {
       }
 
       if (idToken) {
+        const trimmed = idToken.trim();
+        if (!trimmed) {
+          setStatus('error');
+          setErrorMessage('id_token ว่าง');
+          return;
+        }
         const storedNonce = sessionStorage.getItem(GOOGLE_OAUTH_NONCE_KEY);
         if (storedNonce && nonce && storedNonce !== nonce) {
           setStatus('error');
@@ -49,7 +80,9 @@ export default function AuthCallbackPage() {
           return;
         }
         sessionStorage.removeItem(GOOGLE_OAUTH_NONCE_KEY);
-        sessionStorage.setItem(AUTH_ID_TOKEN_KEY, idToken);
+        sessionStorage.setItem(AUTH_ID_TOKEN_KEY, trimmed);
+        sessionStorage.setItem(OAUTH_FRAGMENT_CONSUMED_KEY, '1');
+        stripUrlHash();
         setStatus('preparing');
         return;
       }
@@ -68,6 +101,7 @@ export default function AuthCallbackPage() {
 
     if (code) {
       sessionStorage.setItem(AUTH_CODE_KEY, code);
+      sessionStorage.setItem(OAUTH_FRAGMENT_CONSUMED_KEY, '1');
       setStatus('preparing');
       return;
     }
@@ -77,26 +111,38 @@ export default function AuthCallbackPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (status !== 'preparing' || preparedRef.current) return;
-    preparedRef.current = true;
+    if (status !== 'preparing') return;
 
-    (async () => {
-      try {
-        await prepareAfterLogin((s) => {
-          setProgressLabel(s.label);
-          setProgress(s.progress);
-        });
+    if (!prepareAfterLoginShared) {
+      prepareAfterLoginShared = prepareAfterLogin((s) => {
+        setProgressLabel(s.label);
+        setProgress(s.progress);
+      });
+    }
+
+    void prepareAfterLoginShared
+      .then(() => {
         setStatus('success');
-        const t = setTimeout(() => {
-          window.location.href = '/capability';
-        }, 400);
-        return () => clearTimeout(t);
-      } catch {
+      })
+      .catch((err) => {
+        prepareAfterLoginShared = null;
+        sessionStorage.removeItem(OAUTH_FRAGMENT_CONSUMED_KEY);
+        sessionStorage.removeItem(AUTH_ID_TOKEN_KEY);
+        sessionStorage.removeItem(AUTH_CODE_KEY);
         setStatus('error');
-        setErrorMessage('โหลดข้อมูลไม่สำเร็จ');
-        preparedRef.current = false;
-      }
-    })();
+        setErrorMessage(formatUnknownError(err, 'โหลดข้อมูลไม่สำเร็จ'));
+        console.error('[auth/callback] prepareAfterLogin failed', err);
+      });
+  }, [status]);
+
+  // แยกจาก effect ด้านบน: เมื่อ status เปลี่ยน preparing→success React จะรัน cleanup ของ effect เดิม
+  // ถ้าใส่ setTimeout ไว้ในนั้น cleanup จะ clearTimeout ทิ้ง — หน้าค้างที่ “สำเร็จ” โดยไม่ไป /capability
+  useEffect(() => {
+    if (status !== 'success') return;
+    const t = setTimeout(() => {
+      window.location.href = '/capability';
+    }, 400);
+    return () => clearTimeout(t);
   }, [status]);
 
   return (
@@ -175,10 +221,22 @@ export default function AuthCallbackPage() {
             <p className="mt-2 text-[var(--color-text-muted)]">
               {errorMessage}
             </p>
-            <div className="mt-4 p-3 rounded-lg bg-[var(--color-overlay)] text-xs text-left w-full max-w-md">
-              <p className="font-medium text-[var(--color-text)] mb-2">สิ่งที่ได้รับจาก Google (สำหรับตรวจสอบ):</p>
-              <p><strong>Hash:</strong> <code className="break-all text-[0.65rem]">{window.location.hash || '(ว่าง)'}</code></p>
-              <p className="mt-1"><strong>Query:</strong> <code className="break-all text-[0.65rem]">{window.location.search || '(ว่าง)'}</code></p>
+            <div className="mt-4 p-3 rounded-lg bg-[var(--color-overlay)] text-xs text-left w-full max-w-md space-y-2">
+              <p className="font-medium text-[var(--color-text)]">สิ่งที่ได้รับจาก Google (สำหรับตรวจสอบ):</p>
+              <p>
+                <strong>Hash:</strong>{' '}
+                <code className="break-all text-[0.65rem]">{window.location.hash || '(ว่าง)'}</code>
+              </p>
+              <p>
+                <strong>Query:</strong>{' '}
+                <code className="break-all text-[0.65rem]">{window.location.search || '(ว่าง)'}</code>
+              </p>
+              {!window.location.hash && !window.location.search ? (
+                <p className="text-[var(--color-text-muted)] pt-1 border-t border-[var(--color-border)]">
+                  Hash/Query ว่างเป็นปกติหลังระบบอ่าน token แล้ว (หรือหลัง refresh) — ถ้าเข้าไม่ได้
+                  ให้กลับหน้าแรกแล้วล็อกอิน Google ใหม่
+                </p>
+              ) : null}
             </div>
             <Link
               to="/"

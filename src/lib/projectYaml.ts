@@ -3,7 +3,17 @@
  * IDs are generated on load so YAML can omit them for brevity.
  */
 import yaml from 'js-yaml';
-import type { Team, Topic, SubTopic, SubTopicDetail, Status, SubTopicType, TodoItemStatus } from '../types';
+import type {
+  Team,
+  Topic,
+  SubTopic,
+  SubTopicDetail,
+  Status,
+  SubTopicType,
+  TodoItemStatus,
+  TaskHealthRag,
+} from '../types';
+import { genDetailRowId } from './idUtils';
 
 const STATUSES: Status[] = ['GREEN', 'YELLOW', 'RED'];
 
@@ -30,7 +40,19 @@ interface ProjectYamlTeam {
       title: string;
       status: Status;
       subTopicType?: SubTopicType;
-      details?: Array<{ text: string; description?: string; status?: TodoItemStatus; done?: boolean; dueDate?: string }>;
+      details?: Array<{
+        id?: string;
+        text: string;
+        description?: string;
+        status?: TodoItemStatus;
+        done?: boolean;
+        dueDate?: string;
+        health?: TaskHealthRag | null;
+        healthNote?: string | null;
+        health_note?: string | null;
+        healthReviewedAt?: string | null;
+        health_reviewed_at?: string | null;
+      }>;
     }>;
   }>;
 }
@@ -51,6 +73,46 @@ export interface ProjectData {
 
 function ensureStatus(s: unknown): Status {
   return STATUSES.includes(s as Status) ? (s as Status) : 'GREEN';
+}
+
+function parseTaskHealthRag(v: unknown): TaskHealthRag | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v !== 'string') return undefined;
+  const u = v.trim().toUpperCase();
+  if (!u) return undefined;
+  return u === 'GREEN' || u === 'YELLOW' || u === 'RED' ? (u as TaskHealthRag) : undefined;
+}
+
+/** Reads health / note / reviewed-at from YAML detail row (camelCase or snake_case). */
+function detailHealthFromYaml(d: Record<string, unknown>): Partial<
+  Pick<SubTopicDetail, 'health' | 'healthNote' | 'healthReviewedAt'>
+> {
+  const out: Partial<Pick<SubTopicDetail, 'health' | 'healthNote' | 'healthReviewedAt'>> = {};
+  const h = parseTaskHealthRag(d.health);
+  if (h !== undefined) out.health = h;
+
+  const cn = d.healthNote;
+  const sn = d.health_note;
+  if (cn === null || sn === null) out.healthNote = null;
+  else {
+    const t1 = typeof cn === 'string' ? cn.trim() : '';
+    const t2 = typeof sn === 'string' ? sn.trim() : '';
+    const t = t1 || t2;
+    if (t) out.healthNote = t;
+  }
+
+  const cr = d.healthReviewedAt;
+  const sr = d.health_reviewed_at;
+  if (cr === null || sr === null) out.healthReviewedAt = null;
+  else {
+    const r1 = typeof cr === 'string' ? cr.trim() : '';
+    const r2 = typeof sr === 'string' ? sr.trim() : '';
+    const r = r1 || r2;
+    if (r) out.healthReviewedAt = r;
+  }
+
+  return out;
 }
 
 /** Parse YAML string into project data with generated ids */
@@ -93,13 +155,18 @@ export function yamlToProject(yamlStr: string): ProjectData {
             typeof (d as { description?: string })?.description === 'string'
               ? (d as { description: string }).description.trim() || undefined
               : undefined;
+          const rawDetailId = (d as { id?: string }).id;
+          const detailId =
+            typeof rawDetailId === 'string' && rawDetailId.trim() ? rawDetailId.trim() : genDetailRowId();
           details.push({
+            id: detailId,
             text: typeof d?.text === 'string' ? d.text : '',
             ...(description && { description }),
             ...(hasStatus
               ? { status: ensureTodoItemStatus((d as { status: TodoItemStatus }).status) }
               : { status: (legacyDone ? 'done' : 'todo') as TodoItemStatus }),
             ...(dueDate && { dueDate }),
+            ...detailHealthFromYaml(d as Record<string, unknown>),
           });
         }
         subTopics.push({
@@ -142,10 +209,14 @@ export function projectToYaml(data: ProjectData): string {
           details: (sub.details ?? []).map((d) => {
             const status = d.status ?? (d.done ? 'done' : 'todo');
             return {
+              ...(d.id && { id: d.id }),
               text: d.text,
               ...(d.description && { description: d.description }),
               status,
               ...(d.dueDate && { dueDate: d.dueDate }),
+              ...(d.health !== undefined && { health: d.health }),
+              ...(d.healthNote !== undefined && { healthNote: d.healthNote }),
+              ...(d.healthReviewedAt !== undefined && { healthReviewedAt: d.healthReviewedAt }),
             };
           }),
         })),

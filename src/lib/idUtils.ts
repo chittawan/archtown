@@ -39,3 +39,8 @@ export function sanitizeId(id: string): string {
     .replace(/^_|_$/g, '');
   return s || '';
 }
+
+/** Row id for `project_sub_topic_details` — คงที่เมื่อเรียงลำดับใหม่ (ไม่ใช่ index ในอาร์เรย์) */
+export function genDetailRowId(): string {
+  return `d-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}

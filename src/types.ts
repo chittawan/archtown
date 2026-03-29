@@ -3,8 +3,13 @@ export type Status = 'GREEN' | 'YELLOW' | 'RED';
 /** สถานะของแต่ละ Todo item (Type Todos) */
 export type TodoItemStatus = 'todo' | 'doing' | 'done';
 
+/** มุมมอง SA/Lead: ควรกังวลไหม — แยกจาก status todo/doing/done */
+export type TaskHealthRag = 'GREEN' | 'YELLOW' | 'RED';
+
 /** Task ย่อยตาม Detail — รองรับทั้ง status (todo/doing/done) และ done (backward compat) */
 export interface SubTopicDetail {
+  /** id แถว SQLite / sync — ถ้าไม่มีตอนสร้างใหม่จะถูก generate ตอนบันทึก */
+  id?: string;
   text: string;
   /** Note / คำอธิบายเพิ่มเติมของ task นี้ */
   description?: string;
@@ -14,6 +19,11 @@ export interface SubTopicDetail {
   done?: boolean;
   /** ISO date YYYY-MM-DD */
   dueDate?: string;
+  /** สุขภาพงาน (RAG) — null/undefined = ยังไม่รีวิว */
+  health?: TaskHealthRag | null;
+  healthNote?: string | null;
+  /** ISO เวลาที่รีวิว health ล่าสุด */
+  healthReviewedAt?: string | null;
 }
 
 /** ประเภทหัวข้อย่อย: Todos = รายการ Todo (text, status, dueDate) | status = ติดตามแค่ RED/YELLOW/GREEN */

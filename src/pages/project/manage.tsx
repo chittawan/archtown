@@ -12,14 +12,23 @@ import {
 import { arrayMove } from '@dnd-kit/sortable';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Team, Topic, SubTopic, Status, SubTopicType, TodoItemStatus } from '../../types';
+import {
+  Team,
+  Topic,
+  SubTopic,
+  Status,
+  SubTopicType,
+  TodoItemStatus,
+  SubTopicDetail,
+} from '../../types';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { LongPressDeleteButton } from '../../components/ui/LongPressDeleteButton';
 import { SortableTopicRow } from '../../components/project/SortableTopicRow';
 import { SubtopicDroppableArea } from '../../components/project/SubtopicDroppableArea';
 import { SummaryView } from '../../components/project/SummaryView';
 import { projectToYaml, yamlToProject, type ProjectData } from '../../lib/projectYaml';
-import { nameToId } from '../../lib/idUtils';
+import { genDetailRowId, nameToId } from '../../lib/idUtils';
+import { ensureSubTopicDetailIds } from '../../lib/ensureSubTopicDetailIds';
 import * as archtownDb from '../../db/archtownDb';
 import { useTeamModal } from './hooks/useTeamModal';
 import { useTopicModal } from './hooks/useTopicModal';
@@ -114,7 +123,10 @@ export default function ProjectManagePage() {
       const detail = custom.detail;
       if (!detail?.projectId || !projectIdFromUrl) return;
       if (detail.projectId !== projectIdFromUrl) return;
-      dispatchTeams({ type: 'setAll', teams: detail.teams ?? [] });
+      dispatchTeams({
+        type: 'setAll',
+        teams: ensureSubTopicDetailIds(detail.teams ?? []),
+      });
     };
     window.addEventListener('project-todos-updated', handler as EventListener);
     return () => {
@@ -139,7 +151,7 @@ export default function ProjectManagePage() {
         setProjectName(name || '');
         setProjectNameInput(name || '');
         setProjectDescription(desc ?? '');
-        dispatchTeams({ type: 'setAll', teams: nextTeamsSafe });
+        dispatchTeams({ type: 'setAll', teams: ensureSubTopicDetailIds(nextTeamsSafe) });
 
         // Auto-expand topic/subtopic based on query params from tasks/manage.
         // This prevents the selected heading from appearing "collapsed" after navigation.
@@ -281,6 +293,46 @@ export default function ProjectManagePage() {
       for (const top of tm.topics) {
         for (const st of top.subTopics) {
           m.set(st.id, tm.id);
+        }
+      }
+    }
+    return m;
+  }, [teams]);
+
+  /** ลำดับ topic — Timeline EA หนึ่งจุดสีต่อหนึ่ง topic */
+  const eaTopicOrderByTeamId = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const tm of teams) {
+      m.set(
+        tm.id,
+        tm.topics.map((top) => top.id),
+      );
+    }
+    return m;
+  }, [teams]);
+
+  /** ลำดับ subtopic — ข้อความหัวข้อย่อยใต้ topic ใน tooltip + บล็อก snapshot เก่า (ไม่มี topic) */
+  const eaSubtopicOrderByTeamId = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const tm of teams) {
+      const ids: string[] = [];
+      for (const top of tm.topics) {
+        for (const st of top.subTopics) {
+          ids.push(st.id);
+        }
+      }
+      m.set(tm.id, ids);
+    }
+    return m;
+  }, [teams]);
+
+  /** ผูก subtopic → topic — เรียงบล็อก topic ให้ตรงลำดับแสดง (sort_order ใน DB) */
+  const eaSubtopicToTopicId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const tm of teams) {
+      for (const top of tm.topics) {
+        for (const st of top.subTopics) {
+          m.set(st.id, top.id);
         }
       }
     }
@@ -490,7 +542,7 @@ export default function ProjectManagePage() {
       try {
         const data = yamlToProject(text);
         setProjectName(data.projectName || projectName);
-        dispatchTeams({ type: 'setAll', teams: data.teams });
+        dispatchTeams({ type: 'setAll', teams: ensureSubTopicDetailIds(data.teams) });
         const allTopicIds = data.teams.flatMap((t) =>
           t.topics.map((top) => top.id)
         );
@@ -648,7 +700,7 @@ export default function ProjectManagePage() {
     updateTeams((prev) =>
       updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => [
         ...details,
-        { text: '', status: 'todo' as TodoItemStatus },
+        { id: genDetailRowId(), text: '', status: 'todo' as TodoItemStatus },
       ])
     );
   };
@@ -756,6 +808,22 @@ export default function ProjectManagePage() {
     );
   };
 
+  const updateSubTopicDetailHealth = (
+    teamId: string,
+    topicId: string,
+    subTopicId: string,
+    index: number,
+    patch: Partial<Pick<SubTopicDetail, 'health' | 'healthNote' | 'healthReviewedAt'>>
+  ) => {
+    updateTeams((prev) =>
+      updateSubTopicDetails(prev, teamId, topicId, subTopicId, (details) => {
+        const next = [...details];
+        if (next[index]) next[index] = { ...next[index], ...patch };
+        return next;
+      })
+    );
+  };
+
   const updateSubTopicType = (
     teamId: string,
     topicId: string,
@@ -840,14 +908,27 @@ export default function ProjectManagePage() {
     );
   };
 
-  const parseDetailItemId = (rawId: string): { topicId: string; subTopicId: string; index: number } | null => {
+  /** แปลง id ของแถวลาก (detail__topic__sub__detailRowId) เป็น index ปัจจุบันในอาร์เรย์ */
+  const resolveDetailDropTarget = (
+    rawId: string,
+    team: Team
+  ): { topicId: string; subTopicId: string; index: number } | null => {
     if (!rawId.startsWith('detail__')) return null;
     const parts = rawId.slice('detail__'.length).split('__');
     if (parts.length !== 3) return null;
-    const [topicId, subTopicId, indexStr] = parts;
-    const index = Number(indexStr);
-    if (!topicId || !subTopicId || !Number.isFinite(index)) return null;
-    return { topicId, subTopicId, index };
+    const [topicId, subTopicId, third] = parts;
+    if (!topicId || !subTopicId || !third) return null;
+    const sub = team.topics
+      .find((t) => t.id === topicId)
+      ?.subTopics.find((s) => s.id === subTopicId);
+    const details = sub?.details ?? [];
+    const byId = details.findIndex((d) => d.id === third);
+    if (byId !== -1) return { topicId, subTopicId, index: byId };
+    const legacy = Number(third);
+    if (Number.isInteger(legacy) && legacy >= 0 && legacy < details.length) {
+      return { topicId, subTopicId, index: legacy };
+    }
+    return null;
   };
 
   const moveOrReorderSubTopic = (
@@ -927,7 +1008,7 @@ export default function ProjectManagePage() {
       return;
     }
     if (active.data.current?.type === 'detail') {
-      const activeInfo = parseDetailItemId(String(active.id));
+      const activeInfo = resolveDetailDropTarget(String(active.id), team);
       if (!activeInfo) return;
       const overId = String(over.id);
       const visibleDetailIndices = (active.data.current as any)?.visibleDetailIndices as number[] | undefined;
@@ -957,7 +1038,7 @@ export default function ProjectManagePage() {
         );
         return;
       }
-      const overInfo = parseDetailItemId(overId);
+      const overInfo = resolveDetailDropTarget(overId, team);
       if (!overInfo) return;
       // Only reorder within the same subtopic (cross-subtopic move is not supported yet)
       if (overInfo.topicId !== activeInfo.topicId || overInfo.subTopicId !== activeInfo.subTopicId) return;
@@ -1179,6 +1260,9 @@ export default function ProjectManagePage() {
         projectId={displayProjectId}
         teamOrder={eaTimelineTeamOrder}
         subtopicToTeamId={eaSubtopicToTeamId}
+        topicOrderByTeamId={eaTopicOrderByTeamId}
+        subtopicOrderByTeamId={eaSubtopicOrderByTeamId}
+        subtopicToTopicId={eaSubtopicToTopicId}
       />
 
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 mb-8 flex flex-wrap gap-3 items-center text-sm shadow-[var(--shadow-card)]">
@@ -1514,6 +1598,15 @@ export default function ProjectManagePage() {
                                   subTopicId,
                                   index,
                                   status
+                                )
+                              }
+                              onUpdateDetailHealth={(topicId, subTopicId, index, patch) =>
+                                updateSubTopicDetailHealth(
+                                  team.id,
+                                  topicId,
+                                  subTopicId,
+                                  index,
+                                  patch
                                 )
                               }
                               onSubTopicTypeChange={(topicId, subTopicId, subTopicType) =>

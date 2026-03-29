@@ -17,6 +17,7 @@ import {
   detailExists,
   getTableRows,
   listTasksFiltered,
+  listTasksNeedingHealthReview,
   listTopicsForProject,
   maxCapabilityOrderSort,
   maxSortOrderCapProjects,
@@ -109,7 +110,7 @@ export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
     'get_tasks',
     {
       description:
-        'List tasks from project_sub_topic_details with subtopic title and project name. Filter by status, optional project_id, overdue_only.',
+        'List tasks from project_sub_topic_details with subtopic title, project name, workflow status, and task health (health, health_note, health_reviewed_at). Filter by status, optional project_id, overdue_only.',
       inputSchema: {
         status: z.enum(['todo', 'doing', 'done', 'all']).optional().describe('Filter by task status; default all'),
         project_id: z.string().optional().describe('Only tasks under this project id'),
@@ -303,6 +304,73 @@ export function createArchtownMcpServer(ctx: ArchtownMcpContext): McpServer {
       if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
       const body = patch.data as Record<string, unknown>;
       return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'update_task_health',
+    {
+      description:
+        'Set task health (GREEN/YELLOW/RED) for SA/lead “should we worry?” on project_sub_topic_details. Updates health_reviewed_at to now; optional health_note.',
+      inputSchema: {
+        id: z.string().describe('project_sub_topic_details id'),
+        health: z.enum(['GREEN', 'YELLOW', 'RED']).describe('Health / risk signal'),
+        note: z.string().optional().describe('Optional health_note; omit to leave unchanged, empty string clears'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      if (!detailExists(parsed.tables, params.id)) {
+        return toolErr(`task not found: ${params.id}`);
+      }
+      const fields: Record<string, unknown> = {};
+      const field_updated_at: Record<string, string> = {};
+      const now = new Date().toISOString();
+      fields.health = params.health;
+      field_updated_at.health = now;
+      fields.health_reviewed_at = now;
+      field_updated_at.health_reviewed_at = now;
+      if (params.note !== undefined) {
+        fields.health_note = params.note === '' ? null : params.note;
+        field_updated_at.health_note = now;
+      }
+      const patch = await fetchPatch(ctx, {
+        base_version: parsed.version,
+        ops: [
+          {
+            op: 'update',
+            table: 'project_sub_topic_details',
+            id: params.id,
+            fields,
+            field_updated_at,
+          },
+        ],
+      });
+      if (patch.ok === false) return toolErr(`patch failed (${patch.status}): ${patch.text}`);
+      const body = patch.data as Record<string, unknown>;
+      return toolJson({ ok: body.ok ?? true, version: body.version });
+    },
+  );
+
+  server.registerTool(
+    'get_unreviewed_tasks',
+    {
+      description:
+        'List tasks needing health review: health is unset, or health_reviewed_at is older than 7 days. Includes text, workflow status (todo/doing/done), subtopic_title, project.',
+      inputSchema: {
+        project_id: z.string().optional().describe('Only tasks under this project id'),
+      },
+    },
+    async (params) => {
+      const dl = await fetchDownloadJson(ctx);
+      if (dl.ok === false) return toolErr(`download failed (${dl.status}): ${dl.text}`);
+      const parsed = parseBackupTables(dl.data);
+      if (!parsed) return toolErr('invalid backup shape');
+      const tasks = listTasksNeedingHealthReview(parsed.tables, { project_id: params.project_id });
+      return toolJson({ tasks });
     },
   );
 

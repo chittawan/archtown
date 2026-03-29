@@ -262,9 +262,9 @@ GET ${baseUrl}/api/ea/<projectId>/history
 X-Google-User-Id: YOUR_USER_ID
 \`\`\`
 
-Response includes \`snapshots\` (deduped by \`week_no\` unless \`?all=1\`), \`total_files\`, \`display_mode\`. Each PUT to weeks bumps \`weeks_revision\`; snapshots store that revision at capture time.
+Response includes \`snapshots\` (deduped by \`week_no\` unless \`?all=1\`), \`total_files\`, \`display_mode\`. Each PUT to weeks bumps \`weeks_revision\`; snapshots store that revision at capture time. Snapshot \`teams\` buckets are **per task** (\`project_sub_topic_details\`): each item has \`detail_id\`, \`text\`, \`subtopic_id\`, \`subtopic_title\`, grouped by **task health** (\`GREEN\` | \`YELLOW\` | \`RED\`); rows with no \`health\` set are counted as \`YELLOW\`.
 
-**MCP tools:** \`create_weekly_snapshot\` (\`project_id\`, \`week_no\`), \`get_weekly_history\` (\`project_id\`, optional \`week_no\`).
+**MCP tools (EA):** \`create_weekly_snapshot\` (\`project_id\`, \`week_no\`), \`get_weekly_history\` (\`project_id\`, optional \`week_no\`). **MCP tools (task health):** \`update_task_health\` (\`id\`, \`health\`, optional \`note\`), \`get_unreviewed_tasks\` (optional \`project_id\` — tasks with no health or \`health_reviewed_at\` older than 7 days).
 
 ### 2.7 GET /api/sync/events
 
@@ -295,7 +295,7 @@ Export/import order (dependency-ish):
 2. **project_teams** — \`id\`, \`project_id\`, \`name\`, \`sort_order\`
 3. **project_topics** — \`id\`, \`team_id\`, \`title\`, \`sort_order\`
 4. **project_sub_topics** — \`id\`, \`topic_id\`, \`title\`, \`status\` (\`GREEN\` | \`YELLOW\` | \`RED\`), \`sub_topic_type\` (\`todos\` | \`status\`), \`sort_order\`
-5. **project_sub_topic_details** — \`id\`, \`sub_topic_id\`, \`text\`, \`description\`, \`status\` (\`todo\` | \`doing\` | \`done\`), \`due_date\` (\`YYYY-MM-DD\`), \`sort_order\`
+5. **project_sub_topic_details** — \`id\`, \`sub_topic_id\`, \`text\`, \`description\`, \`status\` (\`todo\` | \`doing\` | \`done\`), \`due_date\` (\`YYYY-MM-DD\`), \`sort_order\`, plus **SA/lead health**: \`health\` (\`GREEN\` | \`YELLOW\` | \`RED\` or omitted/null), \`health_note\`, \`health_reviewed_at\` (ISO), and merge timestamps \`health_updated_at\`, \`health_note_updated_at\`, \`health_reviewed_at_updated_at\` when present
 6. **org_teams** — \`id\`, \`name\`, \`owner\`, \`parent_id\`
 7. **org_team_children** — \`parent_id\`, \`child_id\`, \`sort_order\` (composite identity)
 8. **capability_order** — \`sort_order\`, \`cap_id\`
@@ -308,8 +308,8 @@ Export/import order (dependency-ish):
 projects
   └── project_teams
         └── project_topics
-              └── project_sub_topics   (RAG status: GREEN / YELLOW / RED)
-                    └── project_sub_topic_details   (todo / doing / done + due_date)
+              └── project_sub_topics   (roll-up RAG: GREEN / YELLOW / RED)
+                    └── project_sub_topic_details   (workflow todo/doing/done + due_date + task health RAG)
 \`\`\`
 
 **Org teams**:
@@ -417,6 +417,15 @@ curl -s -X PATCH ${baseUrl}/api/sync/patch \\
   -H "Content-Type: application/json" \\
   -H "X-Google-User-Id: YOUR_USER_ID" \\
   -d '{"base_version":74,"ops":[{"op":"update","table":"project_sub_topic_details","id":"ROW_ID","fields":{"status":"done"},"field_updated_at":{"status":"2026-03-21T12:00:00.000Z"}}]}'
+\`\`\`
+
+### Patch task health (same op shape)
+
+\`\`\`bash
+curl -s -X PATCH ${baseUrl}/api/sync/patch \\
+  -H "Content-Type: application/json" \\
+  -H "X-Google-User-Id: YOUR_USER_ID" \\
+  -d '{"base_version":74,"ops":[{"op":"update","table":"project_sub_topic_details","id":"ROW_ID","fields":{"health":"YELLOW","health_note":"watch dependency X","health_reviewed_at":"2026-03-28T10:00:00.000Z"},"field_updated_at":{"health":"2026-03-28T10:00:00.000Z","health_note":"2026-03-28T10:00:00.000Z","health_reviewed_at":"2026-03-28T10:00:00.000Z"}}]}'
 \`\`\`
 
 ### Full upload (after editing downloaded JSON)

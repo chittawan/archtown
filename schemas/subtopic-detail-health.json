@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://archtown.local/schemas/subtopic-detail-health.json",
+  "title": "SubTopicDetail health fields",
+  "description": "Optional RAG health metadata for a single todo detail under a subtopic. Matches SubTopicDetail in src/types.ts and columns on project_sub_topic_details.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "health": {
+      "description": "Task health RAG; null means explicitly unset / not reviewed.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "enum": ["GREEN", "YELLOW", "RED"] }
+      ]
+    },
+    "health_note": {
+      "description": "DB / API snake_case alias for healthNote.",
+      "oneOf": [{ "type": "null" }, { "type": "string" }]
+    },
+    "healthNote": {
+      "description": "TypeScript / YAML camelCase; free-text note from last health review.",
+      "oneOf": [{ "type": "null" }, { "type": "string" }]
+    },
+    "health_reviewed_at": {
+      "description": "DB snake_case; ISO-8601 timestamp of last health review.",
+      "oneOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }]
+    },
+    "healthReviewedAt": {
+      "description": "TypeScript / YAML camelCase; ISO-8601 timestamp.",
+      "oneOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }]
+    }
+  }
+}

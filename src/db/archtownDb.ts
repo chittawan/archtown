@@ -12,13 +12,18 @@ import * as orgTeamRepository from './repositories/org_team.repository';
 import * as capabilityRepository from './repositories/capability.repository';
 
 let idbFallbackLoaded = false;
+/** กันหลาย caller นำเข้า IDB พร้อมกัน — import คู่ขนานบน connection เดียวทำให้ค้างได้ */
+let idbFallbackInitPromise: Promise<void> | null = null;
 let persistIdbTimer: ReturnType<typeof setTimeout> | null = null;
 const PERSIST_DEBOUNCE_MS = 1500;
 
+export type ArchtownDataLoadStep = { progress: number; label: string };
+
 /** โหลด DB + IndexedDB fallback ก่อนเขียน SQL นอก repository (เช่น SSE patch) */
-export async function ensureArchtownDataLoaded(): Promise<void> {
+export async function ensureArchtownDataLoaded(onStep?: (s: ArchtownDataLoadStep) => void): Promise<void> {
+  onStep?.({ progress: 12, label: 'กำลังเปิดฐานข้อมูลในเบราว์เซอร์...' });
   await client.ensureDb();
-  await ensureIdbFallbackInitialized();
+  await ensureIdbFallbackInitialized(onStep);
 }
 
 /** หลังแก้ตารางโดยตรง — debounce เขียน snapshot ลง IndexedDB เมื่อไม่ใช้ OPFS */
@@ -27,15 +32,30 @@ export function afterExternalTableMutation(): void {
 }
 
 /** เมื่อไม่ใช้ OPFS โหลดข้อมูลจาก IndexedDB (ครั้งเดียวต่อ session) */
-async function ensureIdbFallbackInitialized(): Promise<void> {
+async function ensureIdbFallbackInitialized(onStep?: (s: ArchtownDataLoadStep) => void): Promise<void> {
   if (client.isOpfsUsed()) return;
   if (idbFallbackLoaded) return;
+  if (!idbFallbackInitPromise) {
+    idbFallbackInitPromise = loadIdbFallbackIntoSqlite(onStep).finally(() => {
+      idbFallbackInitPromise = null;
+    });
+  }
+  await idbFallbackInitPromise;
+}
+
+async function loadIdbFallbackIntoSqlite(onStep?: (s: ArchtownDataLoadStep) => void): Promise<void> {
   await client.ensureDb();
+  onStep?.({ progress: 15, label: 'กำลังอ่านข้อมูลจาก IndexedDB...' });
   const payload = await loadSyncPayloadFromIndexedDB();
   if (payload?.tables && Object.keys(payload.tables).length > 0) {
+    onStep?.({
+      progress: 18,
+      label: 'กำลังนำข้อมูลเก่าเข้าฐานข้อมูล (ถ้าข้อมูลเยอะอาจใช้เวลาสักครู่)...',
+    });
     await importAllTables(payload as SyncExportPayload);
   }
   idbFallbackLoaded = true;
+  onStep?.({ progress: 22, label: 'เตรียมฐานข้อมูลในเบราว์เซอร์แล้ว' });
 }
 
 /** บันทึก snapshot ลง IndexedDB (debounced) เมื่อไม่ใช้ OPFS */

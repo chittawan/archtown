@@ -1,4 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { OAUTH_FRAGMENT_CONSUMED_KEY } from './lib/googleAuth';
 import AppLayout from './components/layout/AppLayout';
 import LandingPage from './pages/home/landing';
 import AuthCallbackPage from './pages/auth/callback';
@@ -14,9 +16,24 @@ import EaWeeklyOverviewPage from './pages/ea/weeklyOverview';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
+function ClearOAuthCallbackFragmentFlag() {
+  const location = useLocation();
+  useEffect(() => {
+    if (location.pathname !== '/auth/callback') {
+      try {
+        sessionStorage.removeItem(OAUTH_FRAGMENT_CONSUMED_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [location.pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <ClearOAuthCallbackFragmentFlag />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />

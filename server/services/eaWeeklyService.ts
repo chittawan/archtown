@@ -19,12 +19,27 @@ export type WeeksFile = {
   weeks: WeekDefinition[];
 };
 
-export type SubtopicStatusItem = { subtopic_id: string; title: string };
+/** รายการใน snapshot ต่อทีม — ระดับงาน (detail) ตาม Phase9 health */
+export type TaskHealthSnapshotItem = {
+  detail_id: string;
+  text: string;
+  subtopic_id: string;
+  subtopic_title: string;
+  /** หัวข้อหลักที่ subtopic สังกัด — snapshot เก่าอาจไม่มี */
+  topic_id?: string;
+  topic_title?: string;
+  /** สถานะ Todo ของแถว (todo / doing / done) — snapshot เก่าอาจไม่มีฟิลด์นี้ */
+  task_status?: 'todo' | 'doing' | 'done';
+  /** หมายเหตุสุขภาพงาน (รีวิว) — snapshot เก่าอาจไม่มี */
+  health_note?: string;
+  /** สถานะหัวข้อย่อย (project_sub_topics.status) ณ เวลาถ่าย snapshot — ใช้สรุปสีบล็อก timeline */
+  subtopic_status?: 'RED' | 'YELLOW' | 'GREEN';
+};
 
 export type TeamSnapshotBuckets = {
-  RED: SubtopicStatusItem[];
-  YELLOW: SubtopicStatusItem[];
-  GREEN: SubtopicStatusItem[];
+  RED: TaskHealthSnapshotItem[];
+  YELLOW: TaskHealthSnapshotItem[];
+  GREEN: TaskHealthSnapshotItem[];
 };
 
 export type WeeklySnapshotFile = {
@@ -103,27 +118,73 @@ function buildTopicToTeamMeta(tables: BackupTables): Map<string, { teamId: strin
   return map;
 }
 
+function topicTitlesById(tables: BackupTables): Map<string, string> {
+  const topics = getTableRows(tables, 'project_topics');
+  const m = new Map<string, string>();
+  for (const t of topics) {
+    const id = String(t.id ?? '').trim();
+    if (!id) continue;
+    const title = String(t.title ?? '').trim();
+    m.set(id, title || id);
+  }
+  return m;
+}
+
+function taskStatusFromDetailRow(raw: unknown): 'todo' | 'doing' | 'done' {
+  const s = String(raw ?? 'todo').trim();
+  if (s === 'doing' || s === 'done') return s;
+  return 'todo';
+}
+
+function subtopicRowStatusFromDb(raw: unknown): 'RED' | 'YELLOW' | 'GREEN' {
+  const s = String(raw ?? 'GREEN').trim();
+  if (s === 'RED' || s === 'YELLOW' || s === 'GREEN') return s;
+  return 'GREEN';
+}
+
 /** คีย์เป็น project_teams.id — ทนต่อการเปลี่ยนชื่อทีม; snapshot เก่าที่คีย์เป็นชื่อยังอ่านได้ฝั่ง client */
 function computeTeamsSnapshot(tables: BackupTables, projectId: string): Record<string, TeamSnapshotBuckets> {
+  const details = getTableRows(tables, 'project_sub_topic_details');
   const subTopics = getTableRows(tables, 'project_sub_topics');
+  const subById = new Map(subTopics.map((s) => [String(s.id ?? ''), s]));
   const topicToTeam = buildTopicToTeamMeta(tables);
+  const topicTitleMap = topicTitlesById(tables);
   const teamsOut: Record<string, TeamSnapshotBuckets> = {};
 
   const emptyBucket = (): TeamSnapshotBuckets => ({ RED: [], YELLOW: [], GREEN: [] });
 
-  for (const st of subTopics) {
+  for (const d of details) {
+    const subId = String(d.sub_topic_id ?? '');
+    const st = subById.get(subId);
+    if (!st) continue;
     const topicId = String(st.topic_id ?? '');
     const meta = topicToTeam.get(topicId);
     if (!meta || meta.projectId !== projectId) continue;
 
-    const raw = st.status;
-    const status = raw === 'RED' || raw === 'YELLOW' ? raw : 'GREEN';
+    const raw = d.health;
+    const bucket: keyof TeamSnapshotBuckets =
+      raw === 'RED' || raw === 'YELLOW' || raw === 'GREEN' ? raw : 'YELLOW';
     const rowKey = meta.teamId || meta.teamName;
     if (!rowKey) continue;
     if (!teamsOut[rowKey]) teamsOut[rowKey] = emptyBucket();
-    const id = String(st.id ?? '');
-    const title = String(st.title ?? '');
-    teamsOut[rowKey][status].push({ subtopic_id: id, title });
+    const healthNoteRaw = d.health_note;
+    const health_note =
+      typeof healthNoteRaw === 'string'
+        ? healthNoteRaw.trim()
+        : healthNoteRaw != null
+          ? String(healthNoteRaw).trim()
+          : '';
+    teamsOut[rowKey][bucket].push({
+      detail_id: String(d.id ?? ''),
+      text: String(d.text ?? ''),
+      subtopic_id: subId,
+      subtopic_title: String(st.title ?? ''),
+      topic_id: topicId,
+      topic_title: topicTitleMap.get(topicId) ?? '',
+      task_status: taskStatusFromDetailRow(d.status),
+      subtopic_status: subtopicRowStatusFromDb(st.status),
+      ...(health_note ? { health_note } : {}),
+    });
   }
 
   return teamsOut;

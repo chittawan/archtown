@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import type { Status, Topic, SubTopicType, TodoItemStatus } from '../../types';
+import type { Status, SubTopicDetail, Topic, SubTopicType, TodoItemStatus } from '../../types';
 import { SortableSubTopicCard } from './SortableSubTopicCard';
 
 type EditingSubTopicState = {
@@ -38,6 +38,12 @@ type SubtopicDroppableAreaProps = {
     description: string | undefined
   ) => void;
   onUpdateDetailStatus: (topicId: string, subTopicId: string, index: number, status: TodoItemStatus) => void;
+  onUpdateDetailHealth: (
+    topicId: string,
+    subTopicId: string,
+    index: number,
+    patch: Partial<Pick<SubTopicDetail, 'health' | 'healthNote' | 'healthReviewedAt'>>
+  ) => void;
   onRemoveDetail: (topicId: string, subTopicId: string, index: number) => void;
   onToggleDetailDone: (topicId: string, subTopicId: string, index: number) => void;
   onSubTopicTypeChange: (topicId: string, subTopicId: string, type: SubTopicType) => void;
@@ -63,6 +69,7 @@ export function SubtopicDroppableArea({
   onUpdateDetailDueDate,
   onUpdateDetailDescription,
   onUpdateDetailStatus,
+  onUpdateDetailHealth,
   onRemoveDetail,
   onToggleDetailDone,
   onSubTopicTypeChange,
@@ -129,6 +136,9 @@ export function SubtopicDroppableArea({
                 }
                 onUpdateDetailStatus={(index, status) =>
                   onUpdateDetailStatus(topic.id, subTopic.id, index, status)
+                }
+                onUpdateDetailHealth={(index, patch) =>
+                  onUpdateDetailHealth(topic.id, subTopic.id, index, patch)
                 }
                 onRemoveDetail={(index) =>
                   onRemoveDetail(topic.id, subTopic.id, index)

@@ -1,10 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { GripVertical, ChevronDown, ChevronRight, Plus, Check, Circle, ListTodo, BarChart3, FileText } from 'lucide-react';
+import {
+  GripVertical,
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Check,
+  Circle,
+  ListTodo,
+  BarChart3,
+  FileText,
+  HeartPulse,
+} from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Status, SubTopic, SubTopicType, TodoItemStatus } from '../../types';
+import type { Status, SubTopic, SubTopicDetail, SubTopicType, TaskHealthRag, TodoItemStatus } from '../../types';
 import { LongPressDeleteButton } from '../ui/LongPressDeleteButton';
 import { ReferenceIdChip } from '../ui/ReferenceIdChip';
 
@@ -28,6 +39,10 @@ type SortableSubTopicCardProps = {
   onUpdateDetailDueDate: (index: number, dueDate: string | undefined) => void;
   onUpdateDetailDescription: (index: number, description: string | undefined) => void;
   onUpdateDetailStatus: (index: number, status: TodoItemStatus) => void;
+  onUpdateDetailHealth: (
+    index: number,
+    patch: Partial<Pick<SubTopicDetail, 'health' | 'healthNote' | 'healthReviewedAt'>>
+  ) => void;
   onRemoveDetail: (index: number) => void;
   onToggleDetailDone: (index: number) => void;
   isTodoSectionOpen: boolean;
@@ -122,8 +137,157 @@ function getStatusStyles(status: TodoItemStatus): { row: string; select: string 
   }
 }
 
-function detailItemId(topicId: string, subTopicId: string, index: number) {
-  return `detail__${topicId}__${subTopicId}__${index}`;
+function formatHealthReviewedAtTh(iso: string | null | undefined): string {
+  if (!iso?.trim()) return '—';
+  try {
+    const d = new Date(iso.trim());
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
+}
+
+function detailHasHealthContent(item: SubTopicDetail): boolean {
+  return (
+    item.health != null ||
+    (item.healthNote != null && item.healthNote.trim() !== '') ||
+    (item.healthReviewedAt != null && item.healthReviewedAt.trim() !== '')
+  );
+}
+
+function HealthRagDot({ health }: { health: TaskHealthRag | null | undefined }) {
+  if (health == null) {
+    return <span className="w-2 h-2 shrink-0" aria-hidden />;
+  }
+  const cls =
+    health === 'GREEN' ? 'bg-emerald-500' : health === 'YELLOW' ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <span
+      className={`inline-block w-2 h-2 rounded-full shrink-0 ring-1 ring-[var(--color-border)] ${cls}`}
+      title={
+        health === 'GREEN'
+          ? 'สุขภาพงาน: เขียว'
+          : health === 'YELLOW'
+            ? 'สุขภาพงาน: เหลือง'
+            : 'สุขภาพงาน: แดง'
+      }
+      aria-hidden
+    />
+  );
+}
+
+function DetailHealthPanel({
+  index,
+  item,
+  openHealthIndex,
+  setOpenHealthIndex,
+  draftDetailHealthNote,
+  setDraftDetailHealthNote,
+  onUpdateDetailHealth,
+}: {
+  index: number;
+  item: SubTopicDetail;
+  openHealthIndex: number | null;
+  setOpenHealthIndex: React.Dispatch<React.SetStateAction<number | null>>;
+  draftDetailHealthNote: Record<number, string>;
+  setDraftDetailHealthNote: React.Dispatch<React.SetStateAction<Record<number, string>>>;
+  onUpdateDetailHealth: (
+    index: number,
+    patch: Partial<Pick<SubTopicDetail, 'health' | 'healthNote' | 'healthReviewedAt'>>
+  ) => void;
+}) {
+  const hasContent = detailHasHealthContent(item);
+  const showPanel = hasContent || openHealthIndex === index;
+
+  const getNoteDisplay = () =>
+    draftDetailHealthNote[index] !== undefined
+      ? draftDetailHealthNote[index]
+      : item.healthNote ?? '';
+
+  const flushHealthNote = () => {
+    const value = getNoteDisplay().trim();
+    onUpdateDetailHealth(index, { healthNote: value ? value : null });
+    setDraftDetailHealthNote((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+    if (!value && item.health == null && !item.healthReviewedAt?.trim()) {
+      setOpenHealthIndex(null);
+    }
+  };
+
+  if (!showPanel) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpenHealthIndex(index)}
+        className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7"
+        title="รีวิวสุขภาพงานแยกจากสถานะ Todo"
+      >
+        <HeartPulse className="w-3.5 h-3.5" />
+        สุขภาพงาน (RAG)
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 space-y-1.5 ml-4 sm:ml-7 rounded-lg border border-[var(--color-border)] bg-[var(--color-page)]/50 dark:bg-[var(--color-surface)]/50 px-2 py-2 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-[var(--color-text-muted)]">
+          สุขภาพงาน
+        </span>
+        <select
+          value={item.health ?? ''}
+          onChange={(e) => {
+            const v = e.target.value;
+            onUpdateDetailHealth(index, {
+              health: v === '' ? null : (v as TaskHealthRag),
+            });
+          }}
+          className="text-[11px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+          title="ความกังวล / สุขภาพงาน (แยกจาก todo/doing/done)"
+          aria-label="สุขภาพงาน RAG"
+        >
+          <option value="">ไม่ระบุ</option>
+          <option value="GREEN">เขียว</option>
+          <option value="YELLOW">เหลือง</option>
+          <option value="RED">แดง</option>
+        </select>
+        <span className="text-[10px] text-slate-500 dark:text-[var(--color-text-subtle)]">
+          รีวิวล่าสุด: {formatHealthReviewedAtTh(item.healthReviewedAt)}
+        </span>
+        <button
+          type="button"
+          onClick={() =>
+            onUpdateDetailHealth(index, { healthReviewedAt: new Date().toISOString() })
+          }
+          className="text-[10px] font-medium text-[var(--color-primary)] hover:underline"
+        >
+          บันทึกเวลารีวิวตอนนี้
+        </button>
+      </div>
+      <AutoResizeDescriptionTextarea
+        value={getNoteDisplay()}
+        onChange={(e) =>
+          setDraftDetailHealthNote((prev) => ({ ...prev, [index]: e.target.value }))
+        }
+        onBlur={() => flushHealthNote()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') (e.target as HTMLTextAreaElement).blur();
+        }}
+        placeholder="หมายเหตุการรีวิว (เช่น บล็อก รอ stakeholder)…"
+        title="หมายเหตุการรีวิวสุขภาพงาน"
+        className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/80 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden placeholder:text-slate-500 dark:placeholder:text-slate-400"
+      />
+    </div>
+  );
+}
+
+/** Sortable + drag id — ส่วนท้ายเป็น `SubTopicDetail.id` (stable) ไม่ใช่ index */
+function detailItemId(topicId: string, subTopicId: string, detailRowId: string) {
+  return `detail__${topicId}__${subTopicId}__${detailRowId}`;
 }
 
 function detailListId(teamId: string, topicId: string, subTopicId: string) {
@@ -198,6 +362,7 @@ export function SortableSubTopicCard({
   onUpdateDetailDueDate,
   onUpdateDetailDescription,
   onUpdateDetailStatus,
+  onUpdateDetailHealth,
   onRemoveDetail,
   onToggleDetailDone,
   isTodoSectionOpen,
@@ -216,6 +381,8 @@ export function SortableSubTopicCard({
   const [draftDetailDescription, setDraftDetailDescription] = useState<Record<number, string>>({});
   /** index ของ detail ที่เปิด Note/memo อยู่ (Notion-style: กดปุ่มถึงแสดง) */
   const [openNoteIndex, setOpenNoteIndex] = useState<number | null>(null);
+  const [openHealthIndex, setOpenHealthIndex] = useState<number | null>(null);
+  const [draftDetailHealthNote, setDraftDetailHealthNote] = useState<Record<number, string>>({});
   const [localTitle, setLocalTitle] = useState(editTitleValue);
   const prevIsEditingTitle = useRef(false);
   const isDone = (item: { status?: TodoItemStatus; done?: boolean }) =>
@@ -295,8 +462,8 @@ export function SortableSubTopicCard({
     : details
         .map((item, index) => ({ item, index }))
         .filter(({ item }) => !isDone(item));
-  const visibleDetailIds = visibleDetailEntries.map(({ index }) =>
-    detailItemId(topicId, subTopic.id, index)
+  const visibleDetailIds = visibleDetailEntries.map(({ item }) =>
+    detailItemId(topicId, subTopic.id, item.id!)
   );
   const visibleDetailIndices = visibleDetailEntries.map(({ index }) => index);
   const { setNodeRef: setDetailListRef, isOver: isOverDetailList } = useDroppable({
@@ -460,10 +627,10 @@ export function SortableSubTopicCard({
                   {visibleDetailEntries.map(({ item, index }, visibleIndex) => {
                     const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
                     const statusStyle = getStatusStyles(itemStatus);
-                    const rowId = detailItemId(topicId, subTopic.id, index);
+                    const rowId = detailItemId(topicId, subTopic.id, item.id!);
                     return (
                       <SortableDetailRow
-                        key={rowId}
+                        key={item.id}
                         id={rowId}
                         detailIndex={index}
                         visibleDetailIndices={visibleDetailIndices}
@@ -501,11 +668,11 @@ export function SortableSubTopicCard({
                                   </span>
                                   <ReferenceIdChip
                                     compact
-                                    kind="detail_idx"
-                                    value={String(index)}
+                                    kind="detail_id"
+                                    value={item.id!}
                                     className="max-w-full"
                                     longPressReferenceChain={[
-                                      { kind: 'detail_idx', value: String(index) },
+                                      { kind: 'detail_id', value: item.id! },
                                       { kind: 'sub_id', value: subTopic.id },
                                       { kind: 'topic_id', value: topicId },
                                       { kind: 'team_id', value: teamId },
@@ -540,6 +707,7 @@ export function SortableSubTopicCard({
                                         : '!text-slate-800 dark:!text-slate-100'
                                   }`}
                                 />
+                                <HealthRagDot health={item.health} />
                                 <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[110px] sm:w-[140px] justify-start">
                                   <input
                                     type="date"
@@ -598,6 +766,15 @@ export function SortableSubTopicCard({
                                   เพิ่ม Note
                                 </button>
                               )}
+                              <DetailHealthPanel
+                                index={index}
+                                item={item}
+                                openHealthIndex={openHealthIndex}
+                                setOpenHealthIndex={setOpenHealthIndex}
+                                draftDetailHealthNote={draftDetailHealthNote}
+                                setDraftDetailHealthNote={setDraftDetailHealthNote}
+                                onUpdateDetailHealth={onUpdateDetailHealth}
+                              />
                             </div>
                             <div className="opacity-100 pointer-events-auto transition-opacity shrink-0 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:hover:opacity-100 md:focus-within:opacity-100 md:group-hover:pointer-events-auto md:hover:pointer-events-auto md:focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
                               <LongPressDeleteButton
@@ -636,10 +813,10 @@ export function SortableSubTopicCard({
                       {visibleDetailEntries.map(({ item, index }, visibleIndex) => {
                         const itemStatus = (item.status ?? (item.done ? 'done' : 'todo')) as TodoItemStatus;
                         const statusStyle = getStatusStyles(itemStatus);
-                        const rowId = detailItemId(topicId, subTopic.id, index);
+                        const rowId = detailItemId(topicId, subTopic.id, item.id!);
                         return (
                           <SortableDetailRow
-                            key={rowId}
+                            key={item.id}
                             id={rowId}
                             className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                           >
@@ -663,11 +840,11 @@ export function SortableSubTopicCard({
                                       </span>
                                       <ReferenceIdChip
                                         compact
-                                        kind="detail_idx"
-                                        value={String(index)}
+                                        kind="detail_id"
+                                        value={item.id!}
                                         className="max-w-full"
                                         longPressReferenceChain={[
-                                          { kind: 'detail_idx', value: String(index) },
+                                          { kind: 'detail_id', value: item.id! },
                                           { kind: 'sub_id', value: subTopic.id },
                                           { kind: 'topic_id', value: topicId },
                                           { kind: 'team_id', value: teamId },
@@ -702,6 +879,7 @@ export function SortableSubTopicCard({
                                             : 'dark:!text-slate-100'
                                       }`}
                                     />
+                                    <HealthRagDot health={item.health} />
                                     <select
                                       value={itemStatus}
                                       onChange={(e) =>
@@ -772,6 +950,15 @@ export function SortableSubTopicCard({
                                       เพิ่ม Note
                                     </button>
                                   )}
+                                  <DetailHealthPanel
+                                    index={index}
+                                    item={item}
+                                    openHealthIndex={openHealthIndex}
+                                    setOpenHealthIndex={setOpenHealthIndex}
+                                    draftDetailHealthNote={draftDetailHealthNote}
+                                    setDraftDetailHealthNote={setDraftDetailHealthNote}
+                                    onUpdateDetailHealth={onUpdateDetailHealth}
+                                  />
                                 </div>
                                 <div className="opacity-100 pointer-events-auto transition-opacity shrink-0 md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:hover:opacity-100 md:focus-within:opacity-100 md:group-hover:pointer-events-auto md:hover:pointer-events-auto md:focus-within:pointer-events-auto text-amber-600 dark:text-amber-400 mt-0.5">
                                   <LongPressDeleteButton
