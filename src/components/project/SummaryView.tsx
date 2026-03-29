@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Team, Topic, Status, SubTopic, SubTopicDetail } from '../../types';
+import type { Team, Topic, Status, SubTopic, SubTopicDetail, TaskHealthRag } from '../../types';
+import { AlertTriangle } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -66,6 +67,21 @@ function PdfStatusBadge({
 
 function detailEffectiveStatus(d: SubTopicDetail): 'todo' | 'doing' | 'done' {
   return d.status ?? (d.done ? 'done' : 'todo');
+}
+
+function taskHealthLineTitle(h: TaskHealthRag | null | undefined): string {
+  if (h === 'RED') return 'สุขภาพงาน: วิกฤต';
+  if (h === 'YELLOW') return 'สุขภาพงาน: เฝ้าระวัง';
+  if (h === 'GREEN') return 'สุขภาพงาน: ปกติ';
+  return 'ยังไม่ระบุสุขภาพงาน';
+}
+
+/** เส้นข้างหมายเหตุสุขภาพงาน — โทนเดียวกับ RAG */
+function taskHealthNotePipeStyle(health: TaskHealthRag | null | undefined): string {
+  if (health === 'RED') return '2px solid #f87171';
+  if (health === 'YELLOW') return '2px solid #fbbf24';
+  if (health === 'GREEN') return '2px solid #4ade80';
+  return '2px solid #d1d5db';
 }
 
 function getTopicStatus(topic: Topic): Status {
@@ -200,6 +216,77 @@ function DetailDescriptionNote({
           </ul>
         )}
       </span>
+    </span>
+  );
+}
+
+function DetailTaskHealthBlock({
+  health,
+  healthNote,
+}: {
+  health?: TaskHealthRag | null;
+  healthNote?: string | null;
+}) {
+  const note = (healthNote ?? '').trim();
+  if (!health && !note) return null;
+  const title = taskHealthLineTitle(health);
+  const label =
+    health === 'RED'
+      ? 'วิกฤต'
+      : health === 'YELLOW'
+        ? 'เฝ้าระวัง'
+        : health === 'GREEN'
+          ? 'ปกติ'
+          : null;
+  const showAlertIcon = health === 'RED' || health === 'YELLOW';
+  return (
+    <span style={{ display: 'block', marginTop: 4 }}>
+      <span style={{ display: 'block', lineHeight: 1.5 }}>
+        <span
+          style={{
+            fontSize: 8,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            color: '#6366f1',
+            textTransform: 'uppercase',
+            marginRight: 6,
+          }}
+        >
+          สุขภาพงาน
+        </span>
+        <span style={{ fontSize: 10, color: '#374151', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }} title={title}>
+          {showAlertIcon ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                color: health === 'RED' ? '#dc2626' : '#d97706',
+                flexShrink: 0,
+              }}
+              aria-hidden
+            >
+              <AlertTriangle size={12} strokeWidth={2.5} />
+            </span>
+          ) : null}
+          {label ?? <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>ยังไม่ระบุ</span>}
+        </span>
+      </span>
+      {note ? (
+        <span
+          style={{
+            display: 'block',
+            marginTop: 3,
+            paddingLeft: 8,
+            borderLeft: taskHealthNotePipeStyle(health),
+            fontSize: 10,
+            fontStyle: 'italic',
+            color: '#6b7280',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.55,
+          }}
+        >
+          {note}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -550,6 +637,7 @@ function SummaryDetailTimeline({ teams }: { teams: Team[] }) {
                                   taskStatus={st}
                                 />
                               )}
+                              <DetailTaskHealthBlock health={d.health} healthNote={d.healthNote} />
                             </span>
                           </div>
                         );
@@ -644,6 +732,7 @@ function SummarySubTopicDetailCard({ team, topic, sub }: { team: Team; topic: To
                       taskStatus={st}
                     />
                   )}
+                  <DetailTaskHealthBlock health={d.health} healthNote={d.healthNote} />
                 </span>
                 {d.dueDate && (
                   <span style={{ flexShrink: 0, fontSize: 9, color: '#6b7280' }}>
@@ -923,7 +1012,7 @@ export function SummaryView({
             </div>
           </div>
 
-          {/* Health bar */}
+          {/* Health bar — หัวข้อย่อย */}
           <div style={{ display: 'flex', height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: '#f3f4f6', marginBottom: 16 }}>
             {redPct > 0 && <div style={{ width: `${redPct}%`, backgroundColor: '#dc2626' }} />}
             {yellowPct > 0 && <div style={{ width: `${yellowPct}%`, backgroundColor: '#f59e0b' }} />}
@@ -1020,7 +1109,7 @@ export function SummaryView({
           </h2>
           {detailMode === 'timeline' && (
             <p style={{ fontSize: 11, color: '#6b7280', margin: '-8px 0 16px', lineHeight: 1.5 }}>
-              แต่ละแถว = รายการ Todo (ถ้ามี) หรือหัวข้อย่อยที่ไม่มี Todo — เรียงจากวันครบกำหนด (รูปแบบ YYYY-MM-DD) ก่อน แล้วตามด้วยรายการที่ไม่ระบุวัน
+              แต่ละแถว = รายการ Todo (ถ้ามี) หรือหัวข้อย่อยที่ไม่มี Todo — เรียงจากวันครบกำหนด (รูปแบบ YYYY-MM-DD) ก่อน แล้วตามด้วยรายการที่ไม่ระบุวัน — ใต้แต่ละงานแสดงสุขภาพงาน (RAG) และหมายเหตุสุขภาพเมื่อมี
             </p>
           )}
 
