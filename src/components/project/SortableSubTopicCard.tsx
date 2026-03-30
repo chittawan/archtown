@@ -110,7 +110,7 @@ function getStatusStyles(status: TodoItemStatus): { row: string; select: string 
     case 'doing':
       return {
         row:
-          'border-l-2 border-l-blue-400 dark:border-l-blue-400 bg-blue-50/40 dark:bg-blue-950/40 rounded-r-md ' +
+          'border-l-[3px] border-l-blue-400 dark:border-l-blue-400 bg-blue-50/50 dark:bg-blue-950/35 rounded-r-lg ' +
           'dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]',
         select:
           'bg-blue-50 dark:bg-blue-950/70 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200 ' +
@@ -119,7 +119,7 @@ function getStatusStyles(status: TodoItemStatus): { row: string; select: string 
     case 'done':
       return {
         row:
-          'border-l-2 border-l-emerald-400 dark:border-l-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/40 rounded-r-md ' +
+          'border-l-[3px] border-l-emerald-500/90 dark:border-l-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/35 rounded-r-lg ' +
           'dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]',
         select:
           'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 ' +
@@ -128,7 +128,7 @@ function getStatusStyles(status: TodoItemStatus): { row: string; select: string 
     default:
       return {
         row:
-          'border-l-2 border-l-slate-200 dark:border-l-slate-500 bg-slate-50/30 dark:bg-slate-800/30 rounded-r-md ' +
+          'border-l-[3px] border-l-slate-200 dark:border-l-slate-500 bg-slate-50/40 dark:bg-slate-800/25 rounded-r-lg ' +
           'dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.02)]',
         select:
           'bg-slate-50 dark:bg-slate-900/90 dark:border-slate-600 border-slate-200 text-slate-600 dark:text-slate-300 ' +
@@ -223,11 +223,11 @@ function DetailHealthPanel({
       <button
         type="button"
         onClick={() => setOpenHealthIndex(index)}
-        className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7"
-        title="รีวิวสุขภาพงานแยกจากสถานะ Todo"
+        className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-text-muted)] rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-page)]/35 dark:bg-[var(--color-surface)]/40 px-2 py-1 hover:border-[var(--color-primary)]/45 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/35 ml-4 sm:ml-7 transition-colors"
+        title="รีวิวสุขภาพงาน (RAG) แยกจากสถานะ Todo"
       >
-        <HeartPulse className="w-3.5 h-3.5" />
-        สุขภาพงาน (RAG)
+        <HeartPulse className="w-3.5 h-3.5 shrink-0 opacity-80" />
+        สุขภาพงาน
       </button>
     );
   }
@@ -444,7 +444,7 @@ export function SortableSubTopicCard({
     const due = new Date(dueDate + 'T00:00:00');
     const diffMs = due.getTime() - today.getTime();
     const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return `${Math.abs(diffDays)} วัน`;
+    if (diffDays < 0) return `เลยกำหนด ${Math.abs(diffDays)} วัน`;
     if (diffDays === 0) return 'วันนี้';
     return `อีก ${diffDays} วัน`;
   };
@@ -634,7 +634,7 @@ export function SortableSubTopicCard({
                         id={rowId}
                         detailIndex={index}
                         visibleDetailIndices={visibleDetailIndices}
-                        className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
+                        className={`group flex items-start gap-3 pl-3 pr-1.5 py-2.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                       >
                         {({ dragHandle }) => (
                           <>
@@ -653,10 +653,10 @@ export function SortableSubTopicCard({
                             </button>
                             <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                               {/* บรรทัดเดียว: หัวข้อ + ชื่อ task + วันที่ */}
-                              <div className="flex items-center gap-2 min-h-[30px]">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-2 min-h-[32px]">
                                 <div className="flex flex-col items-end gap-0.5 w-[4.25rem] shrink-0">
                                   <span
-                                    className={`text-xs font-medium w-full text-right tabular-nums ${
+                                    className={`text-xs font-semibold w-full text-right tabular-nums tracking-tight ${
                                       itemStatus === 'done'
                                         ? 'text-emerald-500 dark:!text-emerald-100'
                                         : itemStatus === 'doing'
@@ -668,6 +668,7 @@ export function SortableSubTopicCard({
                                   </span>
                                   <ReferenceIdChip
                                     compact
+                                    hideKind
                                     kind="detail_id"
                                     value={item.id!}
                                     className="max-w-full"
@@ -699,7 +700,7 @@ export function SortableSubTopicCard({
                                     }
                                   }}
                                   placeholder={`Task ${visibleIndex + 1}`}
-                                  className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
+                                  className={`flex-1 min-w-[12rem] text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                                     isDone(item)
                                       ? 'line-through !text-slate-500 dark:!text-emerald-100'
                                       : itemStatus === 'doing'
@@ -708,7 +709,7 @@ export function SortableSubTopicCard({
                                   }`}
                                 />
                                 <HealthRagDot health={item.health} />
-                                <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[110px] sm:w-[140px] justify-start">
+                                <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight justify-start rounded-md border border-[var(--color-border)]/75 bg-[var(--color-page)]/40 dark:bg-[var(--color-surface)]/30 px-1.5 py-1 min-w-[12.5rem] w-[min(100%,13rem)] sm:min-w-[13.5rem] sm:w-[14rem]">
                                   <input
                                     type="date"
                                     value={item.dueDate ?? ''}
@@ -716,18 +717,18 @@ export function SortableSubTopicCard({
                                       onUpdateDetailDueDate(index, e.target.value || undefined)
                                     }
                                     title="Due date"
-                                    className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                                    className={`shrink-0 min-w-[9rem] flex-1 text-[11px] bg-transparent border-0 rounded px-0.5 py-0 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                                       isOverdueAndNotDone(item.dueDate, isDone(item))
-                                        ? 'border-red-500 !text-red-500 dark:!text-red-400 focus:ring-red-500 dark:focus:ring-red-400'
-                                        : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
+                                        ? '!text-red-600 dark:!text-red-400'
+                                        : ''
                                     }`}
                                   />
                                   {getDaysLeft(item.dueDate) && (
                                     <span
-                                      className={`whitespace-nowrap ${
+                                      className={`whitespace-nowrap font-medium ${
                                         isOverdueAndNotDone(item.dueDate, isDone(item))
                                           ? 'text-red-600 dark:text-red-400'
-                                          : 'text-slate-800 dark:text-[var(--color-text)]'
+                                          : 'text-[var(--color-text-muted)]'
                                       }`}
                                     >
                                       {getDaysLeft(item.dueDate)}
@@ -753,16 +754,16 @@ export function SortableSubTopicCard({
                                   }}
                                   placeholder="Memo / Note..."
                                   title="Note"
-                                  className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-4 sm:ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
+                                  className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-4 sm:ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                                 />
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => setOpenNoteIndex(index)}
-                                  className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7"
+                                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-text-muted)] rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-page)]/35 dark:bg-[var(--color-surface)]/40 px-2 py-1 hover:border-[var(--color-primary)]/45 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/35 ml-4 sm:ml-7 transition-colors"
                                   title="เพิ่ม memo / note"
                                 >
-                                  <FileText className="w-3.5 h-3.5" />
+                                  <FileText className="w-3.5 h-3.5 shrink-0 opacity-80" />
                                   เพิ่ม Note
                                 </button>
                               )}
@@ -818,17 +819,17 @@ export function SortableSubTopicCard({
                           <SortableDetailRow
                             key={item.id}
                             id={rowId}
-                            className={`group flex items-start gap-2 pl-2.5 py-1.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
+                            className={`group flex items-start gap-3 pl-3 pr-1.5 py-2.5 text-slate-800 dark:text-[var(--color-text)] ${statusStyle.row}`}
                           >
                             {({ dragHandle }) => (
                               <>
                                 {dragHandle}
                                 <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                   {/* บรรทัดเดียว: หัวข้อ + ชื่อรายการ + สถานะ + วันที่ */}
-                                  <div className="flex items-center gap-2 min-h-[30px]">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-2 min-h-[32px]">
                                     <div className="flex flex-col items-end gap-0.5 w-[4.25rem] shrink-0">
                                       <span
-                                        className={`text-xs font-medium w-full text-right tabular-nums ${
+                                        className={`text-xs font-semibold w-full text-right tabular-nums tracking-tight ${
                                           itemStatus === 'done'
                                             ? 'text-emerald-500 dark:!text-emerald-100'
                                             : itemStatus === 'doing'
@@ -840,6 +841,7 @@ export function SortableSubTopicCard({
                                       </span>
                                       <ReferenceIdChip
                                         compact
+                                        hideKind
                                         kind="detail_id"
                                         value={item.id!}
                                         className="max-w-full"
@@ -871,7 +873,7 @@ export function SortableSubTopicCard({
                                         }
                                       }}
                                       placeholder={`รายการ ${visibleIndex + 1}`}
-                                      className={`flex-1 min-w-0 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
+                                      className={`flex-1 min-w-[12rem] text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] !text-slate-800 ${
                                         itemStatus === 'done'
                                           ? 'dark:!text-emerald-100'
                                           : itemStatus === 'doing'
@@ -885,14 +887,14 @@ export function SortableSubTopicCard({
                                       onChange={(e) =>
                                         onUpdateDetailStatus(index, e.target.value as TodoItemStatus)
                                       }
-                                      className={`shrink-0 text-[11px] border rounded px-2 py-1 font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 min-w-[5rem] ${statusStyle.select}`}
+                                      className={`shrink-0 text-[11px] border rounded-md px-2 py-1 font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 min-w-[5rem] ${statusStyle.select}`}
                                       title="สถานะรายการ (ใช้ค่าเดียวกับ Todo)"
                                     >
                                       <option value="todo">รอทำ</option>
                                       <option value="doing">กำลังทำ</option>
                                       <option value="done">เสร็จ</option>
                                     </select>
-                                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight w-[110px] sm:w-[140px] justify-start">
+                                    <div className="flex items-center gap-1.5 shrink-0 text-[10px] leading-tight justify-start rounded-md border border-[var(--color-border)]/75 bg-[var(--color-page)]/40 dark:bg-[var(--color-surface)]/30 px-1.5 py-1 min-w-[12.5rem] w-[min(100%,13rem)] sm:min-w-[13.5rem] sm:w-[14rem]">
                                       <input
                                         type="date"
                                         value={item.dueDate ?? ''}
@@ -900,18 +902,18 @@ export function SortableSubTopicCard({
                                           onUpdateDetailDueDate(index, e.target.value || undefined)
                                         }
                                         title="Due date"
-                                        className={`shrink-0 text-[11px] bg-[var(--color-surface)] border rounded px-1.5 py-1 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 ${
+                                        className={`shrink-0 min-w-[9rem] flex-1 text-[11px] bg-transparent border-0 rounded px-0.5 py-0 !text-slate-800 dark:!text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
                                           isOverdueAndNotDone(item.dueDate, isDone(item))
-                                            ? 'border-red-500 !text-red-500 focus:ring-red-500 dark:!text-red-400'
-                                            : 'border-[var(--color-border)] focus:ring-[var(--color-primary)]'
+                                            ? '!text-red-600 dark:!text-red-400'
+                                            : ''
                                         }`}
                                       />
                                       {getDaysLeft(item.dueDate) && (
                                         <span
-                                          className={`whitespace-nowrap ${
+                                          className={`whitespace-nowrap font-medium ${
                                             isOverdueAndNotDone(item.dueDate, isDone(item))
                                               ? 'text-red-600 dark:text-red-400'
-                                              : 'text-slate-800 dark:text-[var(--color-text)]'
+                                              : 'text-[var(--color-text-muted)]'
                                           }`}
                                         >
                                           {getDaysLeft(item.dueDate)}
@@ -937,16 +939,16 @@ export function SortableSubTopicCard({
                                       }}
                                       placeholder="Memo / Note..."
                                       title="Note"
-                                      className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-4 sm:ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
+                                      className="w-full min-w-0 text-[11px] leading-tight bg-[var(--color-surface)]/60 border border-[var(--color-border)] rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-slate-600 dark:!text-slate-300 overflow-x-hidden ml-4 sm:ml-7 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                                     />
                                   ) : (
                                     <button
                                       type="button"
                                       onClick={() => setOpenNoteIndex(index)}
-                                      className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-[var(--color-text-subtle)] hover:text-[var(--color-primary)] rounded px-2 py-1 hover:bg-[var(--color-overlay)] ml-4 sm:ml-7"
+                                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-text-muted)] rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-page)]/35 dark:bg-[var(--color-surface)]/40 px-2 py-1 hover:border-[var(--color-primary)]/45 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]/35 ml-4 sm:ml-7 transition-colors"
                                       title="เพิ่ม memo / note"
                                     >
-                                      <FileText className="w-3.5 h-3.5" />
+                                      <FileText className="w-3.5 h-3.5 shrink-0 opacity-80" />
                                       เพิ่ม Note
                                     </button>
                                   )}

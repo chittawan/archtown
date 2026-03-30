@@ -14,6 +14,8 @@ type Props = {
   className?: string;
   /** ถ้า true ใช้ขนาดเล็กมาก (แถว Todo) */
   compact?: boolean;
+  /** ซ่อนป้ายชนิด (เช่น detail_id) เหลือเฉพาะค่า — เหมาะกับแถว Task */
+  hideKind?: boolean;
   /** กดค้าง 1 วินาที: คัดลอกสายอ้างอิง ลำดับจากลูกไป parent */
   longPressReferenceChain?: Array<{ kind: ReferenceIdKind; value: string }>;
 };
@@ -30,6 +32,7 @@ export function ReferenceIdChip({
   value,
   className = '',
   compact,
+  hideKind,
   longPressReferenceChain,
 }: Props) {
   const full = `${kind}=${value}`;
@@ -122,8 +125,12 @@ export function ReferenceIdChip({
         />
       )}
       <span className="relative z-10 inline-flex items-center gap-1 min-w-0 max-w-full">
-        <span className="text-[var(--color-text-subtle)] shrink-0">{kind}</span>
-        <span className={`font-mono text-[var(--color-text)] truncate ${compact ? 'text-[9px]' : 'text-[10px]'}`}>
+        {!hideKind && (
+          <span className="text-[var(--color-text-subtle)] shrink-0">{kind}</span>
+        )}
+        <span
+          className={`font-mono text-[var(--color-text)] truncate ${compact ? 'text-[9px]' : 'text-[10px]'} ${hideKind && compact ? 'max-w-[4.25rem] sm:max-w-[5.5rem]' : ''}`}
+        >
           {value}
         </span>
       </span>
