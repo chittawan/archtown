@@ -17,7 +17,7 @@ const navItems = [
   { path: '/capability', label: 'TownStation', icon: Layers },
   // { path: '/project', label: 'Projects', icon: FolderKanban }, // ซ่อนไว้ก่อน
   { path: '/tasks', label: 'Tasks', icon: ListTodo },
-  { path: '/ea/weekly', label: 'EA Weekly', icon: BarChart3 },
+  // { path: '/ea/weekly', label: 'EA Weekly', icon: BarChart3 },
   { path: '/teams', label: 'Teams', icon: Users },
 ];
 
@@ -192,14 +192,10 @@ export default function AppLayout() {
               {navItems.map(({ path, label, icon: Icon }) => {
                 const isActive = location.pathname === path;
                 const isCapability = path === '/capability';
-                const to =
-                  path === '/ea/weekly' && projectIdFromUrl
-                    ? `/ea/weekly?project=${encodeURIComponent(projectIdFromUrl)}`
-                    : path;
                 return (
                   <Link
                     key={path}
-                    to={to}
+                    to={path}
                     onClick={() => {
                       if (isCapability) {
                         sessionStorage.setItem('capability-refresh', '1');

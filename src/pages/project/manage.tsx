@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useReducer } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, ChevronRight, Users, FolderPlus, Download, Upload, FileText, FolderKanban, Save, LineChart } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, ChevronDown, ChevronRight, Users, FolderPlus, Download, Upload, FileText, FolderKanban, Save } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -1223,16 +1223,6 @@ export default function ProjectManagePage() {
             <FileText className="w-4 h-4 mr-1.5" />
             Summary View
           </button>
-          {displayProjectId ? (
-            <Link
-              to={`/ea/weekly?project=${encodeURIComponent(displayProjectId)}`}
-              className="inline-flex items-center px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-xl text-sm font-medium transition-colors"
-              title="ประวัติ EA รายสัปดาห์บนคลาวด์ — กราฟและสรุปทุกโปรเจกต์"
-            >
-              <LineChart className="w-4 h-4 mr-1.5" />
-              ประวัติ EA
-            </Link>
-          ) : null}
           <div className="h-6 w-px bg-[var(--color-border)] hidden sm:block" aria-hidden />
           <button
             onClick={() => teamModal.open()}

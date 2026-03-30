@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, LineChart, Camera, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, LineChart, Plus, Trash2, X } from 'lucide-react';
 import { eaApiHeaders } from '../../lib/eaApiHeaders';
 
 /** จำนวนสัปดาห์ล่าสุดที่โหลดจาก API — ใช้ slice ฝั่ง client เพื่อไม่ให้ตารางกว้างเกินเมื่อมีหลายเดือน/ปี */
@@ -363,7 +363,8 @@ function EaTooltipPortal({
 
 type EaSubtopicRowTip = {
   title: string;
-  rowStatus: 'RED' | 'YELLOW' | 'GREEN';
+  /** null = snapshot ไม่มี subtopic_status สำหรับหัวข้อย่อยนี้ — ไม่ถือเป็นสีใดโดยปริยาย */
+  rowStatus: 'RED' | 'YELLOW' | 'GREEN' | null;
 };
 
 type EaAttentionItemTip = {
@@ -659,7 +660,7 @@ function buildSubtopicRowsForTip(
   });
   return ids.map((id) => ({
     title: titleBySubId.get(id) || id,
-    rowStatus: statusBySubId.get(id) ?? 'GREEN',
+    rowStatus: statusBySubId.has(id) ? (statusBySubId.get(id) ?? null) : null,
   }));
 }
 
@@ -727,18 +728,23 @@ function blocksFromTeamBuckets(
     else if (ts === 'doing') row.doing++;
     else if (ts === 'done') row.done++;
     if (healthBucket === 'RED' || healthBucket === 'YELLOW') {
-      const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
-      const t = o ? String(o.text ?? '').trim() : '';
-      const subTitle = o ? String(o.subtopic_title ?? '').trim() : '';
-      const taskTitle =
-        t && subTitle && t !== subTitle
-          ? `${subTitle} · ${t}`
-          : t || subTitle || '(ไม่มีชื่องาน)';
-      row.ragTodos.push({
-        health: healthBucket,
-        taskTitle,
-        note: healthNoteFromEaItem(item),
-      });
+      const tsItem = taskStatusFromEaItem(item);
+      if (tsItem === 'todo') {
+        // งานยังรอทำ — ไม่นำไปแสดงใน「ต้องจับตา」(ยังไม่ถือว่าเป็นประเด็นติดตาม)
+      } else {
+        const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+        const t = o ? String(o.text ?? '').trim() : '';
+        const subTitle = o ? String(o.subtopic_title ?? '').trim() : '';
+        const taskTitle =
+          t && subTitle && t !== subTitle
+            ? `${subTitle} · ${t}`
+            : t || subTitle || '(ไม่มีชื่องาน)';
+        row.ragTodos.push({
+          health: healthBucket,
+          taskTitle,
+          note: healthNoteFromEaItem(item),
+        });
+      }
     }
     if (item && typeof item === 'object') {
       const o = item as Record<string, unknown>;
@@ -869,10 +875,11 @@ function blockTipFromElement(b: StoredSubtopicBlock, el: HTMLElement): EaBlockTi
   };
 }
 
-function subtopicStatusDotClass(s: 'RED' | 'YELLOW' | 'GREEN'): string {
+function subtopicStatusDotClass(s: 'RED' | 'YELLOW' | 'GREEN' | null): string {
   if (s === 'RED') return 'bg-red-500';
   if (s === 'YELLOW') return 'bg-amber-500';
-  return 'bg-emerald-500';
+  if (s === 'GREEN') return 'bg-emerald-500';
+  return 'bg-[var(--color-border)]';
 }
 
 function StatusBlocksGrid({
@@ -1053,8 +1060,16 @@ function StatusBlocksGrid({
                     <li key={i} className="flex items-start gap-2 text-[10px] leading-snug text-[var(--color-text)]">
                       <span
                         className={`mt-0.5 size-2 shrink-0 rounded-sm ${subtopicStatusDotClass(row.rowStatus)}`}
-                        title={statusLabelTh(row.rowStatus)}
-                        aria-label={statusLabelTh(row.rowStatus)}
+                        title={
+                          row.rowStatus
+                            ? statusLabelTh(row.rowStatus)
+                            : 'ไม่มี subtopic_status ใน snapshot'
+                        }
+                        aria-label={
+                          row.rowStatus
+                            ? statusLabelTh(row.rowStatus)
+                            : 'ไม่มีสถานะหัวข้อย่อยใน snapshot'
+                        }
                       />
                       <span className="[overflow-wrap:anywhere]">{row.title}</span>
                     </li>
@@ -1738,31 +1753,33 @@ export function EaWeeklyTrendPanel({
     'แต่ละแถวเป็นหนึ่งทีม · แต่ละช่อง: สัญลักษณ์ภาพรวม + สี่เหลี่ยมชิดกัน (หนึ่งสี่เหลี่ยม = หนึ่ง topic — สีสรุปจากสถานะหัวข้อย่อยใน snapshot ณ เวลาบันทึก ไม่ใช่สุขภาพงาน; snapshot เก่าไม่มีฟิลด์นี้จึงใช้สีจากสุขภาพงาน) · ลำดับตามหัวข้อในโปรเจกต์ · ชี้หัวคอลัมน์/สี่เหลี่ยมเพื่อรายละเอียด';
 
   return (
-    <div className="relative mb-6 rounded-lg border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-3 sm:p-4">
-      <button
-        type="button"
-        onClick={() => setEaSnapshotModalOpen(true)}
-        className="absolute right-2.5 top-2.5 z-10 inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--color-text-subtle)] transition-colors hover:bg-[var(--color-overlay)] hover:text-[var(--color-text)] sm:right-3 sm:top-3 sm:px-2.5 sm:py-1.5 sm:text-xs"
-        title="บันทึกสรุป EA รายสัปดาห์ขึ้นคลาวด์ (ต้องกำหนด week ไว้ก่อน)"
-      >
-        <Camera className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" />
-        สรุป EA
-      </button>
-      <div className="min-w-0 pr-[5.75rem] sm:pr-24">
-        <div className="flex items-start gap-2 min-w-0">
-          <LineChart className="mt-px h-4 w-4 shrink-0 text-[var(--color-text-subtle)]" aria-hidden />
-          <div className="min-w-0">
-            <h2
-              className="text-xs font-medium tracking-tight text-[var(--color-text)] sm:text-sm"
-              title={timelineSectionBlurb}
-            >
-              Timeline EA · รายทีม
-            </h2>
-            <p className="mt-0.5 text-[11px] leading-snug text-[var(--color-text-subtle)] sm:text-xs">
-              History · hover หัวคอลัมน์และจุดสีเพื่อรายละเอียด
-            </p>
+    <div className="mb-6 rounded-lg border border-[var(--color-border)]/80 bg-[var(--color-surface)] p-3 sm:p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
+            <LineChart className="mt-px h-4 w-4 shrink-0 text-[var(--color-text-subtle)]" aria-hidden />
+            <div className="min-w-0">
+              <h2
+                className="text-xs font-medium tracking-tight text-[var(--color-text)] sm:text-sm"
+                title={timelineSectionBlurb}
+              >
+                Timeline EA · รายทีม
+              </h2>
+              <p className="mt-0.5 text-[11px] leading-snug text-[var(--color-text-subtle)] sm:text-xs">
+                History · hover หัวคอลัมน์และจุดสีเพื่อรายละเอียด
+              </p>
+            </div>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setEaSnapshotModalOpen(true)}
+          className="inline-flex shrink-0 items-center self-start px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-overlay)] border border-[var(--color-border)] rounded-xl text-sm font-medium transition-colors sm:self-auto"
+          title="บันทึกสรุป EA รายสัปดาห์ขึ้นคลาวด์ (ต้องกำหนด week ไว้ก่อน)"
+        >
+          <LineChart className="h-4 w-4 mr-1.5 shrink-0" aria-hidden />
+          สรุป EA
+        </button>
       </div>
 
       <p className="mt-2 text-[10px] leading-relaxed text-[var(--color-text-subtle)] sm:text-[11px]">
@@ -1777,7 +1794,7 @@ export function EaWeeklyTrendPanel({
       )}
       {!loading && !error && allWeekColumns.length === 0 && (
         <p className="mt-4 text-sm text-[var(--color-text-muted)]">
-          ยังไม่มี snapshot รายสัปดาห์ — กำหนดสัปดาห์และบันทึก snapshot จากปุ่ม &quot;สรุป EA&quot; มุมขวาบนการ์ดนี้
+          ยังไม่มี snapshot รายสัปดาห์ — กำหนดสัปดาห์และบันทึก snapshot จากปุ่ม &quot;สรุป EA&quot; ทางขวาของหัวการ์ดนี้
         </p>
       )}
       {!loading && !error && allWeekColumns.length > 0 && (
